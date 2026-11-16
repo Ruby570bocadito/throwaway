@@ -44,10 +44,10 @@ Each step picks its inference mode on purpose. Your draft and your photo are the
 ```mermaid
 flowchart LR
   subgraph device["Your device"]
-    secret["Your draft or photo"] --> nano["Gemini Nano (ONLY_ON_DEVICE)"] --> out["release(): only what you would post"]
+    secret["Draft or photo"] --> nano["Gemini Nano<br/>ONLY_ON_DEVICE"] --> out["release()"]
   end
-  out -->|"+ public writing"| attacker["Gemini in the cloud (ONLY_IN_CLOUD)"]
-  attacker -.->|"its guess and its reasons"| nano
+  out -->|"what you would post"| attacker["Cloud Gemini<br/>ONLY_IN_CLOUD"]
+  attacker -.->|"guess + reasons"| nano
 ```
 
 | Step | Firebase AI Logic mode | What leaves the device |
