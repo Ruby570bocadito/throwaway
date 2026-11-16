@@ -1,0 +1,20 @@
+{
+  "name": "Throwaway",
+  "short_name": "Throwaway",
+  "description": "Before you post anonymously, let an AI try to unmask you. Gemini Nano fixes your post on your device; the cloud only sees what you would publish.",
+  "id": "/app/",
+  "start_url": "/app/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f6ecdd",
+  "theme_color": "#f6ecdd",
+  "lang": "en",
+  "categories": ["security", "privacy", "utilities"],
+  "icons": [
+    { "src": "/brand/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/brand/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+  ],
+  "shortcuts": [
+    { "name": "Replay a recorded run", "short_name": "Recorded run", "url": "/app/?demo", "icons": [{ "src": "/brand/icon-192.png", "sizes": "192x192", "type": "image/png" }] }
+  ]
+}

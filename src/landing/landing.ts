@@ -1,6 +1,4 @@
 // Landing page script. No React and no Firebase: the page already reads on its own, this only adds motion and the photo demo.
-import { SCENE_H, SCENE_SVG, SCENE_W } from '../demo/photo';
-import { browserImageOps, svgToPng } from '../engine/image';
 import { deviceModelStatus } from '../framework/device';
 
 declare global {
@@ -14,7 +12,9 @@ const GRID = 4; // the photo threat's grid (src/threats/location.ts)
 const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 revealOnScroll();
+followSections();
 void adaptToThisBrowser();
+linkManifestAndWorker();
 const replayFigure = document.querySelector<HTMLElement>('.replay');
 if (replayFigure && !reduceMotion) replay(replayFigure);
 const photoCard = document.querySelector<HTMLElement>('[data-photo]');
@@ -47,11 +47,75 @@ function revealOnScroll() {
         if (!e.isIntersecting) continue;
         e.target.classList.add('in');
         io.unobserve(e.target);
+        if (!reduceMotion) for (const n of e.target.querySelectorAll<HTMLElement>('[data-from]')) countTo(n);
       }
     },
     { rootMargin: '0px 0px -8% 0px' },
   );
   for (const el of items) io.observe(el);
+}
+
+/**
+ * A measured number replays its own measurement as it comes into view: 10/10 counts down to 0/10, 0.5 km grows to 869 km.
+ * The HTML already holds the final value (it reads without JavaScript); the span keeps that width while it counts.
+ */
+function countTo(el: HTMLElement) {
+  const final = el.textContent ?? '';
+  const from = Number(el.dataset.from);
+  const frac = final.match(/^(\d+)\/(\d+)$/);
+  const km = final.match(/^(~?)([\d.,]+) km$/);
+  if (!Number.isFinite(from) || (!frac && !km)) return;
+  const to = frac ? Number(frac[1]) : Number(km![2].replace(/,/g, ''));
+  const show = (v: number) => (frac ? `${Math.round(v)}/${frac[2]}` : `${v < 1 ? v.toFixed(1) : Math.round(v)} km`);
+  // Distances span orders of magnitude: count them on a log scale.
+  const f = km ? Math.log10 : (x: number) => x;
+  const g = km ? (y: number) => 10 ** y : (y: number) => y;
+  el.style.minWidth = `${el.getBoundingClientRect().width}px`;
+  const t0 = performance.now();
+  const ms = 1300;
+  const tick = (now: number) => {
+    const t = Math.min(1, (now - t0) / ms);
+    const eased = 1 - (1 - t) ** 3;
+    el.textContent = t < 1 ? show(g(f(from) + (f(to) - f(from)) * eased)) : final;
+    if (t < 1) requestAnimationFrame(tick);
+  };
+  el.textContent = show(from);
+  requestAnimationFrame(tick);
+}
+
+/** The navigation marks the section you are reading. */
+function followSections() {
+  const links = [...document.querySelectorAll<HTMLAnchorElement>('.nav nav a[href^="#"]')];
+  const sections = links.map((a) => document.querySelector<HTMLElement>(a.hash)).filter((s): s is HTMLElement => !!s);
+  if (!sections.length || !('IntersectionObserver' in window)) return;
+  const visible = new Map<Element, boolean>();
+  const io = new IntersectionObserver(
+    (entries) => {
+      for (const e of entries) visible.set(e.target, e.isIntersecting);
+      const current = sections.find((s) => visible.get(s));
+      for (const a of links) {
+        if (current && a.hash === `#${current.id}`) a.setAttribute('aria-current', 'location');
+        else a.removeAttribute('aria-current');
+      }
+    },
+    // A section counts once it reaches the upper part of the screen.
+    { rootMargin: '-35% 0px -60% 0px' },
+  );
+  for (const s of sections) io.observe(s);
+}
+
+/** Installable, and the shell opens offline. The worker runs in production only: in development it would cache Vite's modules. */
+function linkManifestAndWorker() {
+  // A few seconds after load, when the browser is idle: nothing on screen needs either, and the manifest in the HTML sat on
+  // the first paint's critical path (Lighthouse, 16-nov: ~400 ms of simulated LCP on this page).
+  const idle = (fn: () => void) => ('requestIdleCallback' in window ? requestIdleCallback(fn, { timeout: 5000 }) : fn());
+  addEventListener('load', () => setTimeout(() => idle(() => {
+    const manifest = document.createElement('link');
+    manifest.rel = 'manifest';
+    manifest.href = '/manifest.webmanifest';
+    document.head.append(manifest);
+    if (import.meta.env.PROD && 'serviceWorker' in navigator) void navigator.serviceWorker.register('/sw.js').catch(() => undefined);
+  }), 3000));
 }
 
 /** Most visitors have no Gemini Nano: point them at the recorded run first, and say why. */
@@ -127,7 +191,14 @@ function replay(fig: HTMLElement) {
     num.textContent = score;
     what.textContent = words;
   };
+  /** The final count lands like a stamp (restarting the animation needs a reflow in between). */
+  const stamp = () => {
+    num.classList.remove('stamp');
+    void num.offsetWidth;
+    num.classList.add('stamp');
+  };
   const clear = () => {
+    num.classList.remove('stamp');
     tally.fill(0);
     for (const c of counts) if (c) c.hidden = true;
     for (const p of pols) p.classList.remove('pointed', 'hot');
@@ -163,6 +234,7 @@ function replay(fig: HTMLElement) {
         await wait(200);
       }
       pols[ME].classList.remove('pointed');
+      stamp();
       await wait(1800);
 
       fig.classList.add('p-strike');
@@ -180,6 +252,7 @@ function replay(fig: HTMLElement) {
       }
       for (const p of pols) p.classList.remove('pointed');
       say('good', '0/10', 'you are one of ten');
+      stamp();
       await wait(3800);
     }
   })();
@@ -192,7 +265,11 @@ async function photoDemo(card: HTMLElement) {
   const buttons = [...card.querySelectorAll<HTMLButtonElement>('button[data-show]')];
   if (!scene || !guess) return;
   let urls: { asis: string; masked: string };
+  let size: [number, number];
   try {
+    // Loaded only now, near the card: none of it is needed to paint the top of the page.
+    const [{ SCENE_H, SCENE_SVG, SCENE_W }, { browserImageOps, svgToPng }] = await Promise.all([import('../demo/photo'), import('../engine/image')]);
+    size = [SCENE_W, SCENE_H];
     const png = await svgToPng(SCENE_SVG, SCENE_W, SCENE_H);
     // The five cells Gemini Nano flagged in a live run: a poster, the street plaque, the house number, the bakery sign, the orange tree.
     const masked = await browserImageOps.maskCells(png, [1, 3, 7, 8, 12], GRID);
@@ -201,7 +278,7 @@ async function photoDemo(card: HTMLElement) {
   } catch {
     return; // the text around the card already tells the story
   }
-  const img = new Image(SCENE_W, SCENE_H);
+  const img = new Image(...size);
   img.alt = '';
   img.decoding = 'async';
   img.src = urls.asis;
@@ -215,7 +292,7 @@ async function photoDemo(card: HTMLElement) {
     for (const b of buttons) b.setAttribute('aria-pressed', String(b.dataset.show === which));
     const place = document.createElement('strong');
     place.textContent = which === 'asis' ? '“Carrer de la Llum, 23, Palma”' : '“Rome, Italy”';
-    guess.replaceChildren('Cloud’s guess: ', place, which === 'asis' ? ' · 0.5 km from the spot' : ' · ~950 km off');
+    guess.replaceChildren('Cloud’s guess: ', place, which === 'asis' ? ' · 0.5 km from the spot' : ' · 869 km off');
   };
   for (const b of buttons) {
     b.disabled = false;

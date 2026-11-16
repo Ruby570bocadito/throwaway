@@ -1,17 +1,36 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { useDeferredValue, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { createPortal } from 'react-dom';
 import { styleMarkers } from '../engine/stylometry';
 import { DECOYS, DRAFT, LINEUP, MARTA_PUBLIC, SELF_ID } from '../demo/scenario';
 import { PrivacyViolation, release, secret, type Private, type Publishable } from '../framework';
 import { hasPhrase, ruleDetails, type AuthorshipVerdict, type Clue } from '../threats/authorship';
 import { buildAuthorship } from '../kit';
-import { friendlyError, Silhouette, type LabProps } from '../ui/shared';
+import { ErrorNote, friendlyError, Silhouette, type LabProps } from '../ui/shared';
 import { Compare } from '../ui/Compare';
+import { Stepper, type StepDef } from '../ui/Stepper';
+import { WorkLog, type PlanStep } from '../ui/WorkLog';
+import { useAnimatedNumber } from '../ui/motion';
 
 type Stage = 'draft' | 'scanned' | 'attacked' | 'rewritten' | 'reattacked';
 const LETTERS = 'ABCDEFGHIJ';
+const STAGE_STEP: Record<Stage, number> = { draft: 0, scanned: 1, attacked: 2, rewritten: 3, reattacked: 4 };
+
+// What each long action is expected to leave in the ledger, in order (see threats/authorship.ts).
+const SCAN_PLAN: PlanStep[] = [
+  { match: /^Fingerprint/, label: 'Fingerprint your style', route: 'local-js' },
+  { match: /^Find identifying details/, label: 'Find what identifies you', route: 'on-device', slow: true },
+  { match: /^Find counts and dates/, label: 'Find every count and date', route: 'local-js' },
+];
+const REWRITE_PLAN: PlanStep[] = [
+  { match: /^Fixed rules generalised/, label: 'Generalise the details', route: 'local-js', optional: true },
+  { match: /^Rewrite on-device/, label: 'Rewrite your style', route: 'on-device', slow: true },
+  { match: /^Check the final text/, label: 'Check the final text for details', route: 'local-js' },
+  { match: /^Meaning check/, label: 'Check that the meaning survived', route: 'on-device', slow: true },
+];
 
 const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const phraseRe = (p: string) => (p.includes(' ') ? esc(p).replace(/ /g, '[\\s,]+') : p === '—' ? '—' : `\\b${esc(p)}\\b`);
+const at = (i: number) => ({ '--i': i }) as CSSProperties;
 
 function Highlighted({ text, marks }: { text: string; marks: { phrase: string; kind: string }[] }) {
   const parts = useMemo(() => {
@@ -29,10 +48,24 @@ function Highlighted({ text, marks }: { text: string; marks: { phrase: string; k
     out.push({ t: text.slice(last), k: '' });
     return out;
   }, [text, marks]);
-  return <p className="draft-text">{parts.map((p, i) => (p.k ? <mark key={i} className={p.k}>{p.t}</mark> : <span key={i}>{p.t}</span>))}</p>;
+  let n = 0;
+  return (
+    <p className="draft-text">
+      {parts.map((p, i) =>
+        p.k ? (
+          // marked one after another, like a highlighter going through the text
+          <mark key={i} className={p.k} style={at(n++)}>
+            {p.t}
+          </mark>
+        ) : (
+          <span key={i}>{p.t}</span>
+        ),
+      )}
+    </p>
+  );
 }
 
-export function TextLab({ kit, localBackend, degraded, registerLeak, recorded }: LabProps) {
+export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, dock }: LabProps) {
   const [stage, setStage] = useState<Stage>('draft');
   const [draft, setDraft] = useState(DRAFT);
   const [edited, setEdited] = useState('');
@@ -43,6 +76,12 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded }:
   const [picks, setPicks] = useState<string[]>([]);
   const [current, setCurrent] = useState<string | null>(null);
   const [busy, setBusy] = useState('');
+  const [busySince, setBusySince] = useState<number | null>(null);
+  // Gemini Nano download progress, the first time only (live).
+  const [download, setDownload] = useState<number | null>(null);
+  // Counts finished attacks, so each verdict lands with its own stamp.
+  const [attacks, setAttacks] = useState(0);
+  const [rounds, setRounds] = useState(1);
   // "Attack it as I would post it" sends the draft as it is: the user's choice, and the chip says so.
   const [sentAsIs, setSentAsIs] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -54,17 +93,7 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded }:
   const selfCorpus = ownPublic.trim() || MARTA_PUBLIC;
   const [error, setError] = useState('');
   const privateDraft = useRef<Private<string> | null>(null);
-  // On-device steps can take a while on a laptop (measured: 15–40 s each): show which one just finished.
-  const [lastStep, setLastStep] = useState('');
-  useEffect(() => {
-    const off = kit.ledger.subscribe((e) => {
-      const note = e[0]?.note?.replace(/( · )?recorded$/, '');
-      setLastStep(e[0] ? `${e[0].op}${note ? ` · ${note}` : ' ✓'}` : '');
-    });
-    return () => {
-      off();
-    };
-  }, [kit]);
+  const acted = useRef(false);
 
   const threat = useMemo(
     () =>
@@ -89,14 +118,37 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded }:
     return () => registerLeak(null);
   }, [kit, draft, registerLeak]);
 
+  // After an action, hand keyboard focus to the next one (only if it was in the dock, so nothing else is taken away).
+  useEffect(() => {
+    if (!dock || busy || !acted.current) return;
+    const active = document.activeElement;
+    if (active && active !== document.body && !dock.contains(active)) return;
+    dock.querySelector<HTMLElement>('button:not(:disabled), a[href]')?.focus({ preventScroll: true });
+  }, [stage, busy, dock]);
+
   // Fixed on-screen letters. Only this browser knows which card is "you"; the attacker gets a fresh shuffle each time.
   const lineup = useMemo(() => [3, 7, 0, 5, 9, 1, 8, 2, 6, 4].map((i, k) => ({ ...LINEUP[i], letter: LETTERS[k] })), []);
 
   const shownText = published ? published.value : stage === 'draft' ? draft : degraded && edited ? edited : draft;
-  const stylo = useMemo(() => threat.fingerprint(shownText), [threat, shownText]);
+  // The fingerprint meter sits below the fold: it is computed when it comes into view (or once a scan starts), in a
+  // background render, so loading the page and typing never wait for it.
+  const meterRef = useRef<HTMLDivElement>(null);
+  const [meterNear, setMeterNear] = useState(false);
+  useEffect(() => {
+    const el = meterRef.current;
+    if (!el || meterNear) return;
+    if (!('IntersectionObserver' in window)) return setMeterNear(true);
+    const io = new IntersectionObserver((entries) => entries.some((e) => e.isIntersecting) && setMeterNear(true));
+    io.observe(el);
+    return () => io.disconnect();
+  }, [meterNear]);
+  const fingerprintText = useDeferredValue(meterNear || stage !== 'draft' ? shownText : '', '');
+  const stylo = useMemo(() => (fingerprintText ? threat.fingerprint(fingerprintText) : null), [threat, fingerprintText]);
+  const rank = useAnimatedNumber(stylo?.rank ?? 1, { duration: 900 });
+  // Habits in the version you would post: only needed once there is one.
   const liveStyle = useMemo(
-    () => styleMarkers(shownText, selfCorpus, DECOYS.map((d) => d.corpus)).map((m) => ({ ...m, kind: 'style' as const })),
-    [shownText, selfCorpus],
+    () => (published ? styleMarkers(shownText, selfCorpus, DECOYS.map((d) => d.corpus)).map((m) => ({ ...m, kind: 'style' as const })) : []),
+    [published, shownText, selfCorpus],
   );
   const styleClues = published ? liveStyle : clues.filter((c) => c.kind === 'style');
   // After a rewrite, trust the fresh on-device re-check of the final text; for a manual edit, fall back to string matching.
@@ -114,18 +166,25 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded }:
   const claims = threat.lastRewrite;
 
   async function run(label: string, fn: () => Promise<void>) {
+    acted.current = true;
     setBusy(label);
+    setBusySince(Date.now());
     setError('');
-    setLastStep('');
     try {
       await fn();
     } catch (e) {
       setError(friendlyError(e));
     } finally {
       setBusy('');
+      setBusySince(null);
+      setDownload(null);
       setCurrent(null);
     }
   }
+
+  const prepare = async () => {
+    if (localBackend.prepare) await localBackend.prepare((p) => setDownload(p)); // a user gesture: Chrome requires it, and it may download Gemini Nano
+  };
 
   const scan = () =>
     run('scan', async () => {
@@ -139,7 +198,7 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded }:
         kit.ledger.add({ op: 'Find counts and dates (fixed rules)', route: 'local-js', ms: 1, bytesOut: 0, note: `no model · ${rules.length} found` });
         setEdited(draft);
       } else {
-        if (localBackend.prepare) await localBackend.prepare(); // first user gesture: Chrome requires it before on-device inference
+        await prepare();
         setClues(await threat.findClues(privateDraft.current, kit));
       }
       setStage('scanned');
@@ -151,12 +210,14 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded }:
       setVerdict(null);
       const v = await threat.attack(target, kit);
       setVerdict(v);
+      setAttacks((n) => n + 1);
       if (threat.inconclusive(v)) {
         // Too few answers: stay on the same step so the user can attack again.
         setStage(after ? 'rewritten' : 'scanned');
         return;
       }
       if (!after) setBefore(v.hits);
+      if (after && threat.exposed(v)) setRounds((r) => r + 1);
       setStage(after && !threat.exposed(v) ? 'reattacked' : 'attacked');
     });
 
@@ -172,7 +233,7 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded }:
         // release() refuses the edit if it still contains 8+ word spans of the private draft.
         setPublished(release(edited, 'edited by the user'));
       } else {
-        if (localBackend.prepare) await localBackend.prepare(); // user gesture: may download Gemini Nano
+        await prepare();
         setPublished(await threat.sanitize(privateDraft.current!, clues, verdict, kit));
       }
       setPicks([]);
@@ -180,6 +241,7 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded }:
     });
 
   const editing = stage === 'draft' || (degraded && (stage === 'scanned' || stage === 'attacked'));
+  const working = !degraded && (busy === 'scan' || busy === 'rewrite');
 
   // The take-away: the version you would post, copied to the clipboard (it never leaves the device this way either).
   const copySafe = async () => {
@@ -193,14 +255,95 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded }:
     }
   };
 
+  const steps: StepDef[] = [
+    { label: 'Scan', where: degraded ? 'fixed rules, no model' : 'on your device' },
+    { label: 'Attack', where: 'in the cloud' },
+    { label: 'Fix', where: degraded ? 'you edit it' : 'on your device' },
+    { label: 'Attack again', where: 'in the cloud' },
+  ];
+  const outcome = stage === 'reattacked' ? (contentClues.length ? 'warn' : 'good') : null;
+
+  const busyLabel =
+    busy === 'scan'
+      ? degraded
+        ? 'Scanning…'
+        : 'Scanning on your device…'
+      : busy === 'attack'
+        ? `Attacking · ${Math.min(picks.length + 1, 10)} of 10`
+        : busy === 'rewrite'
+          ? degraded
+            ? 'Checking your edit…'
+            : 'Rewriting on your device…'
+          : '';
+
+  const actions = (
+    <>
+      {working && busySince !== null && (
+        <WorkLog
+          ledger={kit.ledger}
+          since={busySince}
+          plan={busy === 'scan' ? SCAN_PLAN : REWRITE_PLAN}
+          title={busy === 'scan' ? 'Scanning your post on this device' : 'Fixing your post on this device'}
+          recorded={recorded}
+          download={download}
+        />
+      )}
+      <div className="dock-row">
+        {stage === 'draft' && (
+          <button className="primary" onClick={scan} disabled={!!busy || !draft.trim()} aria-busy={busy === 'scan'}>
+            {busy ? <Busy label={busyLabel} /> : 'Scan my post locally'}
+          </button>
+        )}
+        {stage === 'scanned' && (
+          <button className="danger" onClick={attackAsIs} disabled={!!busy} aria-busy={busy === 'attack'}>
+            {busy ? <Busy label={busyLabel} /> : 'Attack it as I would post it'}
+          </button>
+        )}
+        {stage === 'attacked' && (
+          <button className="safe" onClick={rewrite} disabled={!!busy} aria-busy={busy === 'rewrite'}>
+            {busy
+              ? <Busy label={busyLabel} />
+              : degraded
+                ? 'Use my edited version'
+                : published
+                  ? 'Rewrite again on-device'
+                  : 'Rewrite on-device with Gemini Nano'}
+          </button>
+        )}
+        {stage === 'rewritten' && published && (
+          <button className="danger" onClick={() => attack(published, true)} disabled={!!busy} aria-busy={busy === 'attack'}>
+            {busy ? <Busy label={busyLabel} /> : 'Attack again'}
+          </button>
+        )}
+        {stage === 'reattacked' &&
+          (contentClues.length ? (
+            <p className="outcome bad" role="status">
+              Your style is hidden, but {contentClues.length} detail{contentClues.length > 1 ? 's' : ''} can still identify you.
+            </p>
+          ) : (
+            <>
+              <p className="outcome" role="status">
+                Looks safe to publish: in this test you are one of ten, and no identifying details are left.
+              </p>
+              <button className="safe" onClick={copySafe}>
+                {copied ? 'Copied' : 'Copy the safe version'}
+              </button>
+            </>
+          ))}
+      </div>
+    </>
+  );
+
   return (
     <>
-      {error && <div className="banner error span">{error}</div>}
-      <section className="card draft">
+      <Stepper steps={steps} current={STAGE_STEP[stage]} busySince={busySince} outcome={outcome} round={rounds} />
+      {error && <ErrorNote message={error} />}
+      <section className="card draft" aria-labelledby="draft-title">
         <div className="card-head">
-          <h2>
-            <span className="step">1</span> Your anonymous post
-          </h2>
+          <div>
+            <p className="kicker">Your device</p>
+            <h2 id="draft-title">Your anonymous post</h2>
+          </div>
           <span className={`chip ${!published && sentAsIs ? 'asis' : 'private'}`}>
             {published ? 'released for publication' : sentAsIs ? 'sent as-is to the attacker · your choice' : 'private · stays on this device'}
           </span>
@@ -208,25 +351,25 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded }:
         <p className="context">
           {draft === DRAFT ? 'Sample post: an anonymous review of an employer, from a throwaway account' : 'Your post, about to be published anonymously'}
         </p>
-        {editing ? (
-          <textarea
-            ref={textareaRef}
-            aria-label="Your anonymous post"
-            placeholder="Paste the post you are about to publish…"
-            readOnly={recorded && stage === 'draft'}
-            value={stage === 'draft' ? draft : edited}
-            onChange={(e) => (stage === 'draft' ? setDraft(e.target.value) : setEdited(e.target.value))}
-            rows={9}
-          />
-        ) : (
-          <Highlighted text={shownText} marks={[...styleClues, ...contentClues]} />
-        )}
+        <div className={`sheet-wrap ${working ? 'reading' : ''}`}>
+          {editing ? (
+            <textarea
+              ref={textareaRef}
+              aria-label="Your anonymous post"
+              placeholder="Paste the post you are about to publish…"
+              readOnly={recorded && stage === 'draft'}
+              value={stage === 'draft' ? draft : edited}
+              onChange={(e) => (stage === 'draft' ? setDraft(e.target.value) : setEdited(e.target.value))}
+              rows={9}
+            />
+          ) : (
+            <Highlighted key={published ? 'final' : 'draft'} text={shownText} marks={[...styleClues, ...contentClues]} />
+          )}
+        </div>
         {degraded && stage === 'attacked' && (
           <p className="hint">Your turn to rewrite (no local model here): edit the text above, drop the habits and details listed below, then use your edited version.</p>
         )}
-        {published && claims && (
-          <p className="hint">Rewritten in a plain, neutral voice on purpose: your writing style is what gave you away.</p>
-        )}
+        {published && claims && <p className="hint">Rewritten in a plain, neutral voice on purpose: your writing style is what gave you away.</p>}
         {stage === 'draft' && !recorded && (
           <div className="draft-tools">
             <span className="hint">Edit this sample, or paste the post you are about to publish.</span>
@@ -266,7 +409,7 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded }:
           </p>
         )}
         {published && (
-          <div className="takeaway">
+          <div className="takeaway rise">
             <div className="takeaway-actions">
               <button className="mini" onClick={copySafe}>
                 {copied ? 'Copied' : 'Copy the safe version'}
@@ -281,14 +424,14 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded }:
         )}
 
         {stage !== 'draft' && (
-          <div className="findings">
+          <div className="findings" key={published ? 'after' : 'before'}>
             <div className="finding-col">
               <h3>Style habits</h3>
               {styleClues.length === 0 ? (
-                <p className="good">No habits from your public writing.</p>
+                <p className="good rise">No habits from your public writing.</p>
               ) : (
                 styleClues.map((m, i) => (
-                  <div key={`${m.phrase}-${i}`} className="finding style">
+                  <div key={`${m.phrase}-${i}`} className="finding style rise" style={at(i)}>
                     <code>{m.phrase}</code> <span>{m.why}</span>
                   </div>
                 ))
@@ -297,19 +440,17 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded }:
             <div className="finding-col">
               <h3>Identifying details</h3>
               {contentClues.length === 0 ? (
-                <p className="good">{published ? 'None left (checked on your device).' : degraded ? 'Needs the local model.' : 'None found.'}</p>
+                <p className="good rise">{published ? 'None left (checked on your device).' : degraded ? 'Needs the local model.' : 'None found.'}</p>
               ) : (
                 contentClues.map((m, i) => (
-                  <div key={`${m.phrase}-${i}`} className="finding content">
+                  <div key={`${m.phrase}-${i}`} className="finding content rise" style={at(i)}>
                     <code>{m.phrase}</code> <span>{m.why}</span>
                   </div>
                 ))
               )}
-              {degraded && !published && contentClues.length > 0 && (
-                <p className="context">Counts and dates only: names and places need the local model.</p>
-              )}
+              {degraded && !published && contentClues.length > 0 && <p className="context">Counts and dates only: names and places need the local model.</p>}
               {generalised.map((g, i) => (
-                <div key={`${g.phrase}-${i}`} className="finding generalised" style={{ '--i': i } as CSSProperties}>
+                <div key={`${g.phrase}-${i}`} className="finding generalised rise" style={at(i)}>
                   <code>{g.phrase}</code>{' '}
                   <span>
                     {g.generic ? `→ “${g.generic.length > 70 ? `${g.generic.slice(0, 70)}…` : g.generic}”` : '→ removed'}
@@ -321,28 +462,36 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded }:
           </div>
         )}
 
+        {published && claims?.meaningCheck === 'failed' && (
+          <div className="claims failed rise">
+            <h3>Meaning check · no answer</h3>
+            <p>Gemini Nano gave no readable answer, so nothing checked that the rewrite still says what you meant. Read it before you post.</p>
+          </div>
+        )}
         {published && claims && claims.claims.length > 0 && (
-          <div className="claims">
+          <div className="claims rise">
             <h3>
               Meaning check · {claims.claims.filter((c) => c.kept).length}/{claims.claims.length} claims kept · checked on your device
             </h3>
             <ul>
               {claims.claims.map((c, i) => (
-                <li key={`${c.claim}-${i}`} className={c.kept ? '' : 'lost'}>
-                  {c.kept ? '✓' : '✗'} {c.claim}
+                <li key={`${c.claim}-${i}`} className={`rise ${c.kept ? '' : 'lost'}`} style={at(i + 2)}>
+                  <span aria-hidden="true">{c.kept ? '✓' : '✗'}</span> {c.claim}
                 </li>
               ))}
             </ul>
           </div>
         )}
 
-        <div className="meter">
-          <div>
+        <div className="meter" ref={meterRef}>
+          <div className="meter-top">
             <span className="meter-label">Your rank among ten writers (#1 = reads most like you)</span>
-            <strong className={stylo.rank === 1 ? 'bad' : 'good'}>#{stylo.rank} of 10</strong>
+            <strong className={!stylo ? '' : stylo.rank === 1 ? 'bad' : 'good'}>
+              #{stylo ? Math.round(rank) : '–'} <span>of 10</span>
+            </strong>
           </div>
           <div className="bar">
-            <i style={{ width: `${Math.round(stylo.score * 100)}%` }} className={stylo.score > 0.6 ? 'bad' : 'good'} />
+            <i style={{ transform: `scaleX(${stylo?.score ?? 0})` }} className={(stylo?.score ?? 0) > 0.6 ? 'bad' : 'good'} />
           </div>
           <small>Local fingerprint: Burrows’ Delta on function words · computed in your browser · 0 bytes sent</small>
           {draft !== DRAFT && !ownPublic.trim() && !recorded && (
@@ -351,15 +500,16 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded }:
         </div>
       </section>
 
-      <section className="card lineup">
+      <section className="card lineup" aria-labelledby="lineup-title">
         <div className="card-head">
-          <h2>
-            <span className="step">2</span> The lineup
-          </h2>
+          <div>
+            <p className="kicker">The cloud</p>
+            <h2 id="lineup-title">The lineup</h2>
+          </div>
           <span className="chip public">what the cloud sees</span>
         </div>
         <p className="context">A cloud AI gets the text and ten public writers, shuffled on every attempt. It is never told which one is you.</p>
-        <div className="suspects">
+        <div className={`suspects ${busy === 'attack' ? 'looking' : ''}`}>
           {lineup.map((c) => {
             const n = picks.filter((p) => p === c.id).length;
             const isMe = c.id === SELF_ID;
@@ -370,23 +520,34 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded }:
                 </div>
                 <span className="letter">{c.letter}</span>
                 {isMe && <span className="you">you · local only</span>}
-                {n > 0 && <span className="count">{n}</span>}
+                {n > 0 && (
+                  <span className="count" key={n}>
+                    {n}
+                  </span>
+                )}
               </div>
             );
           })}
         </div>
-        <div className="score" aria-live="polite">
+        <div className={`score ${final && !busy ? (inconclusive ? 'mute' : exposedNow ? 'bad' : 'good') : ''}`} aria-live="polite">
           {busy === 'attack' || !final ? (
             <>
-              <div className="big">{picks.length ? `${hits}/${picks.length}` : '—'}</div>
+              <div className="big">{picks.length ? `${hits}/${picks.length}` : '?/10'}</div>
               <div>
                 <strong>{busy === 'attack' ? `Attacking… attempt ${Math.min(picks.length + 1, 10)} of 10` : 'No one has looked yet'}</strong>
                 <p>{busy === 'attack' ? 'Chance level is 1 in 10.' : 'Attack it to see who the cloud picks. Chance level is 1 in 10.'}</p>
+                {busy === 'attack' && (
+                  <span className="ticks" aria-hidden="true">
+                    {Array.from({ length: 10 }, (_, i) => (
+                      <i key={i} className={i < picks.length ? (picks[i] === SELF_ID ? 'hit' : 'miss') : ''} />
+                    ))}
+                  </span>
+                )}
               </div>
             </>
           ) : (
             <>
-              <div className={`big ${inconclusive ? '' : exposedNow ? 'bad' : 'good'}`}>
+              <div key={attacks} className={`big stamp ${inconclusive ? '' : exposedNow ? 'bad' : 'good'}`}>
                 {final.hits}/{final.answered}
               </div>
               <div>
@@ -401,57 +562,29 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded }:
           )}
         </div>
         {verdict && verdict.reasons.length > 0 && picks.length === verdict.attempts && (
-          <ul className="reasons">
-            {verdict.reasons.map((r, i) => (
-              <li key={`${r}-${i}`}>{r}</li>
-            ))}
-          </ul>
+          <div className="reasons-box rise">
+            <h3>The attacker’s reasons</h3>
+            <ul className="reasons">
+              {verdict.reasons.map((r, i) => (
+                <li key={`${r}-${i}`} className="rise" style={at(i + 1)}>
+                  {r}
+                </li>
+              ))}
+            </ul>
+          </div>
         )}
       </section>
 
-      <footer className="actions">
-        {stage === 'draft' && (
-          <button onClick={scan} disabled={!!busy || !draft.trim()}>
-            {busy ? `Reading your draft locally…${lastStep ? ` · ${lastStep}` : ''}` : 'Scan my post locally'}
-          </button>
-        )}
-        {stage === 'scanned' && (
-          <button className="danger" onClick={attackAsIs} disabled={!!busy}>
-            {busy ? 'Attacking…' : 'Attack it as I would post it'}
-          </button>
-        )}
-        {stage === 'attacked' && (
-          <button className="safe" onClick={rewrite} disabled={!!busy}>
-            {busy
-              ? degraded
-                ? 'Checking your edit…'
-                : `Gemini Nano is working on your device…${lastStep ? ` · ${lastStep}` : ''}`
-              : degraded
-                ? 'Use my edited version'
-                : published
-                  ? 'Rewrite again on-device'
-                  : 'Rewrite on-device with Gemini Nano'}
-          </button>
-        )}
-        {stage === 'rewritten' && published && (
-          <button className="danger" onClick={() => attack(published, true)} disabled={!!busy}>
-            {busy ? 'Attacking…' : 'Attack again'}
-          </button>
-        )}
-        {stage === 'reattacked' &&
-          (contentClues.length ? (
-            <span className="done bad">
-              Your style is hidden, but {contentClues.length} detail{contentClues.length > 1 ? 's' : ''} can still identify you.
-            </span>
-          ) : (
-            <>
-              <span className="done">Looks safe to publish: in this test you are one of ten, and no identifying details are left.</span>
-              <button className="safe" onClick={copySafe}>
-                {copied ? 'Copied' : 'Copy the safe version'}
-              </button>
-            </>
-          ))}
-      </footer>
+      {dock && createPortal(actions, dock)}
+    </>
+  );
+}
+
+function Busy({ label }: { label: string }) {
+  return (
+    <>
+      <span className="spinner" aria-hidden="true" />
+      {label}
     </>
   );
 }

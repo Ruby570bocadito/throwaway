@@ -4,7 +4,7 @@
 // Cloud: a geolocation attacker gets ONLY the released (masked) photo and estimates where it was taken and how precisely.
 // If it can still narrow you down, it says which cells helped, and the loop masks those too.
 
-import { parseModelJson, Private, release, type JsonSchema, type Kit, type Publishable, type Threat } from '../framework';
+import { listAt, ModelJsonError, parseModelJson, parseModelJsonLenient, Private, release, type JsonSchema, type Kit, type Publishable, type Threat } from '../framework';
 
 export const GRID = 4; // 4×4 cells, numbered 1–16 left to right, top to bottom
 
@@ -89,10 +89,46 @@ export function distanceKm(a: { lat: number; lon: number }, b: { lat: number; lo
   const dLat = rad(b.lat - a.lat);
   const dLon = rad(b.lon - a.lon);
   const h = Math.sin(dLat / 2) ** 2 + Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(dLon / 2) ** 2;
-  return 2 * 6371 * Math.asin(Math.sqrt(h));
+  // Rounding can push h a hair above 1 for antipodal points; asin would return NaN, and NaN scores as "safe".
+  return 2 * 6371 * Math.asin(Math.min(1, Math.sqrt(h)));
 }
 
 const validCell = (c: unknown): c is number => Number.isInteger(c) && (c as number) >= 1 && (c as number) <= GRID * GRID;
+
+/** A number from what a model wrote: 3, "3", "cell 3", "0.5 km". */
+const toNumber = (v: unknown): number | null => {
+  const n = typeof v === 'number' ? v : typeof v === 'string' ? Number(v.match(/-?\d+(?:\.\d+)?/)?.[0] ?? NaN) : NaN;
+  return Number.isFinite(n) ? n : null;
+};
+
+/** Small models name kinds their own way ("street sign", "house number", "license plate", "tree"): map them to ours. */
+const KIND_WORDS: [RegExp, string][] = [
+  [/plate|registration/i, 'plate'],
+  [/number|digit/i, 'number'],
+  [/text|sign|plaque|writing|letter|word|banner|poster|graffiti|menu|label/i, 'text'],
+  [/reflect|mirror/i, 'reflection'],
+  [/landmark|monument|church|cathedral|tower|statue|bridge|temple|castle/i, 'landmark'],
+  [/vegetation|tree|plant|flora|palm|garden|flower|bush/i, 'vegetation'],
+  [/architect|facade|façade|building|balcon|window|roof|door|house|street ?style/i, 'architecture'],
+];
+
+/** A clue from either model, checked and normalised; null if it does not point at a cell of the grid. */
+export function normaliseClue(raw: unknown): PhotoClue | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const r = raw as { cell?: unknown; kind?: unknown; what?: unknown };
+  const cell = toNumber(r.cell);
+  if (cell === null || !validCell(cell)) return null;
+  const kindText = String(r.kind ?? '').trim().toLowerCase();
+  const kind = KINDS.includes(kindText) ? kindText : (KIND_WORDS.find(([re]) => re.test(kindText))?.[1] ?? 'other');
+  return { cell, kind, what: typeof r.what === 'string' ? r.what : String(r.what ?? '') };
+}
+
+/** "High", "LOW", "very high", "0.9"… → low | medium | high. Unknown words count as sure: the safe direction. */
+function normaliseConfidence(v: unknown): string {
+  const s = String(v ?? '').trim().toLowerCase();
+  if (!s || /\blow\b|\bnone\b|\bunsure\b|\buncertain\b|\bnot (?:very )?(?:sure|certain|confident)\b/.test(s)) return 'low';
+  return /high|certain|sure|confident/.test(s) ? 'high' : 'medium';
+}
 
 const PERSON = /\b(person|people|face|faces|body|shoulder|selfie|human)\b/i;
 
@@ -113,6 +149,9 @@ export function isIdentifier(c: PhotoClue): boolean {
   if (c.kind === 'number') return !NOT_AN_ID.test(what) || ADDRESS.test(what);
   return ADDRESS.test(what);
 }
+
+/** 0: an identifier (always masked); 1: a specific clue; 2: an ambient one (facades, trees), masked only within budget. */
+const rankOf = (c: PhotoClue) => (isIdentifier(c) ? 0 : SPECIFIC.has(c.kind) ? 1 : 2);
 
 /**
  * Why a verdict counts as exposure:
@@ -157,6 +196,7 @@ export function locationThreat(o: LocationOptions): Threat<Uint8Array, PhotoClue
       const gridded = new Private(await o.ops.withGrid(Private.openLocally(input), GRID), 'photo with grid');
       const scans = Math.max(1, o.scans ?? 2);
       const byCell = new Map<number, PhotoClue>();
+      let readable = 0;
       for (let i = 0; i < scans; i++) {
         const res = await kit.local.generate(
           [
@@ -169,29 +209,47 @@ export function locationThreat(o: LocationOptions): Threat<Uint8Array, PhotoClue
           ],
           { json: true, schema: CLUES_SCHEMA, op: `Find location clues (scan ${i + 1}/${scans})` },
         );
-        // Union of the scans: a cell flagged by any scan gets masked (the safe direction). People are not location clues:
-        // pixelating the user's own face would defeat the point of posting a selfie.
-        for (const c of parseModelJson<{ clues?: PhotoClue[] }>(res.text).clues ?? []) {
-          if (validCell(c.cell) && !PERSON.test(c.what ?? '') && !byCell.has(c.cell)) byCell.set(c.cell, c);
+        // An unreadable scan is skipped: the other scans still count (the answers are merged anyway).
+        let parsed: unknown;
+        try {
+          parsed = parseModelJsonLenient(res.text).value;
+          readable++;
+        } catch (e) {
+          if (e instanceof ModelJsonError) continue;
+          throw e;
+        }
+        // Union of the scans: a cell flagged by any scan gets masked (the safe direction), with its most specific clue
+        // (a "street sign" in a cell an earlier scan called "facade" must not be left visible by the budget). People are
+        // not location clues: pixelating the user's own face would defeat the point of posting a selfie.
+        for (const raw of listAt(parsed, 'clues')) {
+          const c = normaliseClue(raw);
+          if (!c || PERSON.test(c.what)) continue;
+          const prev = byCell.get(c.cell);
+          if (!prev || rankOf(c) < rankOf(prev)) byCell.set(c.cell, c);
         }
       }
+      if (!readable) throw new Error('Gemini Nano gave no answer it could read about this photo. Scan it again');
       return [...byCell.values()];
     },
 
     async sanitize(input: Private<Uint8Array>, clues: PhotoClue[], feedback: LocationVerdict | null, kit: Kit): Promise<Publishable<Uint8Array>> {
       // Rank every flagged cell by its most specific clue: identifiers first (always masked), then specific clues, then
       // ambient ones (facades, trees). Within a rank, cells the attacker actually used go first. Masking stops at the budget.
-      const rank = (c: PhotoClue) => (isIdentifier(c) ? 0 : SPECIFIC.has(c.kind) ? 1 : 2);
       const best = new Map<number, { rank: number; cited: boolean; clue: PhotoClue }>();
-      const consider = (c: PhotoClue, cited: boolean) => {
-        if (!validCell(c.cell) || threat.masked.includes(c.cell)) return;
+      const consider = (raw: PhotoClue, cited: boolean) => {
+        const c = normaliseClue(raw);
+        if (!c || threat.masked.includes(c.cell)) return;
         const prev = best.get(c.cell);
-        const r = rank(c);
+        const r = rankOf(c);
         if (!prev || r < prev.rank) best.set(c.cell, { rank: r, cited: cited || !!prev?.cited, clue: c });
         else if (cited) prev.cited = true;
       };
       for (const c of clues) consider(c, false);
       for (const c of feedback?.clues ?? []) consider(c, true);
+      if (!best.size && !threat.masked.length) {
+        // Masking nothing would re-encode the original, and release() would (rightly) refuse it as the private photo.
+        throw new Error('Nothing to mask: no cell of this photo was flagged as a location clue. If you would post it as it is, attack it as it is');
+      }
       const ranked = [...best.entries()].sort(([, a], [, b]) => a.rank - b.rank || Number(b.cited) - Number(a.cited));
       const next = [...threat.masked];
       const left: PhotoClue[] = [];
@@ -219,34 +277,51 @@ export function locationThreat(o: LocationOptions): Threat<Uint8Array, PhotoClue
       const gridded = release(await o.ops.withGrid(published.value, GRID), 'grid overlay of a released photo', {
         userConfirmedAsIs: published.confirmedAsIs,
       });
-      const res = await kit.cloud.generate(
-        [
-          'You are an OSINT geolocation analyst. Estimate where this photo was taken, as precisely as the evidence allows. ' +
-            `It has a ${GRID}×${GRID} numbered grid, cells numbered 1–${GRID * GRID} from left to right, top to bottom. Pixelated cells were masked on purpose: ignore them. ` +
-            `Masked cells: ${threat.masked.length ? threat.masked.join(', ') : 'none'}. ` +
-            'Give your best guess as a place name and coordinates. ' +
-            'Return JSON {"place":"best guess","lat":<number>,"lon":<number>,"radiusKm":<number, radius of your uncertainty>,"confidence":"low|medium|high",' +
-            '"clues":[{"cell":<number>,"kind":"...","what":"what in that cell helped you"}]}.',
-          { image: gridded, mime: 'image/png' },
-        ],
-        { json: true, schema: GEO_SCHEMA, op: 'Geolocation attack' },
-      );
-      const v = parseModelJson<{ place?: string; lat?: number | null; lon?: number | null; radiusKm?: number; confidence?: string; clues?: PhotoClue[] }>(res.text);
+      const ask = (op: string) =>
+        kit.cloud.generate(
+          [
+            'You are an OSINT geolocation analyst. Estimate where this photo was taken, as precisely as the evidence allows. ' +
+              `It has a ${GRID}×${GRID} numbered grid, cells numbered 1–${GRID * GRID} from left to right, top to bottom. Pixelated cells were masked on purpose: ignore them. ` +
+              `Masked cells: ${threat.masked.length ? threat.masked.join(', ') : 'none'}. ` +
+              'Give your best guess as a place name and coordinates. ' +
+              'Return JSON {"place":"best guess","lat":<number>,"lon":<number>,"radiusKm":<number, radius of your uncertainty>,"confidence":"low|medium|high",' +
+              '"clues":[{"cell":<number>,"kind":"...","what":"what in that cell helped you"}]}.',
+            { image: gridded, mime: 'image/png' },
+          ],
+          { json: true, schema: GEO_SCHEMA, op },
+        );
+      // One unreadable answer gets one more try. A cut-off answer is not "repaired": missing coordinates would read as
+      // "no guess", and no guess scores as safe.
+      let v: { place?: unknown; lat?: unknown; lon?: unknown; radiusKm?: unknown; confidence?: unknown; clues?: unknown };
+      try {
+        v = parseModelJson((await ask('Geolocation attack')).text);
+      } catch (e) {
+        if (!(e instanceof ModelJsonError)) throw e;
+        v = parseModelJson((await ask('Geolocation attack (again: unreadable answer)')).text);
+      }
+      v = v && typeof v === 'object' ? v : {};
       // "Unknown" at 0,0 is no guess at all, not a guess 4,500 km off (measured live, 16-nov). Note Number(null) is 0.
-      const noGuess =
-        /^\s*(unknown|unclear|undetermined|none|n\/a|not sure|cannot|unable)/i.test(String(v.place ?? 'unknown')) ||
-        v.lat == null || v.lon == null || (Number(v.lat) === 0 && Number(v.lon) === 0);
-      const lat = !noGuess && Number.isFinite(Number(v.lat)) ? Number(v.lat) : null;
-      const lon = !noGuess && Number.isFinite(Number(v.lon)) ? Number(v.lon) : null;
+      const noGuess = /^\s*(unknown|unclear|undetermined|none|n\/a|not sure|cannot|unable)/i.test(String(v.place ?? 'unknown'));
+      const latN = v.lat === null ? null : toNumber(v.lat);
+      const lonN = v.lon === null ? null : toNumber(v.lon);
+      // A named place with no usable coordinates (missing, 0,0, out of range) is scored on the attacker's own claim
+      // (radius and confidence) instead of being called "no guess": out-of-range coordinates used to give a NaN distance,
+      // and NaN scored as safe.
+      const coordsOk = !noGuess && latN !== null && lonN !== null && Math.abs(latN) <= 90 && Math.abs(lonN) <= 180 && !(latN === 0 && lonN === 0);
+      const lat = coordsOk ? latN : null;
+      const lon = coordsOk ? lonN : null;
       // Scored on the device: the user's real location never leaves it.
       const errorKm = o.truth && lat !== null && lon !== null ? distanceKm({ lat, lon }, Private.openLocally(o.truth)) : null;
+      const radius = toNumber(v.radiusKm);
       return {
         place: noGuess ? 'unknown' : String(v.place),
         lat,
         lon,
-        radiusKm: !noGuess && Number(v.radiusKm) > 0 ? Number(v.radiusKm) : 20000,
-        confidence: String(v.confidence ?? 'low'),
-        clues: (Array.isArray(v.clues) ? v.clues : []).filter((c: PhotoClue) => validCell(c.cell) && !threat.masked.includes(c.cell)),
+        radiusKm: !noGuess && radius !== null && radius > 0 ? radius : 20000,
+        confidence: normaliseConfidence(v.confidence),
+        clues: listAt(v, 'clues')
+          .map(normaliseClue)
+          .filter((c): c is PhotoClue => !!c && !threat.masked.includes(c.cell)),
         errorKm,
       };
     },

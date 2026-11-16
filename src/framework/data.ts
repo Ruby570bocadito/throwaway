@@ -10,8 +10,10 @@
 
 import { registerTaint, assertUntainted, PrivacyViolation } from './guard';
 
-// Only release() may mint a Publishable. The flag makes `new Publishable(...)` throw anywhere else, even from plain JS.
+// Only release() may mint a Publishable. The flag makes `new Publishable(...)` throw anywhere else, even from plain JS,
+// and the registry is what the cloud side trusts: `Object.create(Publishable.prototype)` passes `instanceof`, not this.
 let minting = false;
+const minted = new WeakSet<object>();
 
 export class Private<T> {
   readonly #value: T;
@@ -40,8 +42,13 @@ export class Publishable<T> {
     this.reason = reason;
     this.releasedAt = releasedAt;
     this.confirmedAsIs = confirmedAsIs;
+    minted.add(this);
+    Object.freeze(this); // `value` cannot be swapped for the private original after the check
   }
 }
+
+/** True only for a Publishable minted by release(). The cloud side trusts nothing else. */
+export const isReleased = (x: unknown): x is Publishable<unknown> => typeof x === 'object' && x !== null && minted.has(x);
 
 export class Public<T> {
   readonly value: T;
@@ -50,6 +57,14 @@ export class Public<T> {
     this.value = value;
     this.source = source;
   }
+}
+
+/** Is there a Private wrapper anywhere inside `value`? (Typed arrays are data, not containers.) */
+export function holdsPrivate(value: unknown, seen = new Set<unknown>()): boolean {
+  if (value instanceof Private) return true;
+  if (!value || typeof value !== 'object' || ArrayBuffer.isView(value) || seen.has(value)) return false;
+  seen.add(value);
+  return Object.values(value).some((v) => holdsPrivate(v, seen));
 }
 
 export const secret = <T>(value: T, label = 'private input') => new Private(value, label);
@@ -66,6 +81,8 @@ export interface ReleaseOptions {
  * they would publish it as-is (for example, to measure the risk of the untouched draft).
  */
 export function release<T>(value: T, reason: string, opts: ReleaseOptions = {}): Publishable<T> {
+  // A Private wrapper hides its value from the taint walk, so it is refused outright, even "as-is": release the value.
+  if (holdsPrivate(value)) throw new PrivacyViolation(`release: ${reason}`, 'a Private value; release the sanitized copy instead');
   if (!opts.userConfirmedAsIs) assertUntainted(value, `release: ${reason}`);
   minting = true;
   try {

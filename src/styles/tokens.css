@@ -1,14 +1,76 @@
-/* Design tokens shared by the app (/app/) and the landing page (/). Direction B: paper and marker. */
+/* Design tokens shared by the app (/app/) and the landing page (/). Paper and marker. */
+
+/*
+ * Metric-matched fallbacks: while the bundled fonts load, text is set in a local font scaled to the same width and line
+ * height, so nothing reflows when they arrive. Lighthouse (16-nov) measured a 0.048 layout shift on the landing page from
+ * Eczar swapping in. Widths and vertical metrics were measured in Chrome against Georgia, Segoe UI/Arial and Courier New.
+ */
+@font-face {
+  font-family: 'Eczar Fallback';
+  src: local('Georgia');
+  font-weight: 100 450;
+  size-adjust: 97.7%;
+  ascent-override: 116.7%;
+  descent-override: 64.5%;
+  line-gap-override: 0%;
+}
+@font-face {
+  font-family: 'Eczar Fallback';
+  src: local('Georgia');
+  font-weight: 451 599;
+  size-adjust: 101%;
+  ascent-override: 112.9%;
+  descent-override: 62.4%;
+  line-gap-override: 0%;
+}
+@font-face {
+  font-family: 'Eczar Fallback';
+  src: local('Georgia Bold'), local('Georgia-Bold');
+  font-weight: 600 900;
+  size-adjust: 91.3%;
+  ascent-override: 124.9%;
+  descent-override: 69%;
+  line-gap-override: 0%;
+}
+@font-face {
+  font-family: 'Work Sans Fallback';
+  src: local('Segoe UI'), local('SegoeUI'), local('Arial'), local('ArialMT');
+  font-weight: 100 500;
+  size-adjust: 112.3%;
+  ascent-override: 82.8%;
+  descent-override: 21.6%;
+  line-gap-override: 0%;
+}
+@font-face {
+  font-family: 'Work Sans Fallback';
+  src: local('Segoe UI Bold'), local('SegoeUI-Bold'), local('Arial Bold'), local('Arial-BoldMT');
+  font-weight: 600 900;
+  size-adjust: 104.9%;
+  ascent-override: 88.7%;
+  descent-override: 23.2%;
+  line-gap-override: 0%;
+}
+@font-face {
+  font-family: 'JetBrains Mono Fallback';
+  src: local('Courier New'), local('CourierNewPSMT');
+  size-adjust: 100%;
+  ascent-override: 102%;
+  descent-override: 30%;
+  line-gap-override: 0%;
+}
+
 :root {
   --bg: #f6ecdd;
   --paper: #fffaf2;
   --paper-2: #fbf3e8;
   --sheet: #fffdf8;
   --line: #e3d3bb;
+  --line-2: #d6c3a6;
   --ink: #1d1d1f;
   --text: #2b2f3a;
   --muted: #5b6070;
   --slate: #4e5e80;
+  --slate-2: #3f4d6b;
   --slate-soft: #e4e8f1;
   --peach: #ffddbf;
   --peach-2: #ffc49a;
@@ -18,9 +80,20 @@
   --amber-soft: #f9e8c9;
   --green: #2b734c;
   --green-soft: #dcefe3;
-  --serif: 'Eczar', Georgia, serif;
-  --sans: 'Work Sans', system-ui, sans-serif;
-  --mono: 'JetBrains Mono', ui-monospace, monospace;
+  --serif: 'Eczar', 'Eczar Fallback', Georgia, serif;
+  --sans: 'Work Sans', 'Work Sans Fallback', system-ui, sans-serif;
+  --mono: 'JetBrains Mono', 'JetBrains Mono Fallback', ui-monospace, monospace;
+  /* corners: short, like the landing page's cards (Factory's structure) */
+  --r-xs: 4px;
+  --r-sm: 6px;
+  --r-md: 10px;
+  --r-lg: 12px;
+  --r-pill: 999px;
   --shadow: 0 1px 0 rgba(43, 47, 58, 0.04), 0 10px 28px rgba(78, 94, 128, 0.09);
+  --shadow-lift: 0 1px 2px rgba(43, 47, 58, 0.08), 0 14px 32px rgba(78, 94, 128, 0.14);
+  /* a focus ring that reads on cream, peach and amber alike */
+  --focus: 0 0 0 2px var(--paper), 0 0 0 4px var(--slate);
   --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-spring: cubic-bezier(0.34, 1.4, 0.64, 1);
 }

@@ -3,7 +3,8 @@
 import { CloudModel, Ledger, LocalModel, publicData, type ModelBackend } from './framework';
 import type { FirebaseHybridConfig } from './framework/firebase';
 import { demoBackends } from './demo/recorded';
-import { DECOYS, MARTA_PUBLIC, SELF_ID } from './demo/scenario';
+import { MARTA_PUBLIC, SELF_ID } from './demo/scenario';
+import { choosePack, DECOY_PACKS, type DecoyPackId } from './demo/decoys';
 import { authorshipThreat } from './threats/authorship';
 
 const env = import.meta.env;
@@ -38,14 +39,27 @@ export function buildKit(ledger: Ledger) {
  * and the lineup compare the anonymous post with the user, not with the demo persona. It is public by definition, so it may
  * go to the attacker as one of the ten candidates (and the guard still blocks it if it carries the private draft).
  */
-export function buildAuthorship(onAttempt: (pickId: string, i: number) => void, ownPublic = '') {
+export interface LineupChoice {
+  /**
+   * Which nine public writers stand next to the user: a field ('design' by default: the recorded run's lineup), or 'auto' to
+   * pick the field whose words best match `draft`. With off-topic decoys the attacker finds the author by subject.
+   */
+  decoys?: DecoyPackId | 'auto';
+  /** The draft, for 'auto'. Read here, in plain JS on the device; nothing is sent. */
+  draft?: string;
+}
+
+export function buildAuthorship(onAttempt: (pickId: string, i: number) => void, ownPublic = '', choice: LineupChoice = {}) {
   const own = ownPublic.trim();
-  return authorshipThreat({
+  const pack = choice.decoys === 'auto' ? choosePack(choice.draft ?? '').id : (choice.decoys ?? 'design');
+  const threat = authorshipThreat({
     selfId: SELF_ID,
     self: own ? publicData(own, 'your public writing') : publicData(MARTA_PUBLIC, 'your public blog'),
-    decoys: DECOYS.map((d) => ({ id: d.id, text: publicData(d.corpus, 'public decoy') })),
+    decoys: DECOY_PACKS[pack].decoys.map((d) => ({ id: d.id, text: publicData(d.corpus, 'public decoy') })),
     onAttempt,
   });
+  // Which lineup this threat attacks with, so the UI can show the same nine writers (DECOY_PACKS[decoyPack].decoys).
+  return Object.assign(threat, { decoyPack: pack });
 }
 
 type Hybrid = ReturnType<typeof import('./framework/firebase').firebaseHybrid>;

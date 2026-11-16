@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { clearTaint, CloudModel, isTemporary, Ledger, LocalModel, publicData, release, secret, type ModelBackend } from '../framework';
-import { authorshipThreat, deterministicGeneralise, hasPhrase, isSpecific, looksBroken, newSpecifics, ruleDetails } from './authorship';
+import { authorshipThreat, deterministicGeneralise, hasPhrase, isSpecific, letterIndex, looksBroken, newSpecifics, ruleDetails, sample, shuffled } from './authorship';
 import { CONTENT_DETAILS, DECOYS, DRAFT, MARTA_PUBLIC, NANO_REWRITE_RECORDED, NANO_REWRITE_V3_RECORDED, REWRITE, SELF_ID } from '../demo/scenario';
 
 beforeEach(() => clearTaint());
@@ -283,5 +283,73 @@ describe('a busy cloud (live run: [500] "This model is currently experiencing hi
     const ledger = new Ledger();
     const kit = { local: new LocalModel(down, ledger), cloud: new CloudModel(down, ledger), ledger };
     await expect(threatFor().attack(release('Some text to publish, long enough to be a post.', 'test'), kit)).rejects.toThrow(/UNAVAILABLE/);
+  });
+
+  it('stops asking a cloud that is down: two failures before any answer, no ten (each already retried for up to 45 s)', async () => {
+    let calls = 0;
+    const down: ModelBackend = { name: 'cloud', generate: async () => (calls++, Promise.reject(new Error('[503] UNAVAILABLE'))) };
+    const ledger = new Ledger();
+    const kit = { local: new LocalModel(down, ledger), cloud: new CloudModel(down, ledger), ledger };
+    await expect(threatFor().attack(release('Some text to publish, long enough to be a post.', 'test'), kit)).rejects.toThrow(/UNAVAILABLE/);
+    expect(calls).toBe(2);
+  });
+
+  it('a cloud that goes down mid-attack: three failures in a row end it, the rest count as no answer', async () => {
+    let calls = 0;
+    const flaky: ModelBackend = {
+      name: 'cloud',
+      generate: async (parts) => {
+        if (++calls > 4) throw new Error('[500 ] high demand');
+        return { text: lineupAnswer(parts.map((p) => ('text' in p ? p.text : '')).join('\n'), 'self'), source: 'in_cloud' };
+      },
+    };
+    const ledger = new Ledger();
+    const kit = { local: new LocalModel(flaky, ledger), cloud: new CloudModel(flaky, ledger), ledger };
+    const seen: string[] = [];
+    const threat = authorshipThreat({
+      selfId: SELF_ID,
+      self: publicData(MARTA_PUBLIC, 'blog'),
+      decoys: DECOYS.map((d) => ({ id: d.id, text: publicData(d.corpus, 'decoy') })),
+      onAttempt: (id) => seen.push(id),
+    });
+    const v = await threat.attack(release('Some text to publish, long enough to be a post.', 'test'), kit);
+    expect(calls).toBe(7);
+    expect(seen).toHaveLength(10); // the UI still gets one callback per attempt
+    expect(v).toMatchObject({ attempts: 10, answered: 4, hits: 4 });
+    expect(v.picks.slice(4)).toEqual(Array(6).fill('none'));
+    expect(threat.inconclusive(v)).toBe(true);
+    expect(ledger.all[0]).toMatchObject({ op: 'Attack attempts 8–10 skipped', bytesOut: 0 });
+  });
+
+  it('reads a pick from a cut-off or loosely formatted answer', async () => {
+    const answers = ['{"pick":"Writer C","confidence":"high","reasons":["Distinc', '{"pick":"(b)","reasons":[]}', '{"pick":"Z"}'];
+    let i = 0;
+    const cloud: ModelBackend = { name: 'cloud', generate: async () => ({ text: answers[i++ % 3], source: 'in_cloud' }) };
+    const ledger = new Ledger();
+    const kit = { local: new LocalModel(cloud, ledger), cloud: new CloudModel(cloud, ledger), ledger };
+    const v = await threatFor().attack(release('Some text to publish, long enough to be a post.', 'test'), kit);
+    expect(v.answered).toBe(7); // "Z" is not a writer: 3 of 10 attempts are no answer
+  });
+});
+
+describe('the lineup', () => {
+  it('is shuffled without bias: the user, listed first, lands in every position about equally', () => {
+    const counts = Array(10).fill(0);
+    const items = Array.from({ length: 10 }, (_, k) => k);
+    for (let n = 0; n < 20_000; n++) counts[shuffled(items).indexOf(0)]++;
+    for (const c of counts) expect(Math.abs(c - 2000)).toBeLessThan(250);
+  });
+
+  it('reads the letter however the model writes it', () => {
+    expect(['C', 'c', 'Writer C', '(C)', 'C.', ' writer c '].map(letterIndex)).toEqual([2, 2, 2, 2, 2, 2]);
+    expect(['', 'Z', 'CD', 3, null, 'Writer'].map(letterIndex)).toEqual([-1, -1, -1, -1, -1, -1]);
+  });
+
+  it('cuts each writer at a word boundary', () => {
+    expect(sample('one two three four', 11)).toBe('one two');
+    expect(sample('short', 900)).toBe('short');
+    expect(sample(MARTA_PUBLIC, 900).length).toBeLessThanOrEqual(900);
+    expect(MARTA_PUBLIC.startsWith(sample(MARTA_PUBLIC, 900))).toBe(true);
+    expect(sample(MARTA_PUBLIC, 900)).toMatch(/\w$|[.)]$/);
   });
 });

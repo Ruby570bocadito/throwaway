@@ -2,6 +2,60 @@
 
 import type { ImageOps } from '../threats/location';
 
+/** A photo Throwaway cannot check, in plain words for the person who picked it. */
+export class PhotoInputError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'PhotoInputError';
+  }
+}
+
+export const PHOTO_LIMITS = {
+  /** Larger files are not phone photos (and decoding them can run a tab out of memory). */
+  maxBytes: 40 * 1024 * 1024,
+  /** Below this, a 4×4 grid has cells of a few pixels: nothing to find, nothing to mask. */
+  minSide: 64,
+  maxPixels: 100_000_000,
+};
+
+/** Checks a file before decoding it: empty, too big, HEIC (Chrome cannot decode it), not an image, SVG. */
+export function checkPhotoFile(f: { size: number; type?: string; name?: string }) {
+  const type = (f.type ?? '').toLowerCase();
+  const name = (f.name ?? '').toLowerCase();
+  if (!f.size) throw new PhotoInputError('That file is empty.');
+  if (f.size > PHOTO_LIMITS.maxBytes) {
+    throw new PhotoInputError(`That file is ${Math.round(f.size / 1024 / 1024)} MB; photos up to ${PHOTO_LIMITS.maxBytes / 1024 / 1024} MB can be checked.`);
+  }
+  if (/hei[cf]/.test(type) || /\.hei[cf]$/.test(name)) {
+    throw new PhotoInputError('This browser cannot open HEIC photos. Export it as JPEG first (on an iPhone: Settings → Camera → Formats → Most Compatible).');
+  }
+  if (type === 'image/svg+xml' || name.endsWith('.svg')) throw new PhotoInputError('That is a drawing (SVG), not a photo. Use a JPEG, PNG or WebP photo.');
+  if (type && !type.startsWith('image/')) throw new PhotoInputError('That file is not an image. Use a JPEG, PNG or WebP photo.');
+}
+
+/** Checks the decoded size and returns the size to draw at: at most `maxSide` on the long side, never upscaled. */
+export function fitPhoto(width: number, height: number, maxSide = 1280): { width: number; height: number } {
+  if (!(width > 0 && height > 0)) throw new PhotoInputError('That image has no pixels to check.');
+  if (Math.min(width, height) < PHOTO_LIMITS.minSide) {
+    throw new PhotoInputError(`That image is only ${width} × ${height} pixels, too small to check. Use a photo at least ${PHOTO_LIMITS.minSide} pixels on each side.`);
+  }
+  if (width * height > PHOTO_LIMITS.maxPixels) throw new PhotoInputError(`That image is ${Math.round((width * height) / 1e6)} megapixels; up to 100 can be checked.`);
+  const scale = Math.min(1, maxSide / Math.max(width, height));
+  return { width: Math.max(1, Math.round(width * scale)), height: Math.max(1, Math.round(height * scale)) };
+}
+
+/**
+ * The pixels of a grid cell (1 = top left), edges rounded outwards so neighbouring cells overlap by at most a pixel and
+ * never leave an unmasked strip between them (rounding both edges did, on sizes not divisible by the grid).
+ */
+export function cellRect(cell: number, n: number, width: number, height: number): { x: number; y: number; w: number; h: number } {
+  const r = Math.floor((cell - 1) / n);
+  const k = (cell - 1) % n;
+  const x = Math.floor((k * width) / n);
+  const y = Math.floor((r * height) / n);
+  return { x, y, w: Math.ceil(((k + 1) * width) / n) - x, h: Math.ceil(((r + 1) * height) / n) - y };
+}
+
 async function decode(png: Uint8Array): Promise<ImageBitmap> {
   return createImageBitmap(new Blob([png.slice()], { type: 'image/png' }));
 }
@@ -57,17 +111,10 @@ export const browserImageOps: ImageOps = {
   async maskCells(png, cells, n) {
     const img = await decode(png);
     const { c, ctx } = canvasFor(img);
-    const cw = c.width / n;
-    const ch = c.height / n;
     const small = document.createElement('canvas');
     const sctx = small.getContext('2d')!;
     for (const cell of cells) {
-      const r = Math.floor((cell - 1) / n);
-      const k = (cell - 1) % n;
-      const x = Math.round(k * cw);
-      const y = Math.round(r * ch);
-      const w = Math.round(cw);
-      const h = Math.round(ch);
+      const { x, y, w, h } = cellRect(cell, n, c.width, c.height);
       // Heavy pixelation: 10 blocks across the cell, then upscale without smoothing.
       small.width = 10;
       small.height = Math.max(1, Math.round((10 * h) / w));
@@ -103,14 +150,29 @@ export async function svgToPng(svg: string, width: number, height: number): Prom
 
 /**
  * Decodes a user's photo (JPEG/PNG/WebP) and re-encodes it as PNG on the device, at most `maxSide` pixels wide or tall.
- * Re-encoding through a canvas also drops EXIF metadata (including GPS), before anything else happens.
+ * Re-encoding through a canvas also drops EXIF metadata (including GPS), before anything else happens. The EXIF
+ * rotation is applied first (a phone photo is stored sideways), and transparency is flattened onto white, so what is
+ * checked and sent is what the person sees: nothing hides in transparent pixels.
  */
 export async function normalizeToPng(file: Blob, maxSide = 1280): Promise<{ png: Uint8Array; width: number; height: number }> {
-  const img = await createImageBitmap(file);
-  const scale = Math.min(1, maxSide / Math.max(img.width, img.height));
-  const c = document.createElement('canvas');
-  c.width = Math.round(img.width * scale);
-  c.height = Math.round(img.height * scale);
-  c.getContext('2d')!.drawImage(img, 0, 0, c.width, c.height);
-  return { png: await encode(c), width: c.width, height: c.height };
+  checkPhotoFile({ size: file.size, type: file.type, name: (file as File).name });
+  let img: ImageBitmap;
+  try {
+    img = await createImageBitmap(file, { imageOrientation: 'from-image' });
+  } catch {
+    throw new PhotoInputError('That file could not be read as an image. Use a JPEG, PNG or WebP photo.');
+  }
+  try {
+    const size = fitPhoto(img.width, img.height, maxSide);
+    const c = document.createElement('canvas');
+    c.width = size.width;
+    c.height = size.height;
+    const ctx = c.getContext('2d')!;
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, c.width, c.height);
+    ctx.drawImage(img, 0, 0, c.width, c.height);
+    return { png: await encode(c), width: c.width, height: c.height };
+  } finally {
+    img.close(); // a 12-megapixel bitmap is ~48 MB until it is closed
+  }
 }

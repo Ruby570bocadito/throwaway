@@ -37,13 +37,20 @@ export type RedTeamEvent<Input, Clue, Verdict> =
  * Runs the defend/attack loop. `asIs` is the untouched input, released only if the user confirmed they would publish it
  * that way; it gives a baseline. Without it, the first attack is on the first sanitized version.
  */
+/** Same text, or the same bytes: a sanitize round that changed nothing. */
+function sameValue(a: unknown, b: unknown): boolean {
+  if (a instanceof Uint8Array && b instanceof Uint8Array) return a.length === b.length && a.every((x, i) => x === b[i]);
+  return Object.is(a, b);
+}
+
 export async function* redTeam<I, C, V>(
   threat: Threat<I, C, V>,
   input: Private<I>,
   kit: Kit,
   opts: { maxRounds?: number; asIs?: Publishable<I> } = {},
 ): AsyncGenerator<RedTeamEvent<I, C, V>> {
-  const maxRounds = opts.maxRounds ?? 3;
+  // At least one sanitized round, unless there is a baseline to report on.
+  const maxRounds = Math.max(opts.asIs ? 0 : 1, opts.maxRounds ?? 3);
   const clues = await threat.findClues(input, kit);
   yield { type: 'clues', clues };
 
@@ -56,7 +63,11 @@ export async function* redTeam<I, C, V>(
     if (!exposed) return yield { type: 'safe', round: 0, published: current };
   }
   for (let round = 1; round <= maxRounds; round++) {
-    current = await threat.sanitize(input, clues, feedback, kit);
+    const next = await threat.sanitize(input, clues, feedback, kit);
+    // Nothing changed (the masking budget is spent, nothing new was flagged): attacking it again would only cost a cloud
+    // call and say the same thing.
+    if (current && sameValue(next.value, current.value)) return yield { type: 'gave-up', round: round - 1, published: current };
+    current = next;
     yield { type: 'sanitized', round, published: current };
     feedback = await threat.attack(current, kit);
     const exposed = threat.exposed(feedback);

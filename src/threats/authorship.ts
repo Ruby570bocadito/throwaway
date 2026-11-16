@@ -3,7 +3,10 @@
 // Cloud: a lineup attack. The attacker gets the published text and ten PUBLIC writers, shuffled and unlabeled;
 // it is never told which one is the user.
 
-import { parseModelJson, PrivacyViolation, Private, Public, release, secret, type JsonSchema, type Kit, type Publishable, type Threat } from '../framework';
+import {
+  listAt, ModelJsonError, parseModelJson, parseModelJsonLenient, PrivacyViolation, Private, Public, release, secret,
+  type JsonSchema, type Kit, type Publishable, type Threat,
+} from '../framework';
 
 const DETAILS_SCHEMA: JsonSchema = {
   type: 'object',
@@ -55,8 +58,10 @@ const NUM = `\\d+(?:[.,]\\d+)*|(?:${NUM_WORD})(?:[\\s-]+(?:and\\s+)?(?:${NUM_WOR
 const MONTH = 'January|February|March|April|June|July|August|September|October|November|December'; // not "May": usually a verb
 const WEEKDAY = 'Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday';
 const DAY_NUM = '\\d{1,2}(?:st|nd|rd|th)?';
-const TIME_ONE = `(?:${DAY_NUM}\\s+(?:of\\s+)?)?(?:${MONTH})(?:\\s+${DAY_NUM}(?!\\d))?|(?:${WEEKDAY})|(?:19|20)\\d{2}|Q[1-4]`;
-/** A date: "March", "3 March", "March 2023", "Monday, March 3", "Q3 2024"… */
+const TIME_ONE =
+  `(?:${DAY_NUM}\\s+(?:of\\s+)?)?(?:${MONTH})(?:\\s+${DAY_NUM}(?!\\d))?|(?:${WEEKDAY})|` +
+  `\\d{1,2}[./-]\\d{1,2}[./-](?:\\d{4}|\\d{2})(?![\\d./-])|\\d{4}-\\d{2}-\\d{2}(?!\\d)|(?:19|20)\\d{2}|Q[1-4]`;
+/** A date: "March", "3 March", "March 2023", "Monday, March 3", "Q3 2024", "16/11/2023", "2023-11-16"… */
 const TIME = `(?:${TIME_ONE})(?:,?\\s+(?:of\\s+)?(?:${TIME_ONE}))*`;
 const TIME_PREP = 'in|on|at|during|since|after|by|from|last|this|early|late|around|of';
 const FUNCTION_WORDS = new Set(
@@ -69,18 +74,76 @@ const FUNCTION_WORDS = new Set(
 const DETERMINERS = new Set('a an the our my their his her its your this that these those'.split(' '));
 const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-/** Whole-word, case-insensitive search ("two" is not found inside "network"); any whitespace matches a space. */
+// ── Identifiers anyone can look up: links, email addresses, usernames, phone numbers ───────────────────────────────
+// They name you outright, so fixed rules replace them whole, before anything else (the count rules used to turn
+// "+351 912 345 678" into "+many many many many", and "…/blog/2023" into "…/blog/at some point").
+
+export type IdentifierKind = 'link' | 'email address' | 'username' | 'phone number';
+const PLACEHOLDER: Record<IdentifierKind, string> = { link: '[link]', 'email address': '[email address]', username: '[username]', 'phone number': '[phone number]' };
+const URL_WITH_SCHEME = /\b(?:https?:\/\/|ftp:\/\/|www\.)[^\s<>"'()[\]{}]+/gi;
+const EMAIL = /(?<![\w.%+-])[\w.%+-]+(?:@|\s*[[({]at[\])}]\s*)[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:(?:\.|\s*[[({]dot[\])}]\s*)[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+/gi;
+// A bare domain needs a TLD that is not also an English word ("left.it", "about.me" are left alone without "https://").
+const BARE_DOMAIN = /(?<![\w@.-])[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*\.(?:com|net|org|io|dev|design|co|app|blog|xyz|info|ai|page|site|tech|studio|edu|gov|uk|pt|es|de|fr|nl|eu|ly|gg|tv)(?![\w-])(?:\/[^\s<>"'()[\]{}]*)?/g;
+const HANDLE = /(?<![\w@./])@[A-Za-z0-9_](?:[A-Za-z0-9_.]*[A-Za-z0-9_])?|(?<![\w/])\/?u\/[A-Za-z0-9_-]{3,20}(?![\w-])/g;
+const PHONE = /(?<![\w+.,/])(?:\+\d{1,3}[\s.-]?)?(?:\(\d{1,5}\)[\s.-]?)?\d{2,5}(?:[\s-]\d{2,5}){1,4}(?![\w/]|[.,]\d)|(?<![\w+.,/])\+?\d{9,15}(?![\w/]|[.,]\d)/g;
+const NUMERIC_DATE = /^(?:\d{1,2}[./-]\d{1,2}[./-](?:\d{4}|\d{2})|\d{4}-\d{2}-\d{2})$/;
+
+/** 7–15 digits written like a phone number, not a list of years ("2019 2020 2021") or a date. */
+function isPhone(s: string): boolean {
+  const digits = s.replace(/\D/g, '');
+  if (digits.length < 7 || digits.length > 15 || NUMERIC_DATE.test(s.trim())) return false;
+  const groups = s.split(/[\s().-]+/).filter(Boolean);
+  return !(groups.length > 1 && groups.every((g) => /^(?:19|20)\d{2}$/.test(g)));
+}
+
+/** Every link, email address, username and phone number in `text`, in order, without overlaps. */
+export function identifiers(text: string): { phrase: string; kind: IdentifierKind; start: number; end: number }[] {
+  const out: { phrase: string; kind: IdentifierKind; start: number; end: number }[] = [];
+  const add = (kind: IdentifierKind, start: number, raw: string) => {
+    const phrase = raw.replace(/[.,;:!?'"’]+$/, '');
+    const end = start + phrase.length;
+    if (phrase && !out.some((o) => start < o.end && end > o.start)) out.push({ phrase, kind, start, end });
+  };
+  // A full URL first (it may hold an email), then emails (their domain is not a link of its own), then the rest.
+  for (const m of text.matchAll(URL_WITH_SCHEME)) add('link', m.index ?? 0, m[0]);
+  for (const m of text.matchAll(EMAIL)) add('email address', m.index ?? 0, m[0]);
+  for (const m of text.matchAll(BARE_DOMAIN)) add('link', m.index ?? 0, m[0]);
+  for (const m of text.matchAll(HANDLE)) add('username', m.index ?? 0, m[0]);
+  for (const m of text.matchAll(PHONE)) if (isPhone(m[0])) add('phone number', m.index ?? 0, m[0]);
+  return out.sort((a, b) => a.start - b.start);
+}
+
+/** Replaces every identifier in `text` with a placeholder ("[email address]"). */
+function withoutIdentifiers(text: string): string {
+  let out = text;
+  for (const id of identifiers(text).reverse()) out = out.slice(0, id.start) + PLACEHOLDER[id.kind] + out.slice(id.end);
+  return out;
+}
+
+/**
+ * Whole-word, case-insensitive search ("two" is not found inside "network"); any whitespace matches a space, and any
+ * apostrophe or dash matches any other (Gemini Nano returns "Anna's team" for "Anna’s team").
+ */
 function phraseRe(phrase: string, flags = 'i'): RegExp {
   const p = phrase.trim();
-  return new RegExp(`${/^\w/.test(p) ? '(?<!\\w)' : ''}${escapeRe(p).replace(/\s+/g, '\\s+')}${/\w$/.test(p) ? '(?!\\w)' : ''}`, flags);
+  const body = escapeRe(p)
+    .replace(/\s+/g, '\\s+')
+    .replace(/['’‘ʼ]/g, "['’‘ʼ]")
+    .replace(/[-‐‑–—]/g, '[-‐‑–—]');
+  return new RegExp(`${/^\w/.test(p) ? '(?<!\\w)' : ''}${body}${/\w$/.test(p) ? '(?!\\w)' : ''}`, flags);
 }
-export const hasPhrase = (text: string, phrase: string) => phrase.trim() !== '' && phraseRe(phrase).test(text);
+export const hasPhrase = (text: string, phrase: string) => typeof phrase === 'string' && phrase.trim() !== '' && phraseRe(phrase).test(text);
 
-/** A capitalised word that also appears capitalised mid-sentence ("Lisbon"), not one that only starts a sentence ("The"). */
-const isProperNoun = (word: string, text: string) => new RegExp(`[^.!?\\s]\\s+${word}\\b`).test(text);
+/** A capitalised word that also appears capitalised mid-sentence ("Lisbon", "Zürich"), not one that only starts a sentence ("The"). */
+const isProperNoun = (word: string, text: string) => new RegExp(`[^.!?\\s]\\s+${escapeRe(word)}(?![\\p{L}\\p{M}\\p{N}_])`, 'u').test(text);
+/** Capitalised words, accented ones too ("São", "Łódź"). */
+const CAPITALISED = /(?<![\p{L}\p{M}\p{N}_])\p{Lu}[\p{L}\p{M}]+/gu;
 const nextWord = (rest: string) => rest.match(/^\s+([A-Za-z][\w'’-]*)/)?.[1];
 /** A lowercase content word after a date or a name means it was a modifier: "the March reorg", "a Figma migration". */
 const isContentWord = (w: string | undefined) => !!w && /^[a-z]/.test(w) && !FUNCTION_WORDS.has(w);
+
+/** "1.2.3", "10.0.1": a version, not a count. "1.234.567" (thousands) is a count. */
+const isVersion = (t: string) => /^\d+(?:[.,]\d+){2,}$/.test(t) && !/^\d{1,3}([.,])\d{3}(?:\1\d{3})*$/.test(t);
 
 function numberValue(token: string): number {
   if (/^\d/.test(token)) return Number(token.replace(/,/g, ''));
@@ -112,7 +175,7 @@ const timeUnit = (t: string) =>
 /** The generic version of one occurrence of a detail. `after` is the text that follows it in the document. */
 function generalisePhrase(span: string, after: string, text: string): { g: string; properNounOnly: boolean } {
   let pn = false;
-  const g = span
+  const g = withoutIdentifiers(span)
     // Dates. As a modifier they just go ("the March reorg" → "the reorg"); otherwise they become vague.
     .replace(new RegExp(`\\bevery\\s+(?:${WEEKDAY})\\b`, 'gi'), 'every week')
     .replace(new RegExp(`\\bevery\\s+(?:${MONTH})\\b`, 'gi'), 'every year')
@@ -142,10 +205,10 @@ function generalisePhrase(span: string, after: string, text: string): { g: strin
     .replace(/\b(?:one|1)\s+(year|month|week|day|hour|decade)\b/gi, (_m: string, unit: string) => `about ${/^h/i.test(unit) ? 'an' : 'a'} ${unit}`)
     .replace(/\ba\s+(dozen|hundred|thousand)\b/gi, (_m: string, w: string) => (w.toLowerCase() === 'dozen' ? 'several' : 'many'))
     .replace(new RegExp(`(?<![\\w\\-/.])(${NUM})(k)?(?![\\w\\-/])`, 'gi'), (m: string, n: string, k: string | undefined) =>
-      k ? 'many' : (vagueNumber(n) ?? m),
+      isVersion(n) ? m : k ? 'many' : (vagueNumber(n) ?? m),
     )
-    // Proper nouns: "the Lisbon office" → "the office", "Anna's team" → "the team".
-    .replace(/\b([A-Z][a-zA-Z]+)(['’]s)?(?![\w'’-])/g, (m: string, word: string, poss: string | undefined, offset: number, str: string) => {
+    // Proper nouns: "the Lisbon office" → "the office", "Anna's team" → "the team", accented ones too ("São Paulo").
+    .replace(/(?<![\p{L}\p{M}\p{N}_])(\p{Lu}[\p{L}\p{M}]+)(['’]s)?(?![\p{L}\p{M}\p{N}_'’-])/gu, (m: string, word: string, poss: string | undefined, offset: number, str: string) => {
       if (!isProperNoun(word, text)) return m;
       pn = true;
       if (!poss) return '';
@@ -160,7 +223,7 @@ function generalisePhrase(span: string, after: string, text: string): { g: strin
 /** A count with the word it counts: "six individuals", "6 people", or the number alone ("to 2"). One is skipped. */
 const COUNT = new RegExp(`(?<![\\w\\-/.])(${NUM})(?![\\w\\-/])(?:\\s+([a-z][a-z-]*))?`, 'gi');
 function countPhrase(m: RegExpMatchArray): string | null {
-  if (numberValue(m[1]) === 1) return null;
+  if (numberValue(m[1]) === 1 || isVersion(m[1])) return null;
   return m[2] && !FUNCTION_WORDS.has(m[2].toLowerCase()) ? `${m[1]} ${m[2]}` : m[1];
 }
 
@@ -178,6 +241,15 @@ export function ruleDetails(text: string): { phrase: string; why: string }[] {
       found.push({ phrase, why, start, end: start + phrase.length });
     }
   };
+  const WHY: Record<IdentifierKind, string> = {
+    link: 'A link: fixed rule, no AI.',
+    'email address': 'An email address: fixed rule, no AI.',
+    username: 'A username: fixed rule, no AI.',
+    'phone number': 'A phone number: fixed rule, no AI.',
+  };
+  for (const id of identifiers(text)) {
+    if (free(id.start, id.end)) found.push({ phrase: id.phrase, why: WHY[id.kind], start: id.start, end: id.end });
+  }
   for (const m of text.matchAll(new RegExp(`\\b(?:${TIME})\\b`, 'gi'))) push(m, m[0], 'A date: fixed rule, no AI.');
   for (const m of text.matchAll(/\bone\s+(?:year|month|week|day|hour|decade)\b/gi)) push(m, m[0], 'A count: fixed rule, no AI.');
   for (const m of text.matchAll(COUNT)) {
@@ -198,13 +270,17 @@ export function newSpecifics(text: string, source: string): string[] {
     const p = s.trim();
     if (p && !hasPhrase(source, p)) found.add(p);
   };
-  for (const m of text.matchAll(new RegExp(`\\b(?:${TIME})\\b`, 'gi'))) add(m[0]);
-  for (const m of text.matchAll(COUNT)) {
+  const ids = identifiers(text);
+  for (const id of ids) add(id.phrase);
+  // Numbers, dates and names inside a link or an address are part of it, not details of their own.
+  const rest = ids.reduceRight((t, id) => t.slice(0, id.start) + ' '.repeat(id.end - id.start) + t.slice(id.end), text);
+  for (const m of rest.matchAll(new RegExp(`\\b(?:${TIME})\\b`, 'gi'))) add(m[0]);
+  for (const m of rest.matchAll(COUNT)) {
     const phrase = countPhrase(m);
     if (phrase) add(phrase);
   }
-  for (const m of text.matchAll(/\b[A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+)*/g)) {
-    const names = m[0].split(/\s+/).filter((w) => isProperNoun(w, text));
+  for (const m of rest.matchAll(/(?<![\p{L}\p{M}\p{N}_])\p{Lu}[\p{L}\p{M}]+(?:\s+\p{Lu}[\p{L}\p{M}]+)*/gu)) {
+    const names = m[0].split(/\s+/).filter((w) => isProperNoun(w, rest));
     if (names.length) add(names.join(' '));
   }
   return [...found];
@@ -314,7 +390,8 @@ const ONE_UNIT = /\bone\s+(year|month|week|day|hour|decade)\b/i;
  */
 export function isSpecific(phrase: string, text: string): boolean {
   if (/\d/.test(phrase) || NUMBER_WORDS.test(phrase) || ONE_UNIT.test(phrase) || MONTHS.test(phrase) || WEEKDAYS.test(phrase)) return true;
-  for (const m of phrase.matchAll(/\b[A-Z][a-zA-Z]+/g)) if (isProperNoun(m[0], text)) return true;
+  if (identifiers(phrase).length) return true; // "marta@acme.pt", "@marta_designs", "marta.design"
+  for (const m of phrase.matchAll(CAPITALISED)) if (isProperNoun(m[0], text)) return true;
   return false;
 }
 
@@ -354,6 +431,29 @@ export interface RewriteInfo {
   generalised: { phrase: string; generic: string; by: 'nano' | 'rule' }[];
   /** Identifying details a fresh on-device check still finds in the final text. Not safe to publish while non-empty. */
   detailsLeft: { phrase: string; why: string }[];
+  /** 'failed': the meaning check gave no readable answer, so `claims` is empty and the user must read the text. */
+  meaningCheck?: 'done' | 'failed';
+}
+
+/** The rewrite in Nano's answer ({"rewrite": "..."} or the bare string), or '' if there is none. */
+function readRewrite(answer: string): string {
+  try {
+    const parsed = parseModelJson<unknown>(answer);
+    const v = typeof parsed === 'string' ? parsed : parsed && typeof parsed === 'object' ? (parsed as { rewrite?: unknown }).rewrite : '';
+    return typeof v === 'string' ? v.trim() : '';
+  } catch (e) {
+    if (e instanceof ModelJsonError) return '';
+    throw e;
+  }
+}
+
+/** The meaning check's claims, keeping only complete ones: a claim in words, and kept true or false. */
+function readClaims(answer: string): RewriteInfo['claims'] {
+  return listAt(parseModelJsonLenient(answer).value, 'claims').flatMap((c) => {
+    const { claim, kept } = (c && typeof c === 'object' ? c : {}) as { claim?: unknown; kept?: unknown };
+    const k = kept === true || kept === 'true' ? true : kept === false || kept === 'false' ? false : null;
+    return typeof claim === 'string' && claim.trim() && k !== null ? [{ claim: claim.trim(), kept: k }] : [];
+  });
 }
 
 export interface AuthorshipOptions {
@@ -371,6 +471,59 @@ export interface AuthorshipOptions {
 
 const LETTERS = 'ABCDEFGHIJKLMNOP';
 
+/**
+ * Fisher–Yates with crypto randomness. `sort(() => Math.random() - 0.5)` is biased: items stay near where they started,
+ * and the user is first in the list, where language models' position bias already favours a pick.
+ */
+export function shuffled<T>(items: readonly T[]): T[] {
+  const out = [...items];
+  const r = new Uint32Array(out.length);
+  globalThis.crypto.getRandomValues(r);
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = r[i] % (i + 1);
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
+}
+
+/** "C", "c", "Writer C", "(C)", "C." → 2. Anything else → -1. */
+export function letterIndex(pick: unknown): number {
+  const m = String(pick ?? '').trim().toUpperCase().match(/^(?:WRITER\s+)?\(?([A-P])\)?[.:]?$/);
+  return m ? LETTERS.indexOf(m[1]) : -1;
+}
+
+/**
+ * Deterministic: did the model decline, or drop most of the post? A refusal released as "the rewrite" would be attacked,
+ * score 0/10 and look safe. Short drafts are not judged by length.
+ */
+export function looksLikeRefusal(next: string, prev: string): boolean {
+  const n = next.trim();
+  if (/^(?:i['’]?m sorry|sorry[,!.]|i (?:can(?:no|['’])t|cannot|am (?:not able|unable)|won['’]t)|as an ai\b|i['’]m (?:not able|unable))/i.test(n)) return true;
+  const words = (s: string) => s.split(/\s+/).filter(Boolean).length;
+  return words(prev) >= 30 && words(n) < 0.2 * words(prev);
+}
+
+/** What fits in one Gemini Nano prompt with room to spare (the meaning check holds the post twice). */
+export const MAX_DRAFT_WORDS = 1500;
+const MAX_DRAFT_CHARS = 10_000; // scripts without spaces (Chinese, Japanese) are counted by characters
+
+function assertFitsOnDevice(draft: string) {
+  const words = draft.split(/\s+/).filter(Boolean).length;
+  if (words > MAX_DRAFT_WORDS || draft.length > MAX_DRAFT_CHARS) {
+    throw new Error(`This post is too long for Gemini Nano on this device (${words.toLocaleString('en-US')} words; up to ${MAX_DRAFT_WORDS.toLocaleString('en-US')} fit). Check it in parts`);
+  }
+}
+
+const hasWords = (s: string) => /[\p{L}\p{N}]/u.test(s);
+
+/** At most `max` characters, cut at a word boundary (never mid-word or inside a surrogate pair). */
+export function sample(text: string, max: number): string {
+  if (text.length <= max) return text;
+  const cut = text.slice(0, max + 1);
+  const at = cut.search(/\s\S*$/);
+  return (at > max * 0.6 ? cut.slice(0, at) : Array.from(text).slice(0, max).join('')).trimEnd();
+}
+
 export function authorshipThreat(o: AuthorshipOptions): Threat<string, Clue, AuthorshipVerdict> & {
   lastRewrite: RewriteInfo | null;
   fingerprint(text: string): ReturnType<typeof exposure>;
@@ -383,20 +536,42 @@ export function authorshipThreat(o: AuthorshipOptions): Threat<string, Clue, Aut
     ...o.decoys.map((d) => ({ id: d.id, label: 'decoy', corpus: d.text.value })),
   ];
 
-  /** On-device: identifying details (dates, places, team sizes, project names, tenure) in a text. */
+  /**
+   * On-device: identifying details (dates, places, team sizes, project names, tenure) in a text. Nano's answer is data, not
+   * trusted structure: anything that is not a phrase of the text is dropped, and an unreadable answer gets one more try
+   * (it does not answer the same way twice). `readable: false` means the fixed rules are all there is.
+   */
   async function detectDetails(text: string | Private<string>, kit: Kit, op: string) {
-    const res = await kit.local.generate(
-      [
-        'List details in this text that could identify its author: exact dates, places, team sizes, internal project names, tenure. ' +
-          'Return JSON {"details":[{"phrase":"exact substring","why":"short reason"}]}.\n\nTEXT:\n',
-        text,
-      ],
-      { json: true, schema: DETAILS_SCHEMA, op },
-    );
     const plain = typeof text === 'string' ? text : Private.openLocally(text);
-    const found = parseModelJson<{ details?: { phrase: string; why: string }[] }>(res.text).details ?? [];
-    // Keep only phrases that really occur in the text (small models sometimes paraphrase) and that are specific.
-    return found.filter((d) => d.phrase && hasPhrase(plain, d.phrase) && isSpecific(d.phrase, plain));
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const res = await kit.local.generate(
+        [
+          'List details in this text that could identify its author: exact dates, places, team sizes, internal project names, tenure. ' +
+            'Return JSON {"details":[{"phrase":"exact substring","why":"short reason"}]}.\n\nTEXT:\n',
+          text,
+        ],
+        { json: true, schema: DETAILS_SCHEMA, op: attempt ? `${op} (again: unreadable answer)` : op },
+      );
+      let parsed: unknown;
+      try {
+        parsed = parseModelJsonLenient(res.text).value;
+      } catch (e) {
+        if (e instanceof ModelJsonError) continue;
+        throw e;
+      }
+      const seen = new Set<string>();
+      const details = listAt(parsed, 'details').flatMap((d) => {
+        const item = (typeof d === 'string' ? { phrase: d } : d && typeof d === 'object' ? d : {}) as { phrase?: unknown; why?: unknown };
+        const phrase = typeof item.phrase === 'string' ? item.phrase.trim() : '';
+        const why = typeof item.why === 'string' && item.why.trim() ? item.why.trim() : 'Flagged by Gemini Nano.';
+        // Keep only phrases that really occur in the text (small models sometimes paraphrase) and that are specific.
+        if (!phrase || seen.has(phrase.toLowerCase()) || !hasPhrase(plain, phrase) || !isSpecific(phrase, plain)) return [];
+        seen.add(phrase.toLowerCase());
+        return [{ phrase, why }];
+      });
+      return { details, readable: true };
+    }
+    return { details: [] as { phrase: string; why: string }[], readable: false };
   }
 
   const threat = {
@@ -411,10 +586,13 @@ export function authorshipThreat(o: AuthorshipOptions): Threat<string, Clue, Aut
 
     async findClues(input: Private<string>, kit: Kit): Promise<Clue[]> {
       const draft = Private.openLocally(input); // plain JS on the device
+      assertFitsOnDevice(draft);
       const t0 = performance.now();
       const style: Marker[] = styleMarkers(draft, o.self.value, o.decoys.map((d) => d.text.value));
       kit.ledger.add({ op: 'Fingerprint (Burrows’ Delta)', route: 'local-js', ms: Math.round(performance.now() - t0), bytesOut: 0 });
-      const details = await detectDetails(input, kit, 'Find identifying details');
+      // An empty post has nothing for the model to read.
+      const scan = hasWords(draft) ? await detectDetails(input, kit, 'Find identifying details') : { details: [], readable: true };
+      const details = scan.details;
       const t1 = performance.now();
       const extra = notCovered(ruleDetails(draft), details);
       kit.ledger.add({
@@ -422,7 +600,7 @@ export function authorshipThreat(o: AuthorshipOptions): Threat<string, Clue, Aut
         route: 'local-js',
         ms: Math.round(performance.now() - t1),
         bytesOut: 0,
-        note: `no model · found ${extra.length} that Nano missed`,
+        note: scan.readable ? `no model · found ${extra.length} that Nano missed` : `no model · Nano's answer was unreadable, the rules found ${extra.length}`,
       });
       return [
         ...style.map((m) => ({ phrase: m.phrase, kind: 'style' as const, why: m.why })),
@@ -441,6 +619,8 @@ export function authorshipThreat(o: AuthorshipOptions): Threat<string, Clue, Aut
       // So the details never reach the model: fixed rules generalise them in the draft first, the model only rewrites
       // the style, and a deterministic check (no model) verifies the final text.
       const draft = Private.openLocally(input); // plain JS on the device
+      if (!hasWords(draft)) throw new Error('There is nothing to rewrite: the post is empty');
+      assertFitsOnDevice(draft);
       const flagged = clues.filter((c) => c.kind === 'content');
       // Every count and date goes too, flagged or not (see ruleDetails).
       const details = [...flagged, ...notCovered(ruleDetails(draft), flagged)];
@@ -453,22 +633,32 @@ export function authorshipThreat(o: AuthorshipOptions): Threat<string, Clue, Aut
       // What the rules cannot rewrite (codes such as "24/7") is left to the model, and stays reported if it remains.
       const unhandled = details.filter((d) => hasPhrase(ruled.text, d.phrase));
 
-      const res = await kit.local.generate(
-        [
-          'Rewrite the DRAFT so its author cannot be identified by writing style. ' +
-            `Remove these habits: ${clues.filter((c) => c.kind === 'style').map((c) => c.phrase).join(', ')}. ` +
-            (unhandled.length ? `Generalise these details: ${unhandled.map((d) => d.phrase).join(', ')}. ` : '') +
-            (feedback?.reasons.length ? `An attacker still recognised the author because: ${feedback.reasons.join('; ')}. ` : '') +
-            'Keep every claim and opinion. Do not add names, places, dates or numbers. Use a neutral, plain register. ' +
-            'Return JSON {"rewrite":"..."}.\n\nDRAFT:\n',
-          secret(ruled.text, 'draft, details generalised'),
-        ],
-        { json: true, schema: REWRITE_SCHEMA, op: 'Rewrite on-device' },
-      );
-      const parsed = parseModelJson<{ rewrite?: string }>(res.text);
-      if (!parsed.rewrite) throw new Error('The local model returned no rewrite.');
-      let text = String(parsed.rewrite).trim();
-      if (looksBroken(text, ruled.text)) throw new Error('The local model repeated the same phrase over and over. Run the rewrite again.');
+      const habits = clues.filter((c) => c.kind === 'style').map((c) => c.phrase);
+      const prompt =
+        'Rewrite the DRAFT so its author cannot be identified by writing style. ' +
+        (habits.length ? `Remove these habits: ${habits.join(', ')}. ` : '') +
+        (unhandled.length ? `Generalise these details: ${unhandled.map((d) => d.phrase).join(', ')}. ` : '') +
+        (feedback?.reasons.length ? `An attacker still recognised the author because: ${feedback.reasons.join('; ')}. ` : '') +
+        'Keep every claim and opinion. Do not add names, places, dates or numbers. Use a neutral, plain register. ' +
+        'Return JSON {"rewrite":"..."}.\n\nDRAFT:\n';
+      const ruledDraft = secret(ruled.text, 'draft, details generalised');
+      // Gemini Nano does not answer the same way twice: an unreadable, looping or refused rewrite gets one more try.
+      let text = '';
+      let problem: 'unreadable' | 'repeated' | 'refused' | null = null;
+      for (let attempt = 0; attempt < 2; attempt++) {
+        const res = await kit.local.generate([prompt, ruledDraft], {
+          json: true,
+          schema: REWRITE_SCHEMA,
+          op: attempt ? `Rewrite on-device (again: ${problem} answer)` : 'Rewrite on-device',
+        });
+        text = readRewrite(res.text);
+        problem = !text ? 'unreadable' : looksBroken(text, ruled.text) ? 'repeated' : looksLikeRefusal(text, ruled.text) ? 'refused' : null;
+        if (!problem) break;
+      }
+      // No "run it again" here: the UI's friendlyError already ends every message with "Try again."
+      if (problem === 'unreadable') throw new Error('The local model returned no rewrite it could read');
+      if (problem === 'repeated') throw new Error('The local model repeated the same phrase over and over');
+      if (problem === 'refused') throw new Error('The local model declined, or dropped most of the post');
       for (const d of unhandled) if (!hasPhrase(text, d.phrase)) generalised.push({ phrase: d.phrase, generic: '', by: 'nano' });
 
       // Deterministic check of the final text, no model: no detail left, and nothing specific that the model added
@@ -491,21 +681,30 @@ export function authorshipThreat(o: AuthorshipOptions): Threat<string, Clue, Aut
         note: added.length ? `no model · generalised ${count(added.length, 'detail')} the rewrite added` : 'no model',
       });
 
-      // Meaning check on the device: the original never leaves; the claims are listed in generic words.
-      const m = await kit.local.generate(
-        [
-          'Compare the ORIGINAL and the FINAL text. List each claim or opinion of the ORIGINAL, in generic words (no names, ' +
-            'places or numbers), and whether the FINAL text still makes it. Return JSON {"claims":[{"claim":"...","kept":true}]}.\n\nORIGINAL:\n',
-          input,
-          '\n\nFINAL:\n',
-          text,
-        ],
-        { json: true, schema: MEANING_SCHEMA, op: 'Meaning check' },
-      );
-      const claims = (parseModelJson<{ claims?: { claim: string; kept: boolean }[] }>(m.text).claims ?? []).filter((c) => c.claim && c.claim.trim());
+      // Meaning check on the device: the original never leaves; the claims are listed in generic words. It is advice, so
+      // a failed check does not throw the finished rewrite away: it says the check is missing.
+      let claims: RewriteInfo['claims'] = [];
+      let meaningCheck: RewriteInfo['meaningCheck'] = 'done';
+      try {
+        const m = await kit.local.generate(
+          [
+            'Compare the ORIGINAL and the FINAL text. List each claim or opinion of the ORIGINAL, in generic words (no names, ' +
+              'places or numbers), and whether the FINAL text still makes it. Return JSON {"claims":[{"claim":"...","kept":true}]}.\n\nORIGINAL:\n',
+            input,
+            '\n\nFINAL:\n',
+            text,
+          ],
+          { json: true, schema: MEANING_SCHEMA, op: 'Meaning check' },
+        );
+        claims = readClaims(m.text);
+      } catch (e) {
+        if (e instanceof PrivacyViolation) throw e;
+        meaningCheck = 'failed';
+        if (e instanceof ModelJsonError) kit.ledger.add({ op: 'Meaning check', route: 'local-js', ms: 0, bytesOut: 0, note: 'unreadable answer · read the final text yourself' });
+      }
 
-      threat.lastRewrite = { claims, generalised, detailsLeft: left };
-      // release() refuses the rewrite if it still contains 8+ word spans of the private draft.
+      threat.lastRewrite = { claims, generalised, detailsLeft: left, meaningCheck };
+      // release() refuses the rewrite if it still carries spans of the private draft (about 7–8 words).
       return release(text, 'rewritten on-device');
     },
 
@@ -514,8 +713,20 @@ export function authorshipThreat(o: AuthorshipOptions): Threat<string, Clue, Aut
       let reasons: string[] = [];
       let answered = 0;
       let lastError: unknown = null;
+      let failedInARow = 0;
       for (let i = 0; i < attempts; i++) {
-        const order = [...lineup].sort(() => Math.random() - 0.5);
+        // The cloud stopped answering (each attempt already retried for up to 45 s): the rest would only make the user
+        // wait. Twice in a row before any answer, or three times in a row at any point. The skipped attempts count as no
+        // answer, so the verdict stays a rate over the answers and the UI still gets one callback per attempt.
+        if (failedInARow >= (answered ? 3 : 2)) {
+          for (let k = i; k < attempts; k++) {
+            picks.push('none');
+            o.onAttempt?.('none', k);
+          }
+          kit.ledger.add({ op: `Attack attempts ${i + 1}–${attempts} skipped`, route: 'local-js', ms: 0, bytesOut: 0, note: 'the cloud model is not answering' });
+          break;
+        }
+        const order = shuffled(lineup);
         let pickId = 'none';
         try {
           const res = await kit.cloud.generate(
@@ -524,22 +735,26 @@ export function authorshipThreat(o: AuthorshipOptions): Threat<string, Clue, Aut
                 'Return JSON {"pick":"<letter>","confidence":"low|medium|high","reasons":["up to 3 short reasons about style"]}.\n\nANONYMOUS TEXT:\n',
               published,
               '\n\nLINEUP:',
-              ...order.flatMap((c, k) => [`\n\nWriter ${LETTERS[k]}:\n`, new Public(c.corpus.slice(0, 900), 'lineup')]),
+              ...order.flatMap((c, k) => [`\n\nWriter ${LETTERS[k]}:\n`, new Public(sample(c.corpus, 900), 'lineup')]),
             ],
             { json: true, schema: attackSchema(order.map((_, k) => LETTERS[k])), op: `Attack attempt ${i + 1} of ${attempts}` },
           );
-          const parsed = parseModelJson<{ pick?: string; reasons?: string[] }>(res.text);
-          const k = LETTERS.indexOf(String(parsed.pick ?? '').trim().toUpperCase().replace(/^WRITER\s+/, ''));
+          // A cut-off answer still says which writer it picked: read what is complete.
+          const parsed = parseModelJsonLenient<{ pick?: unknown; reasons?: unknown }>(res.text).value ?? {};
+          const k = letterIndex(parsed.pick);
           if (order[k]) {
             pickId = order[k].id;
             answered++;
-          }
-          if (Array.isArray(parsed.reasons) && parsed.reasons.length) reasons = parsed.reasons;
+            failedInARow = 0;
+          } else failedInARow++;
+          const why = Array.isArray(parsed.reasons) ? parsed.reasons.filter((r): r is string => typeof r === 'string' && r.trim() !== '') : [];
+          if (why.length) reasons = why.slice(0, 3);
         } catch (e) {
-          // A privacy block is never swallowed. A busy or broken cloud answer costs one attempt, not the whole attack.
+          // A privacy block is never swallowed. A busy or broken cloud answer costs one attempt, not the whole attack
+          // (the cloud model already wrote it in the ledger, with the bytes it may have sent).
           if (e instanceof PrivacyViolation) throw e;
           lastError = e;
-          kit.ledger.add({ op: `Attack attempt ${i + 1} of ${attempts}`, route: 'cloud', ms: 0, bytesOut: 0, note: 'no answer (model busy)' });
+          failedInARow++;
         }
         picks.push(pickId);
         o.onAttempt?.(pickId, i);

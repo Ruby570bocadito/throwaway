@@ -137,7 +137,19 @@ describe('location threat on the demo scene', () => {
     const kit = { local: new LocalModel(b.local, ledger), cloud: new CloudModel(b.cloud, ledger), ledger };
     secret(PHOTO, 'photo');
     expect(() => release(PHOTO, 'sneaky')).toThrow(PrivacyViolation);
-    await expect(locationThreat({ ops: { ...fakeOps, maskCells: async (p) => p } }).sanitize(secret(PHOTO), [], null, kit)).rejects.toBeInstanceOf(PrivacyViolation);
+    const sign = [{ cell: 3, kind: 'text', what: 'Street sign' }];
+    await expect(locationThreat({ ops: { ...fakeOps, maskCells: async (p) => p } }).sanitize(secret(PHOTO), sign, null, kit)).rejects.toBeInstanceOf(PrivacyViolation);
+  });
+
+  it('with nothing flagged, says there is nothing to mask instead of a scary privacy block (the no-op re-encode is the original)', async () => {
+    const ledger = new Ledger();
+    const b = demoBackends();
+    const kit = { local: new LocalModel(b.local, ledger), cloud: new CloudModel(b.cloud, ledger), ledger };
+    const err = await locationThreat({ ops: { ...fakeOps, maskCells: async (p) => p } })
+      .sanitize(secret(PHOTO), [], null, kit)
+      .catch((e) => e);
+    expect(err).not.toBeInstanceOf(PrivacyViolation);
+    expect((err as Error).message).toMatch(/^Nothing to mask/);
   });
 });
 

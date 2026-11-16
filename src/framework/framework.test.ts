@@ -42,8 +42,10 @@ describe('privacy contract', () => {
     expect(() => release(photo, 'blurred?')).toThrow(PrivacyViolation);
     expect(() => release(new Uint8Array([1, 2, 3, 0, 0, 0, 7, 8, 9]), 'masked')).not.toThrow();
     await expect(cloud.generate([{ image: release(photo, 'as is', { userConfirmedAsIs: true }), mime: 'image/png' }], { op: 'img' })).resolves.toBeTruthy();
-    // Known limit, documented: re-encoding the bytes as text defeats the image hash (the type system still forbids Private).
-    await expect(cloud.generate([publicData(String.fromCharCode(...photo))], { op: 'img' })).resolves.toBeTruthy();
+    // The same bytes as text (a binary string or base64) are still the private photo.
+    await expect(cloud.generate([publicData(String.fromCharCode(...photo))], { op: 'img' })).rejects.toBeInstanceOf(PrivacyViolation);
+    // Known limit, documented: a re-encoded copy (decoded and encoded again, so other bytes) is not recognised.
+    await expect(cloud.generate([publicData(String.fromCharCode(...photo.map((b) => b + 1)))], { op: 'img' })).resolves.toBeTruthy();
   });
 
   it('only release() can mint a Publishable', () => {
@@ -69,6 +71,43 @@ describe('privacy contract', () => {
     const sneaky = { name: 'sneaky', generate: async () => ({ text: 'x', source: 'in_cloud' as const }) };
     const local = new LocalModel(sneaky, ledger);
     await expect(local.generate([secret(DRAFT)], { op: 'rewrite' })).rejects.toBeInstanceOf(PrivacyViolation);
+  });
+});
+
+describe('the red-team loop', () => {
+  /** A threat whose attacker always finds you, and whose sanitizer can only do `steps` different things. */
+  const stubborn = (steps: number) => {
+    let sanitized = 0;
+    let attacked = 0;
+    const threat = {
+      id: 'stub',
+      question: 'Who?',
+      findClues: async () => [],
+      sanitize: async () => release(`version ${Math.min(++sanitized, steps)} of a harmless sentence`, 'stub'),
+      attack: async () => (attacked++, { found: true }),
+      exposed: (v: { found: boolean }) => v.found,
+    };
+    return { threat, attacks: () => attacked };
+  };
+  const kit = () => {
+    const ledger = new Ledger();
+    return { local: new LocalModel(echo, ledger), cloud: new CloudModel(echo, ledger), ledger };
+  };
+
+  it('stops when a round changes nothing, instead of attacking the same thing again', async () => {
+    const s = stubborn(2);
+    const events = [];
+    for await (const e of redTeam(s.threat, secret('my draft'), kit(), { maxRounds: 5 })) events.push(e);
+    expect(events.map((e) => e.type)).toEqual(['clues', 'sanitized', 'attacked', 'sanitized', 'attacked', 'gave-up']);
+    expect(s.attacks()).toBe(2);
+    expect(events[events.length - 1]).toMatchObject({ round: 2, published: { value: 'version 2 of a harmless sentence' } });
+  });
+
+  it('always runs at least one round without a baseline', async () => {
+    const s = stubborn(9);
+    const events = [];
+    for await (const e of redTeam(s.threat, secret('my draft'), kit(), { maxRounds: 0 })) events.push(e);
+    expect(events.map((e) => e.type)).toEqual(['clues', 'sanitized', 'attacked', 'gave-up']);
   });
 });
 

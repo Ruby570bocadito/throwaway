@@ -7,7 +7,7 @@ import react from '@vitejs/plugin-react'
  */
 function preloadFonts(): Plugin {
   const landing = /^assets\/(eczar-latin-(500|600)|work-sans-latin-400|jetbrains-mono-latin-400)-normal-[\w-]+\.woff2$/
-  const app = /^assets\/(eczar-latin-(600|700)|work-sans-latin-(400|600)|jetbrains-mono-latin-400)-normal-[\w-]+\.woff2$/
+  const app = /^assets\/(eczar-latin-(500|600)|work-sans-latin-(400|600)|jetbrains-mono-latin-400)-normal-[\w-]+\.woff2$/
   return {
     name: 'preload-fonts',
     apply: 'build',

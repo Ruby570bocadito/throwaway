@@ -35,7 +35,8 @@ export function Radar({
             <circle cx="2" cy="2" r="1" fill="rgba(78,94,128,0.12)" />
           </pattern>
         </defs>
-        <rect width="360" height="360" fill="url(#dots)" />
+        {/* a round map on the desk, not a square swatch */}
+        <circle cx="180" cy="180" r="178" fill="url(#dots)" />
         {RINGS.map((r) => (
           <g key={r}>
             <circle cx="180" cy="180" r={radius(r)} fill="none" stroke="rgba(78,94,128,0.28)" strokeDasharray="3 5" />
