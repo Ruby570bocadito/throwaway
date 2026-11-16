@@ -42,11 +42,11 @@ To fingerprint you rather than the demo writer, paste writing you have already p
 Each step picks its inference mode on purpose. Your draft and your photo are the secret, so everything that reads them runs on your device; the cloud only plays the attacker.
 
 ```mermaid
-flowchart LR
+flowchart TB
   subgraph device["Your device"]
-    secret["Draft or photo"] --> nano["Gemini Nano<br/>ONLY_ON_DEVICE"] --> out["release()"]
+    secret["Draft or photo"] --> nano["Gemini Nano · ONLY_ON_DEVICE"] --> out["release()"]
   end
-  out -->|"what you would post"| attacker["Cloud Gemini<br/>ONLY_IN_CLOUD"]
+  out -->|"only what you would post"| attacker["Cloud Gemini · ONLY_IN_CLOUD"]
   attacker -.->|"guess + reasons"| nano
 ```
 
