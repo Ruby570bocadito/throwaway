@@ -2,7 +2,14 @@
 
 **Before you post anonymously, let an AI try to unmask you.**
 
-Your words give away **who** you are. Your photos give away **where** you are. Throwaway attacks both before anyone else does.
+[![Throwaway: before you post anonymously, let an AI try to unmask you. Firebase AI Logic and Gemini Nano.](public/og-image.jpg)](https://throwaway-hybrid.web.app)
+
+**[Open the app](https://throwaway-hybrid.web.app/app/)** (Chrome with Gemini Nano) · **[Watch a recorded run](https://throwaway-hybrid.web.app/app/?demo)** (any browser) · **[How it works](https://throwaway-hybrid.web.app)** · No sign-up
+<!-- Demo video: add the YouTube link here before submitting. -->
+
+In 2013, a stylometry analysis unmasked J. K. Rowling as "Robert Galbraith" from her writing alone. A cloud AI now attempts the same in seconds: in our live tests it picked the author of an anonymous employer review out of ten writers, 10 times out of 10. Asking a chatbot to "make it anonymous" hands it the very draft you want to protect, and nothing checks the result.
+
+Your words give away **who** you are. Your photos give away **where** you are. Throwaway attacks both before anyone else does: **Gemini Nano defends on your device, and a cloud Gemini, through Firebase AI Logic, attacks only what you would publish.**
 
 | Threat | The attacker asks | On your device | In the cloud |
 |---|---|---|---|
@@ -19,12 +26,54 @@ For a text (a Glassdoor review, a tip to a journalist, a post from an alt accoun
 
 To fingerprint you rather than the demo writer, paste writing you have already published under your name. It stays in the tab and is never stored; for the attack it is one of the ten public candidates.
 
-> Status: hackathon prototype for #BuildHybridAI 2026. The demo mode replays recorded AI responses so the video is reproducible; the stylometry is always computed live. Live mode needs a Firebase project (see `.env.example`).
-
 ## Try it
 
 - **Live:** [throwaway-hybrid.web.app/app/](https://throwaway-hybrid.web.app/app/). The home page, [throwaway-hybrid.web.app](https://throwaway-hybrid.web.app), explains it in two minutes. Use Chrome 139+ on a desktop with Gemini Nano (Chrome's Prompt API; about 22 GB of free disk, and a GPU with more than 4 GB of VRAM or 16 GB of RAM). If Nano is not available, enable `chrome://flags/#prompt-api-for-gemini-nano-multimodal-input` and restart Chrome. Without a local model, Throwaway does not hand the private steps to the cloud: it switches to a degraded mode where you edit and it attacks.
 - **Recorded run:** [throwaway-hybrid.web.app/app/?demo](https://throwaway-hybrid.web.app/app/?demo) replays a real run recorded in Chrome, through the same framework. It works in any browser.
+
+### Real or recorded?
+
+- **Live** (`/app/`): every model call is real. Gemini Nano runs on your device and Gemini runs in the cloud, both through Firebase AI Logic, with App Check.
+- **Recorded run** (`/app/?demo`): the model answers of one real run in Chrome (16-nov-2026) are replayed through the same framework, so the demo video is reproducible. The fingerprint, the fixed rules, the privacy guard, the shuffled lineups and the receipt run live, and the Firebase SDK is not even loaded.
+- To run live mode yourself you need a Firebase project: see [Run it](#run-it).
+
+## How Firebase AI Logic hybrid inference is used
+
+Each step picks its inference mode on purpose. Your draft and your photo are the secret, so everything that reads them runs on your device; the cloud only plays the attacker.
+
+```mermaid
+flowchart LR
+  subgraph device["Your device"]
+    secret["Your draft or photo (Private)"] --> nano["Gemini Nano · ONLY_ON_DEVICE<br/>find clues, rewrite, check the meaning"]
+    secret --> js["Plain JavaScript<br/>fingerprint, fixed rules, privacy guard"]
+    nano --> out["release()<br/>only what you would post"]
+    js --> out
+  end
+  out -- "the version you would post + public writing" --> attacker["Gemini in the cloud · ONLY_IN_CLOUD<br/>who wrote this? where was it taken?"]
+  attacker -- "its guess and its reasons" --> nano
+```
+
+| Step | Firebase AI Logic mode | What leaves the device |
+|---|---|---|
+| Fingerprint | none (plain JavaScript) | nothing |
+| Find identifying details | `ONLY_ON_DEVICE` (Gemini Nano) | nothing |
+| Generalise those details, and every count and date, in the draft | none (fixed rules, plain JavaScript) | nothing |
+| Rewrite the style, then the meaning check | `ONLY_ON_DEVICE` (Gemini Nano) | nothing |
+| Check the final text for added numbers, dates or names | none (plain JavaScript) | nothing |
+| Find the location clues in a photo | `ONLY_ON_DEVICE` (Gemini Nano, image input) | nothing |
+| Attack | `ONLY_IN_CLOUD` (`gemini-3.5-flash-lite`) | the text or photo you are about to publish, plus public writing |
+
+```ts
+// src/framework/firebase.ts, simplified
+initializeAppCheck(app, { provider: new ReCaptchaEnterpriseProvider(siteKey), isTokenAutoRefreshEnabled: true });
+const ai = getAI(app, { backend: new GoogleAIBackend() });
+const defender = getGenerativeModel(ai, { mode: InferenceMode.ONLY_ON_DEVICE, inCloudParams: { model } }); // Gemini Nano
+const attacker = getGenerativeModel(ai, { mode: InferenceMode.ONLY_IN_CLOUD, inCloudParams: { model } }); // Gemini in the cloud
+```
+
+**Why not `PREFER_ON_DEVICE`?** On a device without a local model it would fall back to the cloud, and your private draft would go with it. Throwaway degrades instead: it says what it can no longer check, you edit, and it attacks.
+
+Code: [`src/framework/firebase.ts`](src/framework/firebase.ts) · [`src/engine/stylometry.ts`](src/engine/stylometry.ts)
 
 ## The framework: local defender, cloud attacker
 
@@ -50,7 +99,7 @@ interface Threat<Input, Clue, Verdict> {
 - Every call lands in a ledger: where it ran, how long, how many bytes left the device.
 - No third-party requests besides Firebase and its App Check: fonts are bundled, so opening Throwaway tells no font CDN who you are. The recorded demo (`?demo`) does not even load the Firebase SDK.
 
-For a photo: Nano marks the grid cells that reveal where you are (street plaque, house number, shop sign, vegetation), the device pixelates them, and a cloud geolocation attacker estimates where the **masked** photo was taken. If it still narrows you down, it says which cells helped, and the loop masks those too: ~100 m → ~6 km → "Southern Europe".
+For a photo: Nano marks the grid cells that reveal where you are (street plaque, house number, shop sign, vegetation), the device pixelates them, and a cloud geolocation attacker estimates where the **masked** photo was taken. If it still narrows you down, it says which cells helped, and the loop masks those too. In the recorded run: a readable address 0.5 km away → "Rome, Italy", 869 km off.
 
 Code: [`src/framework/`](src/framework) · threats: [`authorship.ts`](src/threats/authorship.ts), [`location.ts`](src/threats/location.ts) · tests: `npm test`
 
@@ -73,19 +122,6 @@ Testing or recording a video with your own photo but not your real location? Add
 2. Register it in Firebase console → App Check → your web app. App Check is enforced for Firebase AI Logic; locally the debug provider is used instead.
 3. Put the site key in `.env.production.local` as `VITE_RECAPTCHA_SITE_KEY`. Site keys are public, but the file stays local.
 4. Run `npm run deploy`: tests, build, then `firebase deploy --only hosting`. [`firebase.json`](firebase.json) adds security headers: nosniff, no framing, a strict-origin referrer (reCAPTCHA needs the origin), camera and microphone off, geolocation for this origin only.
-
-## How hybrid inference is used
-
-| Step | Firebase AI Logic mode | What leaves the device |
-|---|---|---|
-| Fingerprint | none (plain JavaScript) | nothing |
-| Find identifying details | `ONLY_ON_DEVICE` (Gemini Nano) | nothing |
-| Generalise those details, and every count and date, in the draft | none (fixed rules, plain JavaScript) | nothing |
-| Rewrite the style, then the meaning check | `ONLY_ON_DEVICE` (Gemini Nano) | nothing |
-| Check the final text for added numbers, dates or names | none (plain JavaScript) | nothing |
-| Attack | `ONLY_IN_CLOUD` | the text you are about to publish + public writing |
-
-Code: [`src/framework/firebase.ts`](src/framework/firebase.ts) · [`src/engine/stylometry.ts`](src/engine/stylometry.ts)
 
 ## Measured, not claimed
 
@@ -157,4 +193,15 @@ The demo mode (`?demo`) replays the full v5 run recorded in Chrome on 16-nov: th
 - The attacker is a general model, not a specialised geolocation system: a stronger attacker plugs into the same framework.
 - Like Tor or Signal, anonymity tools can be misused. Throwaway attacks no one; it only measures your own text.
 
-Built with the help of AI coding assistants.
+## What's next
+
+- A browser extension that checks your post where you write it (Reddit, Glassdoor, a forum) before you hit "post".
+- Android with Gemini Nano: the threats are plain TypeScript, and the framework is not tied to the browser.
+- More languages, larger decoy corpora per field, and decoy lineups where you are not present.
+- A version for newsrooms and whistleblower NGOs.
+
+## Credits and license
+
+Built from scratch by [@Ruby570bocadito](https://github.com/Ruby570bocadito) for #BuildHybridAI 2026, during the submission period (from 15-nov-2026), with the help of AI coding assistants. The illustrations were generated for the project. The fonts are Eczar, Work Sans and JetBrains Mono (SIL Open Font License, via Fontsource).
+
+Licensed under [Apache-2.0](LICENSE).
