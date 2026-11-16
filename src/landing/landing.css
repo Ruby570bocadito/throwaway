@@ -68,6 +68,8 @@ h1 { margin: 18px auto 24px; font-family: var(--serif); font-size: clamp(44px, 6
 .hero .ctas { justify-content: center; }
 .fine { max-width: 40em; margin-top: 14px; color: var(--muted); font-size: 13px; }
 .hero .fine { margin-left: auto; margin-right: auto; }
+/* the note is rewritten once we know whether this browser has Gemini Nano: keep room for the longest version */
+.hero .fine[data-nano] { min-height: 3.2em; }
 
 .replay { display: grid; grid-template-columns: minmax(0, 1fr) 96px minmax(0, 1fr); align-items: center; max-width: 1140px; margin: 72px auto 0; }
 .sheet {
@@ -314,6 +316,7 @@ mark.detail { background-image: linear-gradient(transparent 12%, var(--peach) 12
   .wordmark { font-size: 22px; }
   .section { padding-top: 88px; }
   .lede { font-size: 17.5px; }
+  .hero .fine[data-nano] { min-height: 4.8em; }
   .sheet { padding: 12px 14px 16px 28px; }
   .post { font-size: 16.5px; line-height: 1.65rem; background-image: repeating-linear-gradient(transparent 0 calc(1.65rem - 1px), rgba(78, 94, 128, 0.13) calc(1.65rem - 1px) 1.65rem); }
   .board { padding: 20px 12px 12px; }
@@ -331,6 +334,9 @@ mark.detail { background-image: linear-gradient(transparent 12%, var(--peach) 12
   .pol .letter { font-size: 11px; }
   .pol .count { min-width: 18px; height: 18px; font-size: 10px; line-height: 18px; }
   .verdict .num { font-size: 22px; }
+}
+@media (max-width: 380px) {
+  .hero .fine[data-nano] { min-height: 6.4em; }
 }
 /* Every animation has a still version. */
 @media (prefers-reduced-motion: reduce) {

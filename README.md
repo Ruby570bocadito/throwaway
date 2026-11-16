@@ -127,12 +127,22 @@ What the live runs taught us (and changed):
   - **Green:** the wrong place.
 
   Only red keeps the loop masking. Amber says so plainly, and suggests cropping or another photo if your city is the secret.
+- **Masking has to leave a photo worth posting.** On a Paris street, Gemini Nano flagged a facade in every cell, and masking everything the two models pointed at pixelated the whole photo. Masking now has a budget: street names, house numbers and plates always go; then signs, landmarks and reflections, starting with the cells the attacker used; facades and trees only while fewer than 6 of the 16 cells are masked. If the attacker still finds you, Throwaway says to crop the photo or post another one.
 - **A shop sign is not an address.** In one run the attacker described Tokyo signs ("ramen", "sake shop") as text, guessed Kyoto 360 km off, and the app said "it read your address". Only text that is an address (street names, house numbers, phone numbers) and plates count as an identifier now.
 - **"Unknown" is not a place.** When the attacker could not place a photo it answered "Unknown" at 0,0, and the app first showed "off by 4,510 km" (the distance to that point). A guess with no place or coordinates is now treated as no guess.
 - **On-device structured output is set per model instance.** Gemini Nano ignored `generationConfig` and wrapped JSON in markdown; the framework now passes a JSON schema as Chrome's `responseConstraint`.
 - `gemini-3.8-flash` took 40–60 s per call on the free tier, too slow for a ten-attempt lineup, so the attacker defaults to Flash-Lite.
 
 The demo mode (`?demo`) replays the full v5 run recorded in Chrome on 16-nov: the five details, the attack before (10/10), Nano's rewrite, the meaning check and the attack after (0/10).
+
+## Security and privacy hardening
+
+- **Content Security Policy, enforced.** `script-src 'self'` plus the reCAPTCHA hosts App Check needs, with no inline scripts and no `eval`; `connect-src` lists only Firebase AI Logic, App Check and reCAPTCHA; `object-src 'none'` and `frame-ancestors 'none'`. It ran in report-only mode on production first, through the landing page, the recorded run and a live attack: the only finding was tiny font files that Vite inlined as `data:` URLs, now emitted as files.
+- **Headers:** HSTS with preload, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin`, `Cross-Origin-Opener-Policy: same-origin`, and a `Permissions-Policy` that turns off the camera and the microphone.
+- **App Check** with reCAPTCHA Enterprise, so only this web app can call the model.
+- **No accounts, no storage, no analytics and no cookies of ours.** The fonts are bundled, so the recorded run makes no requests to third parties.
+- **Reporting:** [`/.well-known/security.txt`](https://throwaway-hybrid.web.app/.well-known/security.txt) and [SECURITY.md](SECURITY.md).
+- **Lighthouse** on production, mobile (16-nov-2026): landing page 99 / 100 / 100 / 100 and app 98 / 100 / 100 / 100 (performance, accessibility, best practices, SEO), with no layout shift. The landing page scores 100 in all four on desktop.
 
 ## Limits we know about
 

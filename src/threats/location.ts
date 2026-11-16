@@ -49,7 +49,16 @@ export interface LocationOptions {
    * photo gave 5 clue cells, then 4), and on-device calls are free, so asking twice buys recall at no cost and no egress.
    */
   scans?: number;
+  /**
+   * How many of the 16 cells masking may cover, so the photo stays worth posting. Identifiers (street names, house numbers,
+   * plates) are masked even beyond it. Live (16-nov): on a Paris street Gemini Nano flagged facades in every cell and the
+   * union of its clues and the attacker's pixelated the whole photo.
+   */
+  maxMaskedCells?: number;
 }
+
+/** Clues that point at one spot; the rest (architecture, vegetation, "other") mostly say which city, not where in it. */
+const SPECIFIC = new Set(['text', 'number', 'plate', 'landmark', 'reflection']);
 
 const KINDS = ['text', 'number', 'landmark', 'plate', 'vegetation', 'architecture', 'reflection', 'other'];
 
@@ -127,6 +136,9 @@ export type LocationTier = 'street' | 'city' | 'safe';
 
 export function locationThreat(o: LocationOptions): Threat<Uint8Array, PhotoClue, LocationVerdict> & {
   masked: number[];
+  /** Flagged cells left unmasked to keep the photo usable (the budget was spent on more specific clues). */
+  leftVisible: PhotoClue[];
+  maxMasked: number;
   exposureReason(v: LocationVerdict): ExposureReason | null;
   tier(v: LocationVerdict): LocationTier;
 } {
@@ -137,6 +149,8 @@ export function locationThreat(o: LocationOptions): Threat<Uint8Array, PhotoClue
     question: 'Where was this photo taken?',
     /** Cells masked so far (for the UI). */
     masked: [] as number[],
+    leftVisible: [] as PhotoClue[],
+    maxMasked: o.maxMaskedCells ?? 6,
 
     async findClues(input: Private<Uint8Array>, kit: Kit): Promise<PhotoClue[]> {
       // The grid copy is derived from the private photo, so it is private too.
@@ -165,11 +179,37 @@ export function locationThreat(o: LocationOptions): Threat<Uint8Array, PhotoClue
     },
 
     async sanitize(input: Private<Uint8Array>, clues: PhotoClue[], feedback: LocationVerdict | null, kit: Kit): Promise<Publishable<Uint8Array>> {
-      const cells = new Set([...threat.masked, ...clues.map((c) => c.cell), ...(feedback?.clues ?? []).map((c) => c.cell)].filter(validCell));
-      threat.masked = [...cells].sort((a, b) => a - b);
+      // Rank every flagged cell by its most specific clue: identifiers first (always masked), then specific clues, then
+      // ambient ones (facades, trees). Within a rank, cells the attacker actually used go first. Masking stops at the budget.
+      const rank = (c: PhotoClue) => (isIdentifier(c) ? 0 : SPECIFIC.has(c.kind) ? 1 : 2);
+      const best = new Map<number, { rank: number; cited: boolean; clue: PhotoClue }>();
+      const consider = (c: PhotoClue, cited: boolean) => {
+        if (!validCell(c.cell) || threat.masked.includes(c.cell)) return;
+        const prev = best.get(c.cell);
+        const r = rank(c);
+        if (!prev || r < prev.rank) best.set(c.cell, { rank: r, cited: cited || !!prev?.cited, clue: c });
+        else if (cited) prev.cited = true;
+      };
+      for (const c of clues) consider(c, false);
+      for (const c of feedback?.clues ?? []) consider(c, true);
+      const ranked = [...best.entries()].sort(([, a], [, b]) => a.rank - b.rank || Number(b.cited) - Number(a.cited));
+      const next = [...threat.masked];
+      const left: PhotoClue[] = [];
+      for (const [cell, { rank: r, clue }] of ranked) {
+        if (r === 0 || next.length < threat.maxMasked) next.push(cell);
+        else left.push(clue);
+      }
+      threat.masked = [...new Set(next)].sort((a, b) => a - b);
+      threat.leftVisible = left.sort((a, b) => a.cell - b.cell);
       const t0 = performance.now();
       const masked = await o.ops.maskCells(Private.openLocally(input), threat.masked, GRID);
-      kit.ledger.add({ op: `Pixelate ${threat.masked.length} cells`, route: 'local-js', ms: Math.round(performance.now() - t0), bytesOut: 0 });
+      kit.ledger.add({
+        op: `Pixelate ${threat.masked.length} cells`,
+        route: 'local-js',
+        ms: Math.round(performance.now() - t0),
+        bytesOut: 0,
+        note: left.length ? `kept ${left.length} cells visible so the photo stays usable` : undefined,
+      });
       // release() refuses bytes identical to the private original.
       return release(masked, `masked cells ${threat.masked.join(',')}`);
     },

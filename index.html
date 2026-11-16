@@ -3,16 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <script>
-      // Links shared before this page existed (/?demo, #truth=…) belong to the app. And if the page script never runs,
-      // show everything anyway: the motion is a layer, never a gate.
-      (function () {
-        var s = location.search, h = location.hash, root = document.documentElement;
-        if (/[?&]demo\b/.test(s) || /truth=/.test(h)) location.replace('/app/' + s + h);
-        root.classList.add('js');
-        setTimeout(function () { if (!window.__landing) root.classList.remove('js'); }, 2500);
-      })();
-    </script>
+    <script src="/boot.js"></script>
     <title>Throwaway: let an AI try to unmask you before you post</title>
     <meta name="description" content="Before you post anonymously, a cloud AI tries to identify you from your writing or your photo. Gemini Nano then fixes it on your device, until the attacker is back to guessing. Built on Firebase AI Logic hybrid inference." />
     <meta name="theme-color" content="#f6ecdd" />
@@ -24,7 +15,7 @@
     <meta property="og:title" content="Throwaway: before you post anonymously, let an AI try to unmask you" />
     <meta property="og:description" content="A cloud AI attacks only what you would publish. Gemini Nano finds what gives you away and fixes it on your device. Built on Firebase AI Logic hybrid inference." />
     <meta property="og:url" content="https://throwaway-hybrid.web.app/" />
-    <meta property="og:image" content="https://throwaway-hybrid.web.app/og-image.png" />
+    <meta property="og:image" content="https://throwaway-hybrid.web.app/og-image.jpg" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
     <meta name="twitter:card" content="summary_large_image" />

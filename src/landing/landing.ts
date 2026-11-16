@@ -18,7 +18,22 @@ void adaptToThisBrowser();
 const replayFigure = document.querySelector<HTMLElement>('.replay');
 if (replayFigure && !reduceMotion) replay(replayFigure);
 const photoCard = document.querySelector<HTMLElement>('[data-photo]');
-if (photoCard) void photoDemo(photoCard);
+// Drawing and pixelating the scene takes a few hundred ms of main thread: do it when the card is near, not at load
+// (Lighthouse, 16-nov: 740 ms of blocking time on the landing page, almost all of it this).
+if (photoCard) whenNear(photoCard, () => void photoDemo(photoCard));
+
+function whenNear(el: Element, run: () => void) {
+  if (!('IntersectionObserver' in window)) return run();
+  const io = new IntersectionObserver(
+    (entries) => {
+      if (!entries.some((e) => e.isIntersecting)) return;
+      io.disconnect();
+      run();
+    },
+    { rootMargin: '600px 0px' },
+  );
+  io.observe(el);
+}
 
 function revealOnScroll() {
   const items = [...document.querySelectorAll<HTMLElement>('.reveal')];
@@ -47,9 +62,9 @@ async function adaptToThisBrowser() {
       const live = group.querySelector<HTMLElement>('[data-cta="live"]');
       const demo = group.querySelector<HTMLElement>('[data-cta="demo"]');
       if (!live || !demo) continue;
+      // Swap the emphasis, not the order: moving the buttons after the first paint is a layout shift (Lighthouse CLS).
       live.classList.replace('primary', 'ghost');
       demo.classList.replace('ghost', 'primary');
-      group.prepend(demo);
     }
   }
   const note = document.querySelector<HTMLElement>('[data-nano]');

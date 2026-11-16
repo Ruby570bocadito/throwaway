@@ -37,6 +37,30 @@ describe('location threat on the demo scene', () => {
     expect(ledger.all.filter((e) => e.route === 'cloud')).toHaveLength(2);
   }, 30_000);
 
+  it('keeps the photo usable: identifiers always go, facades only within the budget (Paris street, live 16-nov)', async () => {
+    const ledger = new Ledger();
+    const b = demoBackends();
+    const kit = { local: new LocalModel(b.local, ledger), cloud: new CloudModel(b.cloud, ledger), ledger };
+    const t = locationThreat({ ops: fakeOps });
+    // Gemini Nano flagged a facade in every cell, plus a street sign and a church tower.
+    const facades = Array.from({ length: 16 }, (_, i) => ({ cell: i + 1, kind: 'architecture', what: 'Haussmann facade with balconies' }));
+    const clues = [...facades, { cell: 14, kind: 'text', what: 'Blue street sign reading Rue Oberkampf' }, { cell: 9, kind: 'landmark', what: 'Church tower' }];
+    const feedback = { place: 'Paris', lat: 48.86, lon: 2.37, radiusKm: 0.5, confidence: 'high', errorKm: null, clues: [{ cell: 5, kind: 'architecture', what: 'Zinc roofs' }] };
+    await t.sanitize(secret(PHOTO, 'photo'), clues, feedback, kit);
+    expect(t.masked).toHaveLength(6); // not 16: the photo is still worth posting
+    expect(t.masked).toContain(14); // the street sign, always
+    expect(t.masked).toContain(9); // a landmark before plain facades
+    expect(t.masked).toContain(5); // the facade the attacker used, before the others
+    expect(t.leftVisible).toHaveLength(10);
+    expect(ledger.all.find((e) => e.op === 'Pixelate 6 cells')?.note).toBe('kept 10 cells visible so the photo stays usable');
+
+    // A later round that only cites facades adds nothing; one that reads a house number still masks it, budget or not.
+    await t.sanitize(secret(PHOTO, 'photo'), [], { ...feedback, clues: [{ cell: 10, kind: 'architecture', what: 'Balconies' }] }, kit);
+    expect(t.masked).toHaveLength(6);
+    await t.sanitize(secret(PHOTO, 'photo'), [], { ...feedback, clues: [{ cell: 11, kind: 'number', what: 'House number 23' }] }, kit);
+    expect(t.masked).toContain(11);
+  });
+
   it('without ground truth trusts a sure, precise claim; with it, a confident wrong guess is not exposure', () => {
     const t1 = locationThreat({ ops: fakeOps });
     const t2 = locationThreat({ ops: fakeOps, truth: secret(DEMO_TRUTH) });

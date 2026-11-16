@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { PrivacyViolation, release, secret, type Private, type Publishable } from '../framework';
 import { browserImageOps, normalizeToPng, svgToPng } from '../engine/image';
 import { DEMO_TRUTH, SCENE_H, SCENE_SVG, SCENE_W } from '../demo/photo';
-import { GRID, locationThreat, type LocationVerdict, type PhotoClue } from '../threats/location';
+import { GRID, isIdentifier, locationThreat, type LocationVerdict, type PhotoClue } from '../threats/location';
 import { Radar } from '../ui/Radar';
 import { formatKm, friendlyError, type LabProps } from '../ui/shared';
 
@@ -222,6 +222,12 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak, recorded }
   const clueAt = (cell: number) => clues.find((c) => c.cell === cell && !threat.masked.includes(c.cell));
   const attackerAt = (cell: number) => verdict?.clues.find((c) => c.cell === cell && !threat.masked.includes(c.cell));
   const canPick = degraded && (stage === 'scanned' || stage === 'attacked');
+  // The budget is spent and the attacker only points at cells that are not identifiers: another round would add nothing.
+  const budgetFull =
+    !degraded &&
+    !!published &&
+    threat.masked.length >= threat.maxMasked &&
+    !(verdict?.clues ?? []).some((c) => isIdentifier(c) && !threat.masked.includes(c.cell));
   const chosen = manual.filter((c) => !threat.masked.includes(c)).sort((x, y) => x - y);
   const maskLabel = !chosen.length
     ? 'Tap the cells to mask'
@@ -313,6 +319,12 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak, recorded }
                     </div>
                   ))
               )}
+              {!degraded && threat.leftVisible.length > 0 && (
+                <p className="hint">
+                  Left visible so the photo stays worth posting: facades and trees rarely give away more than the city. Masking covers at most{' '}
+                  {threat.maxMasked} of 16 cells, plus any street name, house number or plate.
+                </p>
+              )}
             </div>
           </div>
         )}
@@ -371,11 +383,14 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak, recorded }
             {busy ? 'Attacking…' : 'Attack it as I would post it'}
           </button>
         )}
-        {stage === 'attacked' && (
-          <button className="safe" onClick={mask} disabled={!!busy || (degraded && chosen.length === 0)}>
-            {busy ? 'Masking on your device…' : degraded ? maskLabel : published ? 'Mask what the attacker used' : 'Mask clues on-device'}
-          </button>
-        )}
+        {stage === 'attacked' &&
+          (budgetFull ? (
+            <span className="done bad">It can still find you, and masking more would ruin the photo. Crop it, or post another one.</span>
+          ) : (
+            <button className="safe" onClick={mask} disabled={!!busy || (degraded && chosen.length === 0)}>
+              {busy ? 'Masking on your device…' : degraded ? maskLabel : published ? 'Mask what the attacker used' : 'Mask clues on-device'}
+            </button>
+          ))}
         {stage === 'masked' && published && (
           <button className="danger" onClick={() => attack(published)} disabled={!!busy}>
             {busy ? 'Attacking…' : 'Attack again'}
