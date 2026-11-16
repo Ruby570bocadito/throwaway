@@ -7,20 +7,20 @@ Your words give away **who** you are. Your photos give away **where** you are. T
 | Threat | The attacker asks | On your device | In the cloud |
 |---|---|---|---|
 | Text | Who wrote this? | Stylometric fingerprint, identifying details, rewrite (Gemini Nano) | A lineup attack: ten public writers, shuffled, you are never labeled |
-| Photo | Where was this taken? | Location clues on a 4×4 grid (Gemini Nano), pixelation | A geolocation attack on the masked photo only |
+| Photo | Where was this taken? | Location clues on a 4×4 grid (Gemini Nano), pixelation | A geolocation attack on the version you would post |
 
 For a text (a Glassdoor review, a tip to a journalist, a post from an alt account):
 
 1. **Fingerprint, in your browser.** Burrows' Delta over function words and your habit phrases, compared with writing you have already made public. 0 bytes sent.
-2. **Attack, in the cloud.** Gemini, through Firebase AI Logic (`ONLY_IN_CLOUD`), gets the text plus a lineup of ten public writers and tries to pick the author. It is never told which candidate is you.
-3. **Rewrite, on your device.** Fixed rules generalise the identifying details ("three years" → "several years"). Then Gemini Nano, through Firebase AI Logic (`ONLY_ON_DEVICE`), rewrites the draft without your habits. **The draft never leaves the device.** With no local model, Throwaway does not fall back to the cloud: you edit, it attacks.
+2. **Attack, in the cloud.** The first attack measures the text as you would post it, and it only leaves the device once you confirm that. Gemini, through Firebase AI Logic (`ONLY_IN_CLOUD`), gets the text plus a lineup of ten public writers and tries to pick the author. It is never told which candidate is you.
+3. **Rewrite, on your device.** Fixed rules generalise the identifying details ("three years" → "several years"). Then Gemini Nano, through Firebase AI Logic (`ONLY_ON_DEVICE`), rewrites the draft without your habits. **Only a version you chose to post ever reaches the cloud.** With no local model, Throwaway does not fall back to the cloud: you edit, it attacks.
 4. **Attack again** until you are at chance level, one in ten.
 
 > Status: hackathon prototype for #BuildHybridAI 2026. The demo mode replays recorded AI responses so the video is reproducible; the stylometry is always computed live. Live mode needs a Firebase project (see `.env.example`).
 
 ## Try it
 
-- **Live:** [throwaway-hybrid.web.app](https://throwaway-hybrid.web.app). Use Chrome 139+ on a desktop with Gemini Nano (Chrome's Prompt API; about 22 GB of free disk, and a GPU with more than 4 GB of VRAM or 16 GB of RAM). If Nano is not available, enable `chrome://flags/#prompt-api-for-gemini-nano-multimodal-input` and restart Chrome. Without a local model, Throwaway never sends your draft to the cloud: it switches to a degraded mode where you edit and it attacks.
+- **Live:** [throwaway-hybrid.web.app](https://throwaway-hybrid.web.app). Use Chrome 139+ on a desktop with Gemini Nano (Chrome's Prompt API; about 22 GB of free disk, and a GPU with more than 4 GB of VRAM or 16 GB of RAM). If Nano is not available, enable `chrome://flags/#prompt-api-for-gemini-nano-multimodal-input` and restart Chrome. Without a local model, Throwaway does not hand the private steps to the cloud: it switches to a degraded mode where you edit and it attacks.
 - **Recorded run:** [throwaway-hybrid.web.app/?demo](https://throwaway-hybrid.web.app/?demo) replays a real run recorded in Chrome, through the same framework. It works in any browser.
 
 ## The framework: local defender, cloud attacker
@@ -45,7 +45,7 @@ interface Threat<Input, Clue, Verdict> {
 - The only way out is `release()`, which refuses content that still carries the private original unless the user confirms they would publish it as-is.
 - If the SDK ever served a local call from the cloud, `LocalModel` throws.
 - Every call lands in a ledger: where it ran, how long, how many bytes left the device.
-- No third-party requests besides Firebase and its App Check: fonts are bundled, so opening Throwaway tells no font CDN who you are.
+- No third-party requests besides Firebase and its App Check: fonts are bundled, so opening Throwaway tells no font CDN who you are. The recorded demo (`?demo`) does not even load the Firebase SDK.
 
 For a photo: Nano marks the grid cells that reveal where you are (street plaque, house number, shop sign, vegetation), the device pixelates them, and a cloud geolocation attacker estimates where the **masked** photo was taken. If it still narrows you down, it says which cells helped, and the loop masks those too: ~100 m → ~6 km → "Southern Europe".
 

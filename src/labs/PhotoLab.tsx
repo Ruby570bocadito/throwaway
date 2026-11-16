@@ -27,6 +27,8 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak }: LabProps
   const [verdict, setVerdict] = useState<LocationVerdict | null>(null);
   const [history, setHistory] = useState<number[]>([]);
   const [manual, setManual] = useState<number[]>([]);
+  // "Attack it as I would post it" sends the photo as it is: the user's choice, and the chip says so.
+  const [sentAsIs, setSentAsIs] = useState(false);
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
   const privatePhoto = useRef<Private<Uint8Array> | null>(null);
@@ -57,7 +59,7 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak }: LabProps
       setSource('own');
       const hashTruth = truthFromHash();
       if (hashTruth) {
-        setTruthLabel('set in the page address (#truth), for testing or recording — never sent');
+        setTruthLabel('set in the page address (#truth), for testing or recording');
         setThreat(locationThreat({ ops: browserImageOps, truth: secret(hashTruth, 'your real location') }));
         kit.ledger.add({ op: 'Read your location from #truth (for local scoring only)', route: 'local-js', ms: 0, bytesOut: 0 });
         return;
@@ -75,7 +77,7 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak }: LabProps
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         const truth = secret({ lat: pos.coords.latitude, lon: pos.coords.longitude }, 'your real location');
-        setTruthLabel(`your current location, ±${Math.round(pos.coords.accuracy)} m — never sent`);
+        setTruthLabel(`from this browser, ±${Math.round(pos.coords.accuracy)} m`);
         setThreat(locationThreat({ ops: browserImageOps, truth }));
         kit.ledger.add({ op: 'Read your location (for local scoring only)', route: 'local-js', ms: 0, bytesOut: 0 });
       },
@@ -189,10 +191,18 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak }: LabProps
       const v = await threat.attack(target, kit);
       setVerdict(v);
       setHistory((h) => [...h, shownKm(v)]);
+      // No local model: the user masks by hand, so start from the cells the attacker says it used (review, 16-nov).
+      if (degraded && threat.tier(v) !== 'safe') {
+        const used = v.clues.map((c) => Number(c.cell)).filter((c) => Number.isInteger(c) && c >= 1 && c <= GRID * GRID);
+        setManual((m) => [...new Set([...m, ...used])].filter((c) => !threat.masked.includes(c)));
+      }
       setStage(threat.exposed(v) ? 'attacked' : 'safe');
     });
 
-  const attackAsIs = () => attack(release(original!, 'baseline — user would post this photo as-is', { userConfirmedAsIs: true }));
+  const attackAsIs = () => {
+    setSentAsIs(true);
+    return attack(release(original!, 'baseline — user would post this photo as-is', { userConfirmedAsIs: true }));
+  };
 
   const mask = () =>
     run('mask', async () => {
@@ -201,6 +211,7 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak }: LabProps
         const bytes = await browserImageOps.maskCells(original!, threat.masked, GRID);
         kit.ledger.add({ op: `Pixelate ${threat.masked.length} cells (your choice)`, route: 'local-js', ms: 40, bytesOut: 0 });
         setPublished(release(bytes, `masked by the user: ${threat.masked.join(',')}`));
+        setManual([]);
       } else {
         if (localBackend.prepare) await localBackend.prepare();
         setPublished(await threat.sanitize(privatePhoto.current!, clues, verdict, kit));
@@ -211,6 +222,12 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak }: LabProps
   const clueAt = (cell: number) => clues.find((c) => c.cell === cell && !threat.masked.includes(c.cell));
   const attackerAt = (cell: number) => verdict?.clues.find((c) => c.cell === cell && !threat.masked.includes(c.cell));
   const canPick = degraded && (stage === 'scanned' || stage === 'attacked');
+  const chosen = manual.filter((c) => !threat.masked.includes(c)).sort((x, y) => x - y);
+  const maskLabel = !chosen.length
+    ? 'Tap the cells to mask'
+    : chosen.length > 6
+      ? `Mask these ${chosen.length} cells`
+      : `Mask cell${chosen.length > 1 ? 's' : ''} ${chosen.join(', ')}`;
 
   return (
     <>
@@ -220,12 +237,14 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak }: LabProps
           <h2>
             <span className="step">1</span> Your photo
           </h2>
-          <span className="chip private">{published ? 'released for publication' : 'private · stays on this device'}</span>
+          <span className={`chip ${!published && sentAsIs ? 'asis' : 'private'}`}>
+            {published ? 'released for publication' : sentAsIs ? 'sent as-is to the attacker · your choice' : 'private · stays on this device'}
+          </span>
         </div>
         <p className="context">
           {source === 'demo' ? 'About to post a selfie from home · illustrated scene, fictional street in Palma' : 'Your photo · decoded and EXIF-stripped on this device'}
           {' · '}
-          <span className="private-note">real location: {truthLabel}</span>
+          <span className="private-note">your real location, known only to this device: {truthLabel}</span>
         </p>
         {stage === 'photo' && (
           <div className="photo-tools">
@@ -256,10 +275,11 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak }: LabProps
                 return (
                   <button
                     key={cell}
-                    className={`cell ${c ? 'clue' : ''} ${a && !safe ? 'attacker' : ''} ${isMasked ? 'masked' : ''} ${picked && !isMasked ? 'picked' : ''}`}
+                    className={`cell ${c ? 'clue' : ''} ${a && !safe ? 'attacker' : ''} ${isMasked ? 'masked' : ''} ${picked && !isMasked && canPick ? 'picked' : ''}`}
                     disabled={!canPick || isMasked}
                     onClick={() => setManual((m) => (m.includes(cell) ? m.filter((x) => x !== cell) : [...m, cell]))}
-                    aria-label={`Cell ${cell}${c ? `: ${c.what}` : ''}`}
+                    aria-label={`Cell ${cell}${c ? `: ${c.what}` : ''}${a && !safe ? ', used by the attacker' : ''}${isMasked ? ', masked' : ''}`}
+                    aria-pressed={canPick && !isMasked ? picked : undefined}
                   >
                     <span className="n">{cell}</span>
                     {c && <span className="tag">{c.kind}</span>}
@@ -275,6 +295,7 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak }: LabProps
           <div className="findings one">
             <div className="finding-col">
               <h3>{degraded ? 'No local model: tap the cells you want to mask' : 'Location clues found on your device'}</h3>
+              {canPick && verdict && chosen.length > 0 && <p className="hint">Already selected: the cells the attacker used. Tap a cell to add or remove it.</p>}
               {clues.filter((c) => !threat.masked.includes(c.cell)).length === 0 && !degraded ? (
                 <p className="good">{threat.masked.length ? `Masked ${threat.masked.length} cells on-device: ${threat.masked.join(', ')}.` : 'None found.'}</p>
               ) : (
@@ -300,6 +321,13 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak }: LabProps
         </div>
         <p className="context">A cloud geolocation AI sees only the version you would post, and guesses where you are. Your device scores the guess.</p>
         <Radar km={verdict ? shownKm(verdict) : null} title={verdictTitle} subtitle={verdict ? `Guess: ${verdict.place}` : ''} level={level} history={history} scanning={busy === 'attack'} />
+        <p className="sr-only" aria-live="polite">
+          {busy === 'attack'
+            ? 'The attacker is looking at your photo.'
+            : verdict
+              ? `${verdictHeadline}. ${reason === 'readable' ? `Its guess: ${verdict.place}` : verdictTitle}.`
+              : ''}
+        </p>
         {verdict && (
           <>
             <div className="score">
@@ -308,7 +336,7 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak }: LabProps
                 <strong>{verdictHeadline}</strong>
                 <p>
                   {verdictDetail}
-                  {history.length > 1 ? ` First attempt: ${formatKm(history[0])}.` : ''}
+                  {history.length > 1 ? ` Before masking: ${formatKm(history[0])}.` : ''}
                 </p>
               </div>
             </div>
@@ -338,8 +366,8 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak }: LabProps
           </button>
         )}
         {stage === 'attacked' && (
-          <button className="safe" onClick={mask} disabled={!!busy || (degraded && manual.length === 0)}>
-            {busy ? 'Masking on your device…' : degraded ? `Mask ${manual.length} cells` : published ? 'Mask what the attacker used' : 'Mask clues on-device'}
+          <button className="safe" onClick={mask} disabled={!!busy || (degraded && chosen.length === 0)}>
+            {busy ? 'Masking on your device…' : degraded ? maskLabel : published ? 'Mask what the attacker used' : 'Mask clues on-device'}
           </button>
         )}
         {stage === 'masked' && published && (
@@ -356,7 +384,7 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak }: LabProps
               </button>
             </>
           ) : (
-            <span className="done">{published ? 'Safe to post: the attacker can only say “' + verdict?.place + '”.' : 'Already safe to post.'}</span>
+            <span className="done">{published ? 'Looks safe to post: the attacker can only say “' + verdict?.place + '”.' : 'Looks safe to post as it is.'}</span>
           ))}
       </footer>
     </>

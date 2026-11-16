@@ -125,7 +125,10 @@ export class CloudModel {
     const bytes = sizeOf(resolved);
     const t0 = performance.now();
     const res = await this.backend.generate(resolved, opts);
-    this.ledger.add({ op: opts.op, route: 'cloud', ms: Math.round(performance.now() - t0), bytesOut: bytes, note: res.source === 'recorded' ? 'recorded' : undefined });
+    // The user may choose to send their original as it is ("Attack it as I would post it"): allowed, and said so.
+    const asIs = parts.some((p) => (p instanceof Publishable && p.confirmedAsIs) || (typeof p === 'object' && 'image' in p && p.image.confirmedAsIs));
+    const note = [asIs ? 'original, sent as-is by your choice' : '', res.source === 'recorded' ? 'recorded' : ''].filter(Boolean).join(' · ');
+    this.ledger.add({ op: opts.op, route: 'cloud', ms: Math.round(performance.now() - t0), bytesOut: bytes, note: note || undefined });
     return res;
   }
 }

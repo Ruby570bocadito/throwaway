@@ -195,7 +195,7 @@ describe('rewrite: fixed rules first, then the style', () => {
       { phrase: 'Lisbon', generic: '', by: 'rule' },
       { phrase: 'March', generic: 'recently', by: 'rule' },
     ]);
-    expect(ledger.all.find((e) => e.op === 'Check the final text for details')?.note).toBe('no model · 3 details added by the rewrite');
+    expect(ledger.all.find((e) => e.op === 'Check the final text for details')?.note).toBe('no model · generalised 3 details the rewrite added');
   });
 
   it('live run on the public URL (16-nov): Nano missed "6 people to 2" and the rewrite kept the team size; now it cannot', async () => {

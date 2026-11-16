@@ -1,7 +1,7 @@
 // Builds the framework kit for the app: real Firebase AI Logic when configured, recorded responses otherwise.
 
-import { CloudModel, Ledger, LocalModel, publicData } from './framework';
-import { firebaseHybrid } from './framework/firebase';
+import { CloudModel, Ledger, LocalModel, publicData, type ModelBackend } from './framework';
+import type { FirebaseHybridConfig } from './framework/firebase';
 import { demoBackends } from './demo/recorded';
 import { DECOYS, MARTA_PUBLIC, SELF_ID } from './demo/scenario';
 import { authorshipThreat } from './threats/authorship';
@@ -16,7 +16,7 @@ export const isLive = () => isConfigured() && !demoRequested();
 export function buildKit(ledger: Ledger) {
   const live = isLive();
   const backends = live
-    ? firebaseHybrid({
+    ? lazyFirebase({
         firebase: {
           apiKey: env.VITE_FIREBASE_API_KEY,
           authDomain: env.VITE_FIREBASE_AUTH_DOMAIN,
@@ -40,4 +40,32 @@ export function buildAuthorship(onAttempt: (pickId: string, i: number) => void) 
     decoys: DECOYS.map((d) => ({ id: d.id, text: publicData(d.corpus, 'public decoy') })),
     onAttempt,
   });
+}
+
+type Hybrid = ReturnType<typeof import('./framework/firebase').firebaseHybrid>;
+
+/**
+ * Live backends that load the Firebase SDK on demand: the recorded demo (what most visitors open) never downloads it,
+ * and live mode starts loading it right after the first paint, so App Check has a token before the first click.
+ */
+function lazyFirebase(cfg: FirebaseHybridConfig) {
+  let loaded: Promise<Hybrid> | null = null;
+  const load = () =>
+    (loaded ??= import('./framework/firebase')
+      .then((m) => m.firebaseHybrid(cfg))
+      .catch((e) => {
+        loaded = null; // let the next call retry
+        throw e;
+      }));
+  setTimeout(() => void load().catch(() => undefined), 0);
+  const local: ModelBackend & { prepare: (onProgress?: (p: number) => void) => Promise<void> } = {
+    name: 'Gemini Nano (on-device)',
+    generate: async (parts, opts) => (await load()).local.generate(parts, opts),
+    prepare: async (onProgress) => (await load()).local.prepare(onProgress),
+  };
+  const cloud: ModelBackend = {
+    name: `${cfg.cloudModel} (cloud)`,
+    generate: async (parts, opts) => (await load()).cloud.generate(parts, opts),
+  };
+  return { local, cloud };
 }

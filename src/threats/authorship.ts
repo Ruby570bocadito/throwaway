@@ -422,7 +422,7 @@ export function authorshipThreat(o: AuthorshipOptions): Threat<string, Clue, Aut
         route: 'local-js',
         ms: Math.round(performance.now() - t1),
         bytesOut: 0,
-        note: `no model · ${extra.length} not flagged by Nano`,
+        note: `no model · found ${extra.length} that Nano missed`,
       });
       return [
         ...style.map((m) => ({ phrase: m.phrase, kind: 'style' as const, why: m.why })),
@@ -488,7 +488,7 @@ export function authorshipThreat(o: AuthorshipOptions): Threat<string, Clue, Aut
         route: 'local-js',
         ms: Math.round(performance.now() - t1),
         bytesOut: 0,
-        note: added.length ? `no model · ${count(added.length, 'detail')} added by the rewrite` : 'no model',
+        note: added.length ? `no model · generalised ${count(added.length, 'detail')} the rewrite added` : 'no model',
       });
 
       // Meaning check on the device: the original never leaves; the claims are listed in generic words.
@@ -526,7 +526,7 @@ export function authorshipThreat(o: AuthorshipOptions): Threat<string, Clue, Aut
               '\n\nLINEUP:',
               ...order.flatMap((c, k) => [`\n\nWriter ${LETTERS[k]}:\n`, new Public(c.corpus.slice(0, 900), 'lineup')]),
             ],
-            { json: true, schema: attackSchema(order.map((_, k) => LETTERS[k])), op: `Attack ${i + 1}/${attempts}` },
+            { json: true, schema: attackSchema(order.map((_, k) => LETTERS[k])), op: `Attack attempt ${i + 1} of ${attempts}` },
           );
           const parsed = parseModelJson<{ pick?: string; reasons?: string[] }>(res.text);
           const k = LETTERS.indexOf(String(parsed.pick ?? '').trim().toUpperCase().replace(/^WRITER\s+/, ''));
@@ -539,7 +539,7 @@ export function authorshipThreat(o: AuthorshipOptions): Threat<string, Clue, Aut
           // A privacy block is never swallowed. A busy or broken cloud answer costs one attempt, not the whole attack.
           if (e instanceof PrivacyViolation) throw e;
           lastError = e;
-          kit.ledger.add({ op: `Attack ${i + 1}/${attempts}`, route: 'cloud', ms: 0, bytesOut: 0, note: 'no answer (model busy)' });
+          kit.ledger.add({ op: `Attack attempt ${i + 1} of ${attempts}`, route: 'cloud', ms: 0, bytesOut: 0, note: 'no answer (model busy)' });
         }
         picks.push(pickId);
         o.onAttempt?.(pickId, i);

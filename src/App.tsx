@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import './App.css';
 import { clearTaint, Ledger, type LedgerEntry } from './framework';
-import { deviceModelStatus } from './framework/firebase';
+import { deviceModelStatus } from './framework/device';
 import { buildKit, isConfigured } from './kit';
 import { TextLab } from './labs/TextLab';
 import { PhotoLab } from './labs/PhotoLab';
@@ -51,6 +51,7 @@ export default function App() {
 
   const sentOut = entries.reduce((a, e) => a + e.bytesOut, 0);
   const blocked = entries.filter((e) => e.route === 'blocked' && e.op.startsWith('Leak')).length;
+  const sentAsIs = entries.some((e) => e.note?.includes('sent as-is by your choice'));
   const labProps = { kit, localBackend: backends.local as { prepare?: () => Promise<void> }, degraded, registerLeak };
 
   return (
@@ -132,7 +133,13 @@ export default function App() {
               >
                 Try to leak the original
               </button>
-              <span className="chip">{blocked ? `${blocked} leak attempt${blocked > 1 ? 's' : ''} blocked` : 'original never left the device'}</span>
+              <span className="chip">
+                {blocked
+                  ? `${blocked} leak attempt${blocked > 1 ? 's' : ''} blocked`
+                  : sentAsIs
+                    ? 'original sent only for your as-is test'
+                    : 'original never left the device'}
+              </span>
             </div>
           </div>
           <p id="leak-help" className="hint">

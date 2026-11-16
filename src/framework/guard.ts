@@ -10,7 +10,9 @@ export class PrivacyViolation extends Error {
   readonly where: string;
   readonly evidence: string;
   constructor(where: string, evidence: string) {
-    super(`Blocked: private data was about to leave the device (${where}). Matched: “${evidence}”`);
+    // `evidence` can be a span of the private original: it stays on the error for debugging, never in the message,
+    // which ends up in the route ledger and on screen (review, 16-nov: a ledger note showed a private fragment).
+    super(`Blocked: private data was about to leave the device (${where}).`);
     this.name = 'PrivacyViolation';
     this.where = where;
     this.evidence = evidence;

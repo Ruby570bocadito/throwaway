@@ -42,14 +42,17 @@ export function TextLab({ kit, localBackend, degraded, registerLeak }: LabProps)
   const [picks, setPicks] = useState<string[]>([]);
   const [current, setCurrent] = useState<string | null>(null);
   const [busy, setBusy] = useState('');
+  // "Attack it as I would post it" sends the draft as it is: the user's choice, and the chip says so.
+  const [sentAsIs, setSentAsIs] = useState(false);
   const [error, setError] = useState('');
   const privateDraft = useRef<Private<string> | null>(null);
   // On-device steps can take a while on a laptop (measured: 15–40 s each): show which one just finished.
   const [lastStep, setLastStep] = useState('');
   useEffect(() => {
-    const off = kit.ledger.subscribe((e) =>
-      setLastStep(e[0] ? `${e[0].op}${e[0].note && e[0].note !== 'recorded' ? ` · ${e[0].note}` : ' ✓'}` : ''),
-    );
+    const off = kit.ledger.subscribe((e) => {
+      const note = e[0]?.note?.replace(/( · )?recorded$/, '');
+      setLastStep(e[0] ? `${e[0].op}${note ? ` · ${note}` : ' ✓'}` : '');
+    });
     return () => {
       off();
     };
@@ -105,6 +108,7 @@ export function TextLab({ kit, localBackend, degraded, registerLeak }: LabProps)
   async function run(label: string, fn: () => Promise<void>) {
     setBusy(label);
     setError('');
+    setLastStep('');
     try {
       await fn();
     } catch (e) {
@@ -149,7 +153,10 @@ export function TextLab({ kit, localBackend, degraded, registerLeak }: LabProps)
     });
 
   // Baseline: the user confirms they would publish the draft exactly as it is, so the attacker may see it.
-  const attackAsIs = () => attack(release(draft, 'baseline — user would publish as-is', { userConfirmedAsIs: true }), false);
+  const attackAsIs = () => {
+    setSentAsIs(true);
+    return attack(release(draft, 'baseline — user would publish as-is', { userConfirmedAsIs: true }), false);
+  };
 
   const rewrite = () =>
     run('rewrite', async () => {
@@ -174,7 +181,9 @@ export function TextLab({ kit, localBackend, degraded, registerLeak }: LabProps)
           <h2>
             <span className="step">1</span> Your anonymous post
           </h2>
-          <span className="chip private">{published ? 'released for publication' : 'private · stays on this device'}</span>
+          <span className={`chip ${!published && sentAsIs ? 'asis' : 'private'}`}>
+            {published ? 'released for publication' : sentAsIs ? 'sent as-is to the attacker · your choice' : 'private · stays on this device'}
+          </span>
         </div>
         <p className="context">Glassdoor review · posted from a throwaway account</p>
         {editing ? (
@@ -186,6 +195,12 @@ export function TextLab({ kit, localBackend, degraded, registerLeak }: LabProps)
           />
         ) : (
           <Highlighted text={shownText} marks={[...styleClues, ...contentClues]} />
+        )}
+        {degraded && stage === 'attacked' && (
+          <p className="hint">Your turn to rewrite (no local model here): edit the text above, drop the habits and details listed below, then use your edited version.</p>
+        )}
+        {published && claims && (
+          <p className="hint">Rewritten in a plain, neutral voice on purpose: your writing style is what gave you away.</p>
         )}
 
         {stage !== 'draft' && (
@@ -246,13 +261,13 @@ export function TextLab({ kit, localBackend, degraded, registerLeak }: LabProps)
 
         <div className="meter">
           <div>
-            <span className="meter-label">Local fingerprint match</span>
+            <span className="meter-label">Your rank among ten writers (#1 = reads most like you)</span>
             <strong className={stylo.rank === 1 ? 'bad' : 'good'}>#{stylo.rank} of 10</strong>
           </div>
           <div className="bar">
             <i style={{ width: `${Math.round(stylo.score * 100)}%` }} className={stylo.score > 0.6 ? 'bad' : 'good'} />
           </div>
-          <small>Burrows’ Delta on function words · computed in your browser · 0 bytes sent</small>
+          <small>Local fingerprint: Burrows’ Delta on function words · computed in your browser · 0 bytes sent</small>
         </div>
       </section>
 
@@ -280,7 +295,7 @@ export function TextLab({ kit, localBackend, degraded, registerLeak }: LabProps)
             );
           })}
         </div>
-        <div className="score">
+        <div className="score" aria-live="polite">
           {busy === 'attack' || !final ? (
             <>
               <div className="big">{picks.length ? `${hits}/${picks.length}` : '—'}</div>
@@ -349,7 +364,7 @@ export function TextLab({ kit, localBackend, degraded, registerLeak }: LabProps)
               Your style is hidden, but {contentClues.length} detail{contentClues.length > 1 ? 's' : ''} can still identify you.
             </span>
           ) : (
-            <span className="done">Safe to publish: you are just one of ten, and no identifying details are left.</span>
+            <span className="done">Looks safe to publish: in this test you are one of ten, and no identifying details are left.</span>
           ))}
       </footer>
     </>
