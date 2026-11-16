@@ -1,10 +1,11 @@
 import { useDeferredValue, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
-import { styleMarkers } from '../engine/stylometry';
-import { DECOYS, DRAFT, LINEUP, MARTA_PUBLIC, SELF_ID } from '../demo/scenario';
+import { styleMarkers, type Reliability } from '../engine/stylometry';
+import { DECOYS, DRAFT, MARTA_PUBLIC, SELF_ID } from '../demo/scenario';
+import { FIELD_IDS, FIELD_LABELS, type DecoyPackId } from '../demo/fields';
 import { PrivacyViolation, release, secret, type Private, type Publishable } from '../framework';
 import { hasPhrase, ruleDetails, type AuthorshipVerdict, type Clue } from '../threats/authorship';
-import { buildAuthorship } from '../kit';
+import { buildAuthorship, lineupField, loadDecoyPacks, type DecoyPacks } from '../kit';
 import { ErrorNote, friendlyError, Silhouette, type LabProps } from '../ui/shared';
 import { Compare } from '../ui/Compare';
 import { Stepper, type StepDef } from '../ui/Stepper';
@@ -13,6 +14,14 @@ import { useAnimatedNumber } from '../ui/motion';
 
 type Stage = 'draft' | 'scanned' | 'attacked' | 'rewritten' | 'reattacked';
 const LETTERS = 'ABCDEFGHIJ';
+// Fixed seats on screen: you and the nine writers, always in this order (the attacker gets its own shuffle every time).
+const SEATS = [3, 7, 0, 5, 9, 1, 8, 2, 6, 4];
+const CONFIDENCE: Record<Reliability['level'], string> = {
+  'too-short': 'Too short to tell',
+  low: 'Low confidence',
+  medium: 'Medium confidence',
+  high: 'High confidence',
+};
 const STAGE_STEP: Record<Stage, number> = { draft: 0, scanned: 1, attacked: 2, rewritten: 3, reattacked: 4 };
 
 // What each long action is expected to leave in the ledger, in order (see threats/authorship.ts).
@@ -95,13 +104,42 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
   const privateDraft = useRef<Private<string> | null>(null);
   const acted = useRef(false);
 
+  // The nine writers next to you write about what you write about, so only your style can single you out (lineupField
+  // says why the post's own field does not decide it). Until you add your own public writing, the sample writer stands in
+  // for you, and so do the designers next to her. The other fields load only once you open the section for your writing.
+  const ownText = recorded ? '' : ownPublic.trim();
+  const [field, setField] = useState<DecoyPackId | 'auto'>('auto');
+  const [wantPacks, setWantPacks] = useState(false);
+  const [packs, setPacks] = useState<DecoyPacks | null>(null);
+  const [packsFailed, setPacksFailed] = useState(false);
+  const needPacks = ownText !== '';
+  useEffect(() => {
+    if (!(wantPacks || needPacks) || packs || packsFailed) return;
+    let wanted = true;
+    loadDecoyPacks().then(
+      (m) => wanted && setPacks(m),
+      () => wanted && setPacksFailed(true), // offline: the designers stay, and the line under the lineup says so
+    );
+    return () => {
+      wanted = false;
+    };
+  }, [wantPacks, needPacks, packs, packsFailed]);
+  const lineupOf = useMemo(() => lineupField(ownText, packs, field), [ownText, packs, field]);
+  const decoys = packs ? packs.DECOY_PACKS[lineupOf.field].decoys : DECOYS;
+  // A lineup that is still loading cannot be scanned against: the scan's style habits are measured against these writers.
+  const lineupPending = needPacks && !packs && !packsFailed;
+
   const threat = useMemo(
     () =>
-      buildAuthorship((pickId) => {
-        setCurrent(pickId);
-        setPicks((p) => [...p, pickId]);
-      }, ownPublic),
-    [ownPublic],
+      buildAuthorship(
+        (pickId) => {
+          setCurrent(pickId);
+          setPicks((p) => [...p, pickId]);
+        },
+        ownPublic,
+        decoys,
+      ),
+    [ownPublic, decoys],
   );
 
   // The shell's "Try to leak" button: a careless developer concatenates the draft into a cloud prompt.
@@ -127,7 +165,10 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
   }, [stage, busy, dock]);
 
   // Fixed on-screen letters. Only this browser knows which card is "you"; the attacker gets a fresh shuffle each time.
-  const lineup = useMemo(() => [3, 7, 0, 5, 9, 1, 8, 2, 6, 4].map((i, k) => ({ ...LINEUP[i], letter: LETTERS[k] })), []);
+  const lineup = useMemo(() => {
+    const ids = [SELF_ID, ...decoys.map((d) => d.id)];
+    return SEATS.map((i, k) => ({ id: ids[i], letter: LETTERS[k] }));
+  }, [decoys]);
 
   const shownText = published ? published.value : stage === 'draft' ? draft : degraded && edited ? edited : draft;
   // The fingerprint meter sits below the fold: it is computed when it comes into view (or once a scan starts), in a
@@ -145,10 +186,13 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
   const fingerprintText = useDeferredValue(meterNear || stage !== 'draft' ? shownText : '', '');
   const stylo = useMemo(() => (fingerprintText ? threat.fingerprint(fingerprintText) : null), [threat, fingerprintText]);
   const rank = useAnimatedNumber(stylo?.rank ?? 1, { duration: 900 });
+  // How far to trust that rank: below 50 words it is not shown at all; above, resampling the words says how much it moves.
+  const trust = stylo?.reliability ?? null;
+  const tooShort = trust?.level === 'too-short';
   // Habits in the version you would post: only needed once there is one.
   const liveStyle = useMemo(
-    () => (published ? styleMarkers(shownText, selfCorpus, DECOYS.map((d) => d.corpus)).map((m) => ({ ...m, kind: 'style' as const })) : []),
-    [published, shownText, selfCorpus],
+    () => (published ? styleMarkers(shownText, selfCorpus, decoys.map((d) => d.corpus)).map((m) => ({ ...m, kind: 'style' as const })) : []),
+    [published, shownText, selfCorpus, decoys],
   );
   const styleClues = published ? liveStyle : clues.filter((c) => c.kind === 'style');
   // After a rewrite, trust the fresh on-device re-check of the final text; for a manual edit, fall back to string matching.
@@ -192,7 +236,7 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
       if (degraded) {
         // No local model: only the deterministic fingerprint and fixed rules run. Nothing is sent anywhere.
         const rules = ruleDetails(draft).map((d) => ({ ...d, kind: 'content' as const }));
-        setClues([...styleMarkers(draft, selfCorpus, DECOYS.map((d) => d.corpus)).map((m) => ({ ...m, kind: 'style' as const })), ...rules]);
+        setClues([...styleMarkers(draft, selfCorpus, decoys.map((d) => d.corpus)).map((m) => ({ ...m, kind: 'style' as const })), ...rules]);
         kit.ledger.add({ op: 'Fingerprint (Burrows’ Delta)', route: 'local-js', ms: 3, bytesOut: 0 });
         kit.ledger.add({ op: 'Find identifying details', route: 'blocked', ms: 0, bytesOut: 0, note: 'no local model — skipped, not sent to cloud' });
         kit.ledger.add({ op: 'Find counts and dates (fixed rules)', route: 'local-js', ms: 1, bytesOut: 0, note: `no model · ${rules.length} found` });
@@ -263,6 +307,20 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
   ];
   const outcome = stage === 'reattacked' ? (contentClues.length ? 'warn' : 'good') : null;
 
+  // The line under the lineup: whose field the nine writers share, and what follows from it.
+  const canPickField = stage === 'draft' && !!ownText && !!packs;
+  const fieldNote = !ownText
+    ? recorded || draft === DRAFT
+      ? ', like you: the attacker has to recognise a style, not a subject.'
+      : ', like the sample writer who stands in for you until you add your own public writing.'
+    : packsFailed
+      ? ' (the other fields did not load).'
+      : !lineupOf.clear
+        ? `: no field stood out in your writing${stage === 'draft' ? ', so pick the closest one' : ''}.`
+        : lineupOf.wanted === lineupOf.matched
+          ? ', like you: the attacker has to recognise a style, not a subject.'
+          : `. Your writing reads as ${FIELD_LABELS[lineupOf.matched]}, so the attacker may go by subject, not style.`;
+
   const busyLabel =
     busy === 'scan'
       ? degraded
@@ -290,7 +348,7 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
       )}
       <div className="dock-row">
         {stage === 'draft' && (
-          <button className="primary" onClick={scan} disabled={!!busy || !draft.trim()} aria-busy={busy === 'scan'}>
+          <button className="primary" onClick={scan} disabled={!!busy || !draft.trim() || lineupPending} aria-busy={busy === 'scan'}>
             {busy ? <Busy label={busyLabel} /> : 'Scan my post locally'}
           </button>
         )}
@@ -385,7 +443,7 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
           </div>
         )}
         {stage === 'draft' && !recorded && (
-          <details className="own-writing">
+          <details className="own-writing" onToggle={(e) => e.currentTarget.open && setWantPacks(true)}>
             <summary>Compare with your own public writing{ownWords ? ` · ${ownWords} words` : ' (optional)'}</summary>
             <p className="hint">
               Paste things you have already published under your name: blog posts, LinkedIn posts, comments. The fingerprint compares them with your
@@ -486,14 +544,25 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
         <div className="meter" ref={meterRef}>
           <div className="meter-top">
             <span className="meter-label">Your rank among ten writers (#1 = reads most like you)</span>
-            <strong className={!stylo ? '' : stylo.rank === 1 ? 'bad' : 'good'}>
-              #{stylo ? Math.round(rank) : '–'} <span>of 10</span>
+            <strong className={!stylo || tooShort ? '' : stylo.rank === 1 ? 'bad' : 'good'}>
+              #{stylo && !tooShort ? Math.round(rank) : '–'} <span>of 10</span>
             </strong>
           </div>
           <div className="bar">
-            <i style={{ transform: `scaleX(${stylo?.score ?? 0})` }} className={(stylo?.score ?? 0) > 0.6 ? 'bad' : 'good'} />
+            <i style={{ transform: `scaleX(${stylo && !tooShort ? stylo.score : 0})` }} className={(stylo?.score ?? 0) > 0.6 ? 'bad' : 'good'} />
           </div>
-          <small>Local fingerprint: Burrows’ Delta on function words · computed in your browser · 0 bytes sent</small>
+          {trust && (
+            <div className={`trust ${trust.level}`}>
+              <span className="conf">{CONFIDENCE[trust.level]}</span>
+              {!tooShort && (
+                <span>
+                  {trust.rankRange[0] === trust.rankRange[1] ? `Steady at #${trust.rankRange[0]}` : `Likely #${trust.rankRange[0]} to #${trust.rankRange[1]}`}
+                </span>
+              )}
+              {trust.notes.length > 0 && <p className="trust-notes">{trust.notes.join(' ')}</p>}
+            </div>
+          )}
+          <small>Local fingerprint: Burrows’ Delta on function words, range from 100 resamples · in your browser · 0 bytes sent</small>
           {draft !== DRAFT && !ownPublic.trim() && !recorded && (
             <p className="hint">Compared with the sample writer’s public posts. Add your own public writing above for a fingerprint of you.</p>
           )}
@@ -509,6 +578,32 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
           <span className="chip public">what the cloud sees</span>
         </div>
         <p className="context">A cloud AI gets the text and ten public writers, shuffled on every attempt. It is never told which one is you.</p>
+        <p className="field-line">
+          {canPickField ? (
+            <label>
+              The other nine write about{' '}
+              <select
+                value={lineupOf.wanted}
+                disabled={!!busy}
+                onChange={(e) => {
+                  const id = e.target.value as DecoyPackId;
+                  setField(id === lineupOf.matched ? 'auto' : id);
+                }}
+              >
+                {FIELD_IDS.map((id) => (
+                  <option key={id} value={id}>
+                    {FIELD_LABELS[id]}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : (
+            <>
+              The other nine write about <strong>{FIELD_LABELS[lineupOf.field]}</strong>
+            </>
+          )}
+          {fieldNote}
+        </p>
         <div className={`suspects ${busy === 'attack' ? 'looking' : ''}`}>
           {lineup.map((c) => {
             const n = picks.filter((p) => p === c.id).length;

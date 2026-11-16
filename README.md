@@ -109,7 +109,7 @@ Live runs through Firebase AI Logic on 15 and 16-nov-2026 (cloud attacker: `gemi
 
 What the live runs taught us (and changed):
 
-- **Decoys must share your topic.** With off-topic decoys, the rewritten review was still attributed to its author 3/9 times, by subject ("the only one writing about design teams"). The lineup now uses writers from the same field.
+- **Decoys must share your topic.** With off-topic decoys, the rewritten review was still attributed to its author 3/9 times, by subject ("the only one writing about design teams"). The nine other writers now come from your own field: design, software, healthcare, finance or teaching, matched on your device to the public writing you add (you can pick another). The field follows your writing, not the post: with your writing about design and nine finance writers next to it, a finance post would point the attacker away from you by subject, and the attack would look safe. Until you add your writing, the sample writer and her designers stand in for you. The other fields' texts load only when you open that section.
 - **An attacker's confidence is not your exposure.** A confident wrong guess ("Venice, 5 km") looked like a leak. The photo threat now scores the guess against your real location, on your device, and the location never leaves it.
 - **Hiding your style is not hiding your story.** Gemini Nano's rewrite beat the lineup (0/10) but kept "Lisbon office", "three years" and "Figma migration": your manager would still know it was you. Five live iterations taught us to **let the small model decide what identifies you, and let deterministic code make sure it is gone**:
   - Pasted replacements broke the grammar ("the most recent a period") and chased generic words Nano over-flagged ("team", "transition").
@@ -147,7 +147,7 @@ The demo mode (`?demo`) replays the full v5 run recorded in Chrome on 16-nov: th
 ## Limits we know about
 
 - A cloud provider that sees many attempts could intersect lineups (you are the one constant). Throwaway limits attempts; decoy lineups are on the roadmap.
-- Stylometry on short texts is noisy. The fingerprint engine treats texts under 50 words as too short to tell, and above that measures how stable its rank is when the text is resampled (the demo post's #1 is only "low" confidence). The score is a signal, not proof.
+- Stylometry on short texts is noisy. Under 50 words the app shows no rank ("too short to tell"); above that it shows how far the rank moves when the text's words are resampled 100 times (the demo post's #1 is only "low" confidence: likely #1 to #7). The rank is a signal, not proof: the cloud attack is the real test.
 - Names and places depend on the local model: the fixed rules generalise those only when Gemini Nano flags them. Counts, dates, links, email addresses, @usernames and phone numbers are always generalised. The rules and the fingerprint are tuned for English. The rules' wording is plain, not elegant. Codes such as "24/7" are left as they are and stay reported.
 - The meaning check runs on the small local model and is lenient (live, it passed a garbled sentence). Read the final text before you post it.
 - Pixelation hides what a model can read today; it is not a guarantee against every future technique. Cropping is safer.

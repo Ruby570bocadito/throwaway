@@ -3,9 +3,10 @@
 // Every writer here is fictional; the texts were written for Throwaway, nine different voices per field.
 
 import { tokenize, FUNCTION_WORDS, type Candidate } from '../engine/stylometry';
+import { FIELD_LABELS, type DecoyPackId } from './fields';
 import { DECOYS } from './scenario';
 
-export type DecoyPackId = 'design' | 'technology' | 'healthcare' | 'finance' | 'education';
+export type { DecoyPackId };
 
 export interface DecoyPack {
   id: DecoyPackId;
@@ -91,7 +92,7 @@ Half term in three weeks. Counting.`),
 export const DECOY_PACKS: Record<DecoyPackId, DecoyPack> = {
   design: {
     id: 'design',
-    label: 'Design and product',
+    label: FIELD_LABELS.design,
     keywords: [
       'design', 'designer', 'ux', 'ui', 'figma', 'sketch', 'prototype', 'wireframe', 'mockup', 'typography', 'layout', 'pixel',
       'usability', 'interface', 'visual', 'brand', 'branding', 'component', 'critique', 'persona', 'accessibility', 'illustration',
@@ -101,7 +102,7 @@ export const DECOY_PACKS: Record<DecoyPackId, DecoyPack> = {
   },
   technology: {
     id: 'technology',
-    label: 'Software and technology',
+    label: FIELD_LABELS.technology,
     keywords: [
       'engineer', 'engineering', 'developer', 'dev', 'code', 'codebase', 'software', 'deploy', 'deployment', 'release', 'bug', 'outage',
       'incident', 'oncall', 'pager', 'server', 'cloud', 'kubernetes', 'microservice', 'api', 'backend', 'frontend', 'database', 'sql',
@@ -112,7 +113,7 @@ export const DECOY_PACKS: Record<DecoyPackId, DecoyPack> = {
   },
   healthcare: {
     id: 'healthcare',
-    label: 'Healthcare',
+    label: FIELD_LABELS.healthcare,
     keywords: [
       'nurse', 'nursing', 'patient', 'ward', 'hospital', 'clinic', 'doctor', 'physician', 'shift', 'icu', 'emergency', 'care', 'carer',
       'charting', 'medication', 'meds', 'triage', 'staffing', 'ratio', 'handover', 'consultant', 'surgeon', 'surgery', 'pharmacy', 'gp',
@@ -122,7 +123,7 @@ export const DECOY_PACKS: Record<DecoyPackId, DecoyPack> = {
   },
   finance: {
     id: 'finance',
-    label: 'Finance and accounting',
+    label: FIELD_LABELS.finance,
     keywords: [
       'bank', 'banking', 'banker', 'finance', 'financial', 'accounting', 'accountant', 'audit', 'auditor', 'tax', 'invoice', 'ledger',
       'reconciliation', 'budget', 'revenue', 'profit', 'cash', 'investment', 'investor', 'fund', 'trading', 'trader', 'analyst',
@@ -133,7 +134,7 @@ export const DECOY_PACKS: Record<DecoyPackId, DecoyPack> = {
   },
   education: {
     id: 'education',
-    label: 'Teaching and education',
+    label: FIELD_LABELS.education,
     keywords: [
       'teacher', 'teaching', 'school', 'student', 'pupil', 'class', 'classroom', 'lesson', 'homework', 'grade', 'grading', 'exam',
       'curriculum', 'principal', 'headteacher', 'district', 'university', 'lecturer', 'professor', 'faculty', 'semester', 'term',

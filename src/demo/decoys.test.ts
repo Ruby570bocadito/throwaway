@@ -2,7 +2,8 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { clearTaint, CloudModel, Ledger, LocalModel, release, type ModelBackend } from '../framework';
 import { burrowsDelta, tokenize } from '../engine/stylometry';
 import { identifiers } from '../threats/authorship';
-import { buildAuthorship } from '../kit';
+import { buildAuthorship, lineupField } from '../kit';
+import * as decoyPacks from './decoys';
 import { choosePack, DECOY_PACK_IDS, DECOY_PACKS } from './decoys';
 import { DECOYS, DRAFT } from './scenario';
 
@@ -88,12 +89,27 @@ describe('choosing the pack that matches the draft', () => {
   });
 });
 
-describe('buildAuthorship with a lineup choice', () => {
-  it('stays on design by default (the recorded run), and can pick the field of the draft', async () => {
-    expect(buildAuthorship(() => undefined).decoyPack).toBe('design');
-    expect(buildAuthorship(() => undefined, '', { decoys: 'finance' }).decoyPack).toBe('finance');
-    const threat = buildAuthorship(() => undefined, '', { decoys: 'auto', draft: DRAFTS.healthcare });
-    expect(threat.decoyPack).toBe('healthcare');
+describe('the field of the lineup', () => {
+  it('follows the writing that stands for the user, not the post', () => {
+    // No public writing of the user's: the sample writer, a designer, stands in, and so do the designers next to her,
+    // whatever the post is about (finance writers next to a designer would hide her by subject).
+    expect(lineupField('', decoyPacks).field).toBe('design');
+    expect(lineupField('   ', decoyPacks, 'finance').field).toBe('design');
+    // The user's own writing sets the field, and the user can pick another one.
+    expect(lineupField(DRAFTS.healthcare, decoyPacks)).toEqual({ matched: 'healthcare', clear: true, wanted: 'healthcare', field: 'healthcare' });
+    expect(lineupField(DRAFTS.healthcare, decoyPacks, 'finance')).toMatchObject({ matched: 'healthcare', field: 'finance' });
+    // Writing with no clear field stays with the designers, and says so.
+    expect(lineupField('The restaurant was lovely and the pasta was great, but the service was slow.', decoyPacks)).toMatchObject({ field: 'design', clear: false });
+    // Until the packs load, the designers stay.
+    expect(lineupField(DRAFTS.healthcare, null)).toMatchObject({ field: 'design', clear: true });
+  });
+});
+
+describe('buildAuthorship with the lineup of a field', () => {
+  it('stays on design by default (the recorded run), and attacks with the writers it is given', async () => {
+    expect(buildAuthorship(() => undefined).fingerprint(DRAFT).ranked.map((r) => r.id).sort()).toEqual(['marta', ...DECOYS.map((d) => d.id)].sort());
+    const threat = buildAuthorship(() => undefined, '', DECOY_PACKS[choosePack(DRAFTS.healthcare).id].decoys);
+    expect(threat.fingerprint(DRAFTS.healthcare).ranked.map((r) => r.id)).toEqual(expect.arrayContaining(['h1', 'h9']));
 
     // The attacker gets the healthcare writers next to the user, not the designers.
     const prompts: string[] = [];

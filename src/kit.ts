@@ -3,8 +3,9 @@
 import { CloudModel, Ledger, LocalModel, publicData, type ModelBackend } from './framework';
 import type { FirebaseHybridConfig } from './framework/firebase';
 import { demoBackends } from './demo/recorded';
-import { MARTA_PUBLIC, SELF_ID } from './demo/scenario';
-import { choosePack, DECOY_PACKS, type DecoyPackId } from './demo/decoys';
+import { DECOYS, MARTA_PUBLIC, SELF_ID } from './demo/scenario';
+import type { DecoyPackId } from './demo/fields';
+import type { Candidate } from './engine/stylometry';
 import { authorshipThreat } from './threats/authorship';
 
 const env = import.meta.env;
@@ -38,28 +39,46 @@ export function buildKit(ledger: Ledger) {
  * The authorship threat. `ownPublic` is writing the user has already published under their name: with it, the fingerprint
  * and the lineup compare the anonymous post with the user, not with the demo persona. It is public by definition, so it may
  * go to the attacker as one of the ten candidates (and the guard still blocks it if it carries the private draft).
+ *
+ * `decoys` are the nine public writers who stand next to the user: by default the recorded run's (design), or a pack of
+ * the post's own field from `loadDecoyPacks()`. With off-topic decoys the attacker finds the author by subject, not style.
  */
-export interface LineupChoice {
-  /**
-   * Which nine public writers stand next to the user: a field ('design' by default: the recorded run's lineup), or 'auto' to
-   * pick the field whose words best match `draft`. With off-topic decoys the attacker finds the author by subject.
-   */
-  decoys?: DecoyPackId | 'auto';
-  /** The draft, for 'auto'. Read here, in plain JS on the device; nothing is sent. */
-  draft?: string;
-}
-
-export function buildAuthorship(onAttempt: (pickId: string, i: number) => void, ownPublic = '', choice: LineupChoice = {}) {
+export function buildAuthorship(onAttempt: (pickId: string, i: number) => void, ownPublic = '', decoys: readonly Candidate[] = DECOYS) {
   const own = ownPublic.trim();
-  const pack = choice.decoys === 'auto' ? choosePack(choice.draft ?? '').id : (choice.decoys ?? 'design');
-  const threat = authorshipThreat({
+  return authorshipThreat({
     selfId: SELF_ID,
     self: own ? publicData(own, 'your public writing') : publicData(MARTA_PUBLIC, 'your public blog'),
-    decoys: DECOY_PACKS[pack].decoys.map((d) => ({ id: d.id, text: publicData(d.corpus, 'public decoy') })),
+    decoys: decoys.map((d) => ({ id: d.id, text: publicData(d.corpus, 'public decoy') })),
     onAttempt,
   });
-  // Which lineup this threat attacks with, so the UI can show the same nine writers (DECOY_PACKS[decoyPack].decoys).
-  return Object.assign(threat, { decoyPack: pack });
+}
+
+/**
+ * The decoy packs of every field and the local chooser (about 35 KB of text): loaded only when the user's own post needs
+ * a lineup, so the recorded demo and the first paint never download them. Choosing runs in plain JS on the device.
+ */
+export const loadDecoyPacks = () => import('./demo/decoys');
+export type DecoyPacks = Awaited<ReturnType<typeof loadDecoyPacks>>;
+
+/**
+ * The field of the nine decoys: the field of the writing that stands for the user in the lineup, so that all ten write
+ * about one subject and only style can single the user out. The post's field does not decide it. Decoys off the user's
+ * subject let the attacker find the user by subject (3/9 times in the live run on 15-nov); decoys on the post's subject
+ * next to writing of the user's that is not would hide the user the same way, and the attack would look safe. Until the
+ * user adds their own public writing, the sample writer (a designer) stands in for them, and so do the designers.
+ *
+ * `matched` is the field found in the user's writing, `clear` says whether one stood out (with none, the designers stay),
+ * `wanted` is the user's pick or the match, and `field` is the lineup in use: the designers until the packs have loaded.
+ */
+export function lineupField(ownPublic: string, packs: DecoyPacks | null, choice: DecoyPackId | 'auto' = 'auto') {
+  const own = ownPublic.trim();
+  const found = own && packs ? packs.choosePack(own) : null;
+  const matched: DecoyPackId = found?.id ?? 'design';
+  // choosePack falls back to design when no field has two of its own words in the text.
+  const clear = !found || found.id !== 'design' || found.matched.length >= 2;
+  const wanted: DecoyPackId = !own ? 'design' : choice === 'auto' ? matched : choice;
+  const field: DecoyPackId = packs ? wanted : 'design';
+  return { matched, clear, wanted, field };
 }
 
 type Hybrid = ReturnType<typeof import('./framework/firebase').firebaseHybrid>;
