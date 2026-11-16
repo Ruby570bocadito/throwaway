@@ -160,16 +160,20 @@ export function locationThreat(
         ],
         { json: true, schema: GEO_SCHEMA, op: 'Geolocation attack' },
       );
-      const v = parseModelJson<{ place?: string; lat?: number; lon?: number; radiusKm?: number; confidence?: string; clues?: PhotoClue[] }>(res.text);
-      const lat = Number.isFinite(Number(v.lat)) ? Number(v.lat) : null;
-      const lon = Number.isFinite(Number(v.lon)) ? Number(v.lon) : null;
+      const v = parseModelJson<{ place?: string; lat?: number | null; lon?: number | null; radiusKm?: number; confidence?: string; clues?: PhotoClue[] }>(res.text);
+      // "Unknown" at 0,0 is no guess at all, not a guess 4,500 km off (measured live, 16-nov). Note Number(null) is 0.
+      const noGuess =
+        /^\s*(unknown|unclear|undetermined|none|n\/a|not sure|cannot|unable)/i.test(String(v.place ?? 'unknown')) ||
+        v.lat == null || v.lon == null || (Number(v.lat) === 0 && Number(v.lon) === 0);
+      const lat = !noGuess && Number.isFinite(Number(v.lat)) ? Number(v.lat) : null;
+      const lon = !noGuess && Number.isFinite(Number(v.lon)) ? Number(v.lon) : null;
       // Scored on the device: the user's real location never leaves it.
       const errorKm = o.truth && lat !== null && lon !== null ? distanceKm({ lat, lon }, Private.openLocally(o.truth)) : null;
       return {
-        place: String(v.place ?? 'unknown'),
+        place: noGuess ? 'unknown' : String(v.place),
         lat,
         lon,
-        radiusKm: Number(v.radiusKm) > 0 ? Number(v.radiusKm) : 20000,
+        radiusKm: !noGuess && Number(v.radiusKm) > 0 ? Number(v.radiusKm) : 20000,
         confidence: String(v.confidence ?? 'low'),
         clues: (Array.isArray(v.clues) ? v.clues : []).filter((c: PhotoClue) => validCell(c.cell) && !threat.masked.includes(c.cell)),
         errorKm,

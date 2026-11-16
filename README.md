@@ -61,6 +61,8 @@ Copy `.env.example` to `.env.local` and fill in your Firebase config to enable l
 
 No Gemini Nano in your Chrome? Add `?demo` to the URL (or click **Replay a recorded run**). The app replays recorded model answers through the same framework: privacy guard, fixed rules, ledger and shuffled lineups.
 
+Testing or recording a video with your own photo but not your real location? Add `#truth=<lat>,<lon>` to the address (for example `#truth=38.7116,-9.1297`). It sets the location the photo is scored against, and a URL fragment never reaches a server.
+
 ### Deploy (Firebase Hosting)
 
 1. Create a reCAPTCHA Enterprise (Fraud Defense) **web key** for your Hosting domains, score-based (no challenge). Do not add `localhost`.
@@ -95,6 +97,11 @@ Live runs through Firebase AI Logic on 15 and 16-nov-2026 (cloud attacker: `gemi
 | Photo, as-is | "Carrer de la Llum, 23, Palma", 0.5 km, high confidence: it read the plaque, the house number and the Catalan bakery sign |
 | Photo, clues found by Gemini Nano **on the device** | Cells 3 (street plaque), 7 (house number), 8 (bakery sign), 12 (orange tree) and 1 (a poster it read as a "Japanese flag") |
 | Photo, those 5 cells pixelated on the device | "Rome, Italy", low confidence: ~950 km off |
+| Photo test set (16-nov): four AI-generated phone photos (Muse Image), real attacker, cells masked by hand | |
+| · Lisbon street with a readable plaque | As-is: "Rua de São Miguel, Alfama", 34 m off (it read the plaque). With 3 cells masked it read the house number. With 8 of 16 masked: still "Lisbon", ~0.9 km, high confidence |
+| · Paris window with a blue street sign | As-is: 27 m off (it read "Rue Oberkampf"). Sign masked: "Paris", ~2 km, low confidence |
+| · Tokyo lane with shop signs | "Tokyo", ~3 km, low confidence, before and after masking the signs |
+| · Selfie by a window with only trees | "Unknown": safe as-is |
 
 What the live runs taught us (and changed):
 
@@ -110,6 +117,8 @@ What the live runs taught us (and changed):
 - **Small models copy examples wherever they are in the prompt**, not only in JSON templates: placeholders, then the examples in our instructions. The prompts now carry none.
 - **A readable address is exposure even when the AI gets the city wrong.** On the as-is photo a live run read the plaque and the house number but said "Barcelona" (the street is fictional), 206 km from the scene. Scoring only by distance called that safe; a person would simply search that address everywhere. Street names, house numbers and plates now count as exposure on their own.
 - **Your face is not a location clue.** Gemini Nano also flagged the person in the selfie; people are now excluded, so Throwaway never pixelates the face you want to post.
+- **Masking hides your street, not always your city.** On realistic test photos, masking took the attacker from your exact address to your city, but a street where every cell says Lisbon (tiles, cobblestones, tram tracks) still says Lisbon with half the photo masked. Throwaway keeps saying "found you" and shows which cells still help. When that happens, crop the photo or post another one.
+- **"Unknown" is not a place.** When the attacker could not place a photo it answered "Unknown" at 0,0, and the app first showed "off by 4,510 km" (the distance to that point). A guess with no place or coordinates is now treated as no guess.
 - **On-device structured output is set per model instance.** Gemini Nano ignored `generationConfig` and wrapped JSON in markdown; the framework now passes a JSON schema as Chrome's `responseConstraint`.
 - `gemini-3.8-flash` took 40–60 s per call on the free tier, too slow for a ten-attempt lineup, so the attacker defaults to Flash-Lite.
 

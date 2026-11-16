@@ -36,6 +36,18 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak }: LabProps
   const [threat, setThreat] = useState(() => locationThreat({ ops: browserImageOps, truth: secret(DEMO_TRUTH, 'your real location') }));
   const fileInput = useRef<HTMLInputElement>(null);
 
+  /**
+   * Testing and recording: `#truth=<lat>,<lon>` in the address sets your real location for an own photo, so a demo can
+   * be recorded without showing where you live. A URL fragment never reaches a server.
+   */
+  function truthFromHash(): { lat: number; lon: number } | null {
+    const m = location.hash.match(/truth=(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/);
+    if (!m) return null;
+    const lat = Number(m[1]);
+    const lon = Number(m[2]);
+    return Math.abs(lat) <= 90 && Math.abs(lon) <= 180 ? { lat, lon } : null;
+  }
+
   async function useOwnPhoto(file: File) {
     setError('');
     try {
@@ -43,6 +55,13 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak }: LabProps
       kit.ledger.add({ op: 'Load your photo (EXIF stripped, resized)', route: 'local-js', ms: 0, bytesOut: 0 });
       setOriginal(png);
       setSource('own');
+      const hashTruth = truthFromHash();
+      if (hashTruth) {
+        setTruthLabel('set in the page address (#truth), for testing or recording — never sent');
+        setThreat(locationThreat({ ops: browserImageOps, truth: secret(hashTruth, 'your real location') }));
+        kit.ledger.add({ op: 'Read your location from #truth (for local scoring only)', route: 'local-js', ms: 0, bytesOut: 0 });
+        return;
+      }
       // Without a location the attack is scored on the attacker's claimed precision, until the user shares one.
       setTruthLabel('not set — tap “Use my location” for a real score');
       setThreat(locationThreat({ ops: browserImageOps }));
@@ -103,7 +122,9 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak }: LabProps
           ? `It can place you within ~${formatKm(verdict.radiusKm)}`
           : verdict.errorKm !== null
             ? `Off by ~${formatKm(verdict.errorKm)}`
-            : 'Unsure where you are';
+            : verdict.lat === null
+              ? 'It could not place you'
+              : 'Unsure where you are';
   const verdictHeadline = !verdict
     ? ''
     : reason === 'readable'
@@ -112,7 +133,9 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak }: LabProps
         ? 'The attacker found you'
         : verdict.errorKm !== null
           ? 'Wrong place: you are safe'
-          : 'Too unsure to find you';
+          : verdict.lat === null
+            ? 'No guess at all: you are safe'
+            : 'Too unsure to find you';
   const verdictDetail = !verdict
     ? ''
     : reason === 'readable'
@@ -121,7 +144,9 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak }: LabProps
         }. Mask them.`
       : verdict.errorKm !== null
         ? `Distance from where you really are, computed on your device. Its confidence: ${verdict.confidence}. Safe beyond ${formatKm(50)}.`
-        : `The attacker’s own precision claim. Its confidence: ${verdict.confidence}.`;
+        : verdict.lat === null
+          ? `It gave no place and no coordinates. Its confidence: ${verdict.confidence}.`
+          : `The attacker’s own precision claim. Its confidence: ${verdict.confidence}.`;
 
   async function run(label: string, fn: () => Promise<void>) {
     setBusy(label);

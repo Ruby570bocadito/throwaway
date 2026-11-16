@@ -46,6 +46,27 @@ describe('location threat on the demo scene', () => {
     expect(t2.exposed({ ...tokyo, errorKm: distanceKm(tokyo, DEMO_TRUTH) })).toBe(false); // it is 10,000+ km off
   });
 
+  it('treats "Unknown" at 0,0 as no guess, not as a guess 4,500 km off (live, 16-nov)', async () => {
+    const answer = (body: object) => ({ name: 'cloud', generate: async () => ({ text: JSON.stringify(body), source: 'in_cloud' as const }) });
+    const run = async (body: object) => {
+      const ledger = new Ledger();
+      const cloud = answer(body);
+      const kit = { local: new LocalModel(cloud, ledger), cloud: new CloudModel(cloud, ledger), ledger };
+      const threat = locationThreat({ ops: fakeOps, truth: secret({ lat: 40.4168, lon: -3.7038 }, 'real location') });
+      const v = await threat.attack(release(PHOTO, 'baseline', { userConfirmedAsIs: true }), kit);
+      return { v, exposed: threat.exposed(v) };
+    };
+    const live = { place: 'Unknown', lat: 0, lon: 0, radiusKm: 5000, confidence: 'low', clues: [{ cell: 12, kind: 'vegetation', what: 'potted plant' }] };
+    const a = await run(live);
+    expect(a.v).toMatchObject({ place: 'unknown', lat: null, lon: null, errorKm: null, radiusKm: 20000 });
+    expect(a.exposed).toBe(false);
+    const b = await run({ ...live, place: 'Somewhere', lat: null, lon: null }); // Number(null) would have been 0
+    expect(b.v.errorKm).toBeNull();
+    const c = await run({ ...live, place: 'Madrid, Spain', lat: 40.42, lon: -3.7 }); // a real guess is still scored
+    expect(c.v.errorKm).toBeLessThan(1);
+    expect(c.exposed).toBe(true);
+  });
+
   it('cannot send the original photo without the user confirming it', async () => {
     const ledger = new Ledger();
     const b = demoBackends();

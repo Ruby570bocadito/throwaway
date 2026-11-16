@@ -31,3 +31,6 @@ dist-ssr
 # local tooling
 .claude/
 .firebase/
+
+# local test photos (served by the dev server only, never built or committed)
+test-photos/
