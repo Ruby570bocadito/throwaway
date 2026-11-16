@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { clearTaint, CloudModel, isTemporary, Ledger, LocalModel, publicData, release, secret, type ModelBackend } from '../framework';
-import { authorshipThreat, deterministicGeneralise, hasPhrase, isSpecific, looksBroken, newSpecifics } from './authorship';
+import { authorshipThreat, deterministicGeneralise, hasPhrase, isSpecific, looksBroken, newSpecifics, ruleDetails } from './authorship';
 import { CONTENT_DETAILS, DECOYS, DRAFT, MARTA_PUBLIC, NANO_REWRITE_RECORDED, NANO_REWRITE_V3_RECORDED, REWRITE, SELF_ID } from '../demo/scenario';
 
 beforeEach(() => clearTaint());
@@ -38,9 +38,13 @@ async function runWith(rewrite: (draftSeen: string) => string, draft = DRAFT, de
   return { published, threat, ledger, prompts };
 }
 
-/** The real draft after the fixed rules, for the five real details: what Gemini Nano now gets to rewrite. */
-const RULED_DRAFT =
+/** The draft Gemini Nano saw in the live v5 run (the five real details generalised, counts not yet all). */
+const RULED_DRAFT_V5 =
   'So, honestly, I loved this company for several years — but the last six months have been kind of a mess. Anyway, after the reorg our design team in the office went from several people to a few (and nobody told us why). Basically we were asked to ship the migration with half the people and the same deadline. Honestly, management means well, but they do not listen — they announce. So, if you are a designer, think twice (sorry not sorry).';
+
+/** The real draft after the fixed rules now: the five real details plus every count and date. What Nano gets to rewrite. */
+const RULED_DRAFT =
+  'So, honestly, I loved this company for several years — but the last several months have been kind of a mess. Anyway, after the reorg our design team in the office went from several people to a few (and nobody told us why). Basically we were asked to ship the migration with half the people and the same deadline. Honestly, management means well, but they do not listen — they announce. So, if you are a designer, think twice (sorry not sorry).';
 
 /** The five details left in the real v3 run (the author's Chrome, 16-nov). */
 const V3_LEFT = ['three years', 'March', 'Lisbon office', 'six individuals to two', 'Figma migration'];
@@ -71,9 +75,17 @@ describe('deterministic helpers', () => {
     expect(hasPhrase('anything', '  ')).toBe(false);
   });
   it('newSpecifics finds the numbers, dates and names a rewrite added', () => {
-    expect(newSpecifics('I worked there for three years. In March the Lisbon team was cut.', RULED_DRAFT).sort()).toEqual(['Lisbon', 'March', 'three']);
-    expect(newSpecifics(REWRITE, RULED_DRAFT)).toEqual([]); // nothing specific in the demo's rewrite
-    expect(newSpecifics('The last six months were hard. One of us left.', RULED_DRAFT)).toEqual([]); // already in the draft / "one"
+    expect(newSpecifics('I worked there for three years. In March the Lisbon team was cut.', RULED_DRAFT).sort()).toEqual(['Lisbon', 'March', 'three years']);
+    expect(newSpecifics(REWRITE, RULED_DRAFT_V5)).toEqual([]); // the live v5 rewrite added nothing to the draft it saw
+    expect(newSpecifics('The last six months were hard. One of us left.', RULED_DRAFT_V5)).toEqual([]); // already in the draft / "one"
+  });
+  it('newSpecifics compares a count with the word it counts (live, public URL: "six individuals" next to "six months")', () => {
+    expect(newSpecifics('decreased from six individuals to only two. The past six months were hard.', 'the last six months')).toEqual(['six individuals', 'two']);
+  });
+  it('ruleDetails finds every count and date in the real draft, without a model', () => {
+    expect(ruleDetails(DRAFT).map((d) => d.phrase)).toEqual(['March', 'three years', 'six months', '6 people', '2']);
+    expect(ruleDetails('One of us left after one year.').map((d) => d.phrase)).toEqual(['one year']);
+    expect(ruleDetails('A 24/7 rota under COVID-19 rules.')).toEqual([]);
   });
   it('looksBroken catches a placeholder repeated by the model', () => {
     const live = 'The tenure spanned what you wrote instead. A reorganization occurred in what you wrote instead. It went from what you wrote instead to two.';
@@ -147,13 +159,15 @@ describe('rewrite: fixed rules first, then the style', () => {
     });
     expect(seen).toBe(RULED_DRAFT);
     expect(seen).not.toMatch(/three years|March|Lisbon|6 people|Figma/);
-    expect(published.value).toBe(REWRITE);
+    // The recorded rewrite still says "six months" (Nano saw it then); the final check makes it vague.
+    expect(published.value).toBe(REWRITE.replace('six months', 'several months'));
     expect(threat.lastRewrite?.generalised).toEqual([
       { phrase: 'Figma migration', generic: 'migration', by: 'rule' },
       { phrase: 'Lisbon office', generic: 'office', by: 'rule' },
       { phrase: '6 people to 2', generic: 'several people to a few', by: 'rule' },
       { phrase: 'three years', generic: 'several years', by: 'rule' },
       { phrase: 'March reorg', generic: 'reorg', by: 'rule' },
+      { phrase: 'six months', generic: 'several months', by: 'rule' },
     ]);
     expect(threat.lastRewrite?.detailsLeft).toEqual([]);
     expect(threat.lastRewrite?.claims).toEqual([
@@ -167,7 +181,7 @@ describe('rewrite: fixed rules first, then the style', () => {
       ['Meaning check', 'on-device'],
       ['Check the final text for details', 'local-js'],
       ['Rewrite on-device', 'on-device'],
-      ['Fixed rules generalised 5 details', 'local-js'],
+      ['Fixed rules generalised 6 details', 'local-js'],
     ]);
     expect(ledger.bytesOut).toBe(0);
   });
@@ -176,12 +190,27 @@ describe('rewrite: fixed rules first, then the style', () => {
     const { published, threat, ledger } = await runWith(() => 'I worked there for three years and valued it. In March the Lisbon team was cut. We shipped it anyway.');
     expect(published.value).toBe('I worked there for several years and valued it. Recently the team was cut. We shipped it anyway.');
     expect(threat.lastRewrite?.detailsLeft).toEqual([]);
-    expect(threat.lastRewrite?.generalised.slice(5)).toEqual([
-      { phrase: 'three years', generic: 'several years', by: 'rule' },
+    // "three years" is already listed from the draft, so it is not listed twice.
+    expect(threat.lastRewrite?.generalised.slice(6)).toEqual([
       { phrase: 'Lisbon', generic: '', by: 'rule' },
       { phrase: 'March', generic: 'recently', by: 'rule' },
     ]);
     expect(ledger.all.find((e) => e.op === 'Check the final text for details')?.note).toBe('no model · 3 details added by the rewrite');
+  });
+
+  it('live run on the public URL (16-nov): Nano missed "6 people to 2" and the rewrite kept the team size; now it cannot', async () => {
+    const flagged = CONTENT_DETAILS.filter((d) => d.phrase !== '6 people to 2');
+    // Nano's raw rewrite from that run, reconstructed: the final text had "only a few" because our check caught "two".
+    const raw =
+      'For several years, I held a positive view of this organization. However, the past six months have presented considerable challenges. Following the organizational restructuring, the design team in the office decreased from six individuals to only two, without explanation. The team was then tasked with delivering the migration with a reduced workforce while maintaining the original deadline. Management intends well, but communication lacks substantive engagement. This situation warrants careful consideration for designers.';
+    let seen = '';
+    const { published, threat } = await runWith((d) => ((seen = d), raw), DRAFT, flagged);
+    expect(seen).toBe(RULED_DRAFT); // every count is vague before Nano sees the draft
+    expect(seen).not.toMatch(/\b(6|2|six|two)\b/);
+    expect(DRAFT).toMatch(/\b(6|2|six|two)\b/); // and the check itself can fail
+    expect(published.value).toContain('decreased from several individuals to only a few');
+    expect(published.value).toContain('the past several months');
+    expect(threat.lastRewrite?.detailsLeft).toEqual([]);
   });
 
   it('rejects a rewrite that repeats a new phrase (the live placeholder failure, “what you wrote instead”)', async () => {

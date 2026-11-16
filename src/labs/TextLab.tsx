@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { styleMarkers } from '../engine/stylometry';
 import { DECOYS, DRAFT, LINEUP, MARTA_PUBLIC, SELF_ID } from '../demo/scenario';
 import { PrivacyViolation, release, secret, type Private, type Publishable } from '../framework';
-import { hasPhrase, type AuthorshipVerdict, type Clue } from '../threats/authorship';
+import { hasPhrase, ruleDetails, type AuthorshipVerdict, type Clue } from '../threats/authorship';
 import { buildAuthorship } from '../kit';
 import { Silhouette, type LabProps } from '../ui/shared';
 
@@ -119,10 +119,12 @@ export function TextLab({ kit, localBackend, degraded, registerLeak }: LabProps)
     run('scan', async () => {
       privateDraft.current = secret(draft, 'your draft');
       if (degraded) {
-        // No local model: only the deterministic fingerprint runs. Nothing is sent anywhere.
-        setClues(styleMarkers(draft, MARTA_PUBLIC, DECOYS.map((d) => d.corpus)).map((m) => ({ ...m, kind: 'style' as const })));
+        // No local model: only the deterministic fingerprint and fixed rules run. Nothing is sent anywhere.
+        const rules = ruleDetails(draft).map((d) => ({ ...d, kind: 'content' as const }));
+        setClues([...styleMarkers(draft, MARTA_PUBLIC, DECOYS.map((d) => d.corpus)).map((m) => ({ ...m, kind: 'style' as const })), ...rules]);
         kit.ledger.add({ op: 'Fingerprint (Burrows’ Delta)', route: 'local-js', ms: 3, bytesOut: 0 });
         kit.ledger.add({ op: 'Find identifying details', route: 'blocked', ms: 0, bytesOut: 0, note: 'no local model — skipped, not sent to cloud' });
+        kit.ledger.add({ op: 'Find counts and dates (fixed rules)', route: 'local-js', ms: 1, bytesOut: 0, note: `no model · ${rules.length} found` });
         setEdited(draft);
       } else {
         if (localBackend.prepare) await localBackend.prepare(); // first user gesture: Chrome requires it before on-device inference
@@ -210,6 +212,9 @@ export function TextLab({ kit, localBackend, degraded, registerLeak }: LabProps)
                     <code>{m.phrase}</code> <span>{m.why}</span>
                   </div>
                 ))
+              )}
+              {degraded && !published && contentClues.length > 0 && (
+                <p className="context">Counts and dates only: names and places need the local model.</p>
               )}
               {generalised.map((g, i) => (
                 <div key={`${g.phrase}-${i}`} className="finding generalised">

@@ -20,6 +20,10 @@ const REWRITE_SCHEMA: JsonSchema = { type: 'object', properties: { rewrite: { ty
 
 const count = (n: number, noun: string) => `${n} ${noun}${n === 1 ? '' : 's'}`;
 
+/** Rule-found details that no flagged detail already covers ("6 people" is inside "6 people to 2"). */
+const notCovered = <T extends { phrase: string }>(rules: T[], flagged: { phrase: string }[]) =>
+  rules.filter((r) => !flagged.some((d) => hasPhrase(d.phrase, r.phrase) || hasPhrase(r.phrase, d.phrase)));
+
 /**
  * Deterministic guard: did a model write the same NEW 3-word phrase three or more times? Measured live (16-nov): Gemini
  * Nano copied a placeholder from our prompt ("what you wrote instead") into the text seven times.
@@ -153,8 +157,39 @@ function generalisePhrase(span: string, after: string, text: string): { g: strin
   return { g, properNounOnly: pn && onlyFunctionWords };
 }
 
+/** A count with the word it counts: "six individuals", "6 people", or the number alone ("to 2"). One is skipped. */
+const COUNT = new RegExp(`(?<![\\w\\-/.])(${NUM})(?![\\w\\-/])(?:\\s+([a-z][a-z-]*))?`, 'gi');
+function countPhrase(m: RegExpMatchArray): string | null {
+  if (numberValue(m[1]) === 1) return null;
+  return m[2] && !FUNCTION_WORDS.has(m[2].toLowerCase()) ? `${m[1]} ${m[2]}` : m[1];
+}
+
+/**
+ * Counts and dates in a draft, found without a model: fixed rules generalise them all, whether or not the local model
+ * flags them. Measured live (16-nov, public URL): Gemini Nano did not flag "6 people to 2" in one run, and the final
+ * text still said "six individuals" while the app called it safe. "one" alone is not a count worth hiding; "one year" is.
+ */
+export function ruleDetails(text: string): { phrase: string; why: string }[] {
+  const found: { phrase: string; why: string; start: number; end: number }[] = [];
+  const free = (start: number, end: number) => !found.some((f) => start < f.end && end > f.start);
+  const push = (m: RegExpMatchArray, phrase: string, why: string) => {
+    const start = m.index ?? 0;
+    if (free(start, start + phrase.length) && !found.some((f) => f.phrase.toLowerCase() === phrase.toLowerCase())) {
+      found.push({ phrase, why, start, end: start + phrase.length });
+    }
+  };
+  for (const m of text.matchAll(new RegExp(`\\b(?:${TIME})\\b`, 'gi'))) push(m, m[0], 'A date: fixed rule, no AI.');
+  for (const m of text.matchAll(/\bone\s+(?:year|month|week|day|hour|decade)\b/gi)) push(m, m[0], 'A count: fixed rule, no AI.');
+  for (const m of text.matchAll(COUNT)) {
+    const phrase = countPhrase(m);
+    if (phrase) push(m, phrase, 'A count: fixed rule, no AI.');
+  }
+  return found.map(({ phrase, why }) => ({ phrase, why }));
+}
+
 /**
  * Specific tokens in `text` (numbers, dates, proper nouns) that do not occur in `source`: things a model added.
+ * A count is compared with the word it counts, so "six individuals" is new even if the source said "six months".
  * Deterministic, so a rewrite is checked without asking a model.
  */
 export function newSpecifics(text: string, source: string): string[] {
@@ -164,7 +199,10 @@ export function newSpecifics(text: string, source: string): string[] {
     if (p && !hasPhrase(source, p)) found.add(p);
   };
   for (const m of text.matchAll(new RegExp(`\\b(?:${TIME})\\b`, 'gi'))) add(m[0]);
-  for (const m of text.matchAll(new RegExp(`(?<![\\w\\-/.])(?:${NUM})(?![\\w\\-/])`, 'gi'))) if (!/^one$/i.test(m[0])) add(m[0]);
+  for (const m of text.matchAll(COUNT)) {
+    const phrase = countPhrase(m);
+    if (phrase) add(phrase);
+  }
   for (const m of text.matchAll(/\b[A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+)*/g)) {
     const names = m[0].split(/\s+/).filter((w) => isProperNoun(w, text));
     if (names.length) add(names.join(' '));
@@ -377,9 +415,18 @@ export function authorshipThreat(o: AuthorshipOptions): Threat<string, Clue, Aut
       const style: Marker[] = styleMarkers(draft, o.self.value, o.decoys.map((d) => d.text.value));
       kit.ledger.add({ op: 'Fingerprint (Burrows’ Delta)', route: 'local-js', ms: Math.round(performance.now() - t0), bytesOut: 0 });
       const details = await detectDetails(input, kit, 'Find identifying details');
+      const t1 = performance.now();
+      const extra = notCovered(ruleDetails(draft), details);
+      kit.ledger.add({
+        op: 'Find counts and dates (fixed rules)',
+        route: 'local-js',
+        ms: Math.round(performance.now() - t1),
+        bytesOut: 0,
+        note: `no model · ${extra.length} not flagged by Nano`,
+      });
       return [
         ...style.map((m) => ({ phrase: m.phrase, kind: 'style' as const, why: m.why })),
-        ...details.map((d) => ({ ...d, kind: 'content' as const })),
+        ...[...details, ...extra].map((d) => ({ ...d, kind: 'content' as const })),
       ];
     },
 
@@ -394,7 +441,9 @@ export function authorshipThreat(o: AuthorshipOptions): Threat<string, Clue, Aut
       // So the details never reach the model: fixed rules generalise them in the draft first, the model only rewrites
       // the style, and a deterministic check (no model) verifies the final text.
       const draft = Private.openLocally(input); // plain JS on the device
-      const details = clues.filter((c) => c.kind === 'content');
+      const flagged = clues.filter((c) => c.kind === 'content');
+      // Every count and date goes too, flagged or not (see ruleDetails).
+      const details = [...flagged, ...notCovered(ruleDetails(draft), flagged)];
       const t0 = performance.now();
       const ruled = deterministicGeneralise(draft, details.map((d) => d.phrase));
       const generalised: RewriteInfo['generalised'] = ruled.done.map((d) => ({ ...d, by: 'rule' as const }));
@@ -428,7 +477,8 @@ export function authorshipThreat(o: AuthorshipOptions): Threat<string, Clue, Aut
       const added = newSpecifics(text, ruled.text);
       const fix = deterministicGeneralise(text, [...details.map((d) => d.phrase), ...added]);
       text = fix.text;
-      generalised.push(...fix.done.map((d) => ({ ...d, by: 'rule' as const })));
+      const listed = (p: string) => generalised.some((g) => g.phrase.toLowerCase() === p.toLowerCase());
+      generalised.push(...fix.done.filter((d) => !listed(d.phrase)).map((d) => ({ ...d, by: 'rule' as const })));
       const left = [
         ...details.filter((d) => hasPhrase(text, d.phrase)).map((d) => ({ phrase: d.phrase, why: d.why })),
         ...added.filter((p) => hasPhrase(text, p)).map((phrase) => ({ phrase, why: 'Added by the rewrite.' })),

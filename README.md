@@ -74,7 +74,7 @@ No Gemini Nano in your Chrome? Add `?demo` to the URL (or click **Replay a recor
 |---|---|---|
 | Fingerprint | none (plain JavaScript) | nothing |
 | Find identifying details | `ONLY_ON_DEVICE` (Gemini Nano) | nothing |
-| Generalise those details in the draft | none (fixed rules, plain JavaScript) | nothing |
+| Generalise those details, and every count and date, in the draft | none (fixed rules, plain JavaScript) | nothing |
 | Rewrite the style, then the meaning check | `ONLY_ON_DEVICE` (Gemini Nano) | nothing |
 | Check the final text for added numbers, dates or names | none (plain JavaScript) | nothing |
 | Attack | `ONLY_IN_CLOUD` | the text you are about to publish + public writing |
@@ -106,7 +106,7 @@ What the live runs taught us (and changed):
   - Sentence by sentence, Nano kept all five details.
   - When it did generalise them, it copied the examples from our instructions into the wrong sentences. It invented "This was an internal project involving a much smaller team" and garbled the team-size claim, and its meaning check still said 5/5.
 
-  Now the details never reach the rewrite. Gemini Nano finds them on the device, and fixed rules, with no AI, generalise them in the draft: "three years" → "several years", "after the March reorg" → "after the reorg", "the Lisbon office" → "the office", "6 people to 2" → "several people to a few". Nano then rewrites the style of a draft that has no details left, so it can neither keep them nor fill them in. A deterministic check catches any number, date or name the rewrite adds, and the same rules generalise it. Nano went from five calls to three, and the meaning check still compares the original and the final text on the device. Throwaway does not say "safe" while a specific detail is left.
+  Now the details never reach the rewrite. Gemini Nano finds them on the device, and fixed rules, with no AI, generalise them in the draft: "three years" → "several years", "after the March reorg" → "after the reorg", "the Lisbon office" → "the office", "6 people to 2" → "several people to a few". Nano then rewrites the style of a draft that has no details left, so it can neither keep them nor fill them in. Counts and dates go even when Nano does not flag them: in one live run on the public URL it missed "6 people to 2", and the final text still said "six individuals" while the app called it safe. A deterministic check catches any number, date or name the rewrite adds, comparing each count with the word it counts ("six individuals" is not "six months"), and the same rules generalise it. Nano went from five calls to three, and the meaning check still compares the original and the final text on the device. Throwaway does not say "safe" while a specific detail is left.
 - **Small models copy examples wherever they are in the prompt**, not only in JSON templates: placeholders, then the examples in our instructions. The prompts now carry none.
 - **A readable address is exposure even when the AI gets the city wrong.** On the as-is photo a live run read the plaque and the house number but said "Barcelona" (the street is fictional), 206 km from the scene. Scoring only by distance called that safe; a person would simply search that address everywhere. Street names, house numbers and plates now count as exposure on their own.
 - **Your face is not a location clue.** Gemini Nano also flagged the person in the selfie; people are now excluded, so Throwaway never pixelates the face you want to post.
@@ -119,7 +119,7 @@ The demo mode (`?demo`) replays the full v5 run recorded in Chrome on 16-nov: th
 
 - A cloud provider that sees many attempts could intersect lineups (you are the one constant). Throwaway limits attempts; decoy lineups are on the roadmap.
 - Stylometry on short texts is noisy. The local score is a signal, not proof.
-- Detail detection depends on the local model: the fixed rules only generalise what Gemini Nano flags in your draft. Their wording is plain, not elegant. Codes such as "24/7" are left as they are and stay reported.
+- Names and places depend on the local model: the fixed rules generalise those only when Gemini Nano flags them. Counts and dates are always generalised. The rules' wording is plain, not elegant. Codes such as "24/7" are left as they are and stay reported.
 - The meaning check runs on the small local model and is lenient (live, it passed a garbled sentence). Read the final text before you post it.
 - Pixelation hides what a model can read today; it is not a guarantee against every future technique. Cropping is safer.
 - The image guard recognises the exact private bytes. Re-encoding them as text would get past the hash (the types still forbid passing a `Private` value).
