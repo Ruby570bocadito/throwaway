@@ -98,9 +98,9 @@ Live runs through Firebase AI Logic on 15 and 16-nov-2026 (cloud attacker: `gemi
 | Photo, clues found by Gemini Nano **on the device** | Cells 3 (street plaque), 7 (house number), 8 (bakery sign), 12 (orange tree) and 1 (a poster it read as a "Japanese flag") |
 | Photo, those 5 cells pixelated on the device | "Rome, Italy", low confidence: ~950 km off |
 | Photo test set (16-nov): four AI-generated phone photos (Muse Image), real attacker, cells masked by hand | |
-| · Lisbon street with a readable plaque | As-is: "Rua de São Miguel, Alfama", 34 m off (it read the plaque). With 3 cells masked it read the house number. With 8 of 16 masked: still "Lisbon", ~0.9 km, high confidence |
-| · Paris window with a blue street sign | As-is: 27 m off (it read "Rue Oberkampf"). Sign masked: "Paris", ~2 km, low confidence |
-| · Tokyo lane with shop signs | "Tokyo", ~3 km, low confidence, before and after masking the signs |
+| · Lisbon street with a readable plaque | As-is: "Rua de São Miguel, Alfama", 34 m off (it read the plaque). With 3 cells masked it read the house number. With 8 of 16 masked: still "Lisbon", ~0.9 km, high confidence (red) |
+| · Paris window with a blue street sign | As-is: 27 m off (it read "Rue Oberkampf"). Sign masked: "Paris", ~2 km (amber: it knows the city, not the street) |
+| · Tokyo lane with shop signs | "Tokyo", ~3 km, low confidence (amber). Another run: "Kyoto", 360 km off (green) |
 | · Selfie by a window with only trees | "Unknown": safe as-is |
 
 What the live runs taught us (and changed):
@@ -117,7 +117,13 @@ What the live runs taught us (and changed):
 - **Small models copy examples wherever they are in the prompt**, not only in JSON templates: placeholders, then the examples in our instructions. The prompts now carry none.
 - **A readable address is exposure even when the AI gets the city wrong.** On the as-is photo a live run read the plaque and the house number but said "Barcelona" (the street is fictional), 206 km from the scene. Scoring only by distance called that safe; a person would simply search that address everywhere. Street names, house numbers and plates now count as exposure on their own.
 - **Your face is not a location clue.** Gemini Nano also flagged the person in the selfie; people are now excluded, so Throwaway never pixelates the face you want to post.
-- **Masking hides your street, not always your city.** On realistic test photos, masking took the attacker from your exact address to your city, but a street where every cell says Lisbon (tiles, cobblestones, tram tracks) still says Lisbon with half the photo masked. Throwaway keeps saying "found you" and shows which cells still help. When that happens, crop the photo or post another one.
+- **Masking hides your street, not always your city.** On realistic test photos, masking took the attacker from your exact address to your city, but a street where every cell says Lisbon (tiles, cobblestones, tram tracks) still says Lisbon with half the photo masked. A single 50 km threshold painted a low-confidence "Tokyo" (a city of millions) as red as your exact address, so Throwaway now has three levels:
+  - **Red:** it found your street (an address it can read, or a guess within 1 km).
+  - **Amber:** it knows your city, not your street.
+  - **Green:** the wrong place.
+
+  Only red keeps the loop masking. Amber says so plainly, and suggests cropping or another photo if your city is the secret.
+- **A shop sign is not an address.** In one run the attacker described Tokyo signs ("ramen", "sake shop") as text, guessed Kyoto 360 km off, and the app said "it read your address". Only text that is an address (street names, house numbers, phone numbers) and plates count as an identifier now.
 - **"Unknown" is not a place.** When the attacker could not place a photo it answered "Unknown" at 0,0, and the app first showed "off by 4,510 km" (the distance to that point). A guess with no place or coordinates is now treated as no guess.
 - **On-device structured output is set per model instance.** Gemini Nano ignored `generationConfig` and wrapped JSON in markdown; the framework now passes a JSON schema as Chrome's `responseConstraint`.
 - `gemini-3.8-flash` took 40–60 s per call on the free tier, too slow for a ten-attempt lineup, so the attacker defaults to Flash-Lite.

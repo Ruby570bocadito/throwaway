@@ -40,8 +40,10 @@ export interface LocationOptions {
    * Without it, the attacker's self-reported radius is used, which over-trusts a confident wrong guess.
    */
   truth?: Private<{ lat: number; lon: number }>;
-  /** Exposed while the attacker's guess lands within this distance of the truth (or claims this precision). */
+  /** Beyond this distance from the truth (or claimed precision) the guess is the wrong place: green. */
   safeRadiusKm?: number;
+  /** Within this distance it found your street: red. Between the two it knows your city, not your street: amber. */
+  streetRadiusKm?: number;
   /**
    * How many times to ask the local model for clues; the answers are merged. Gemini Nano is not deterministic (the same
    * photo gave 5 clue cells, then 4), and on-device calls are free, so asking twice buys recall at no cost and no egress.
@@ -85,8 +87,23 @@ const validCell = (c: unknown): c is number => Number.isInteger(c) && (c as numb
 
 const PERSON = /\b(person|people|face|faces|body|shoulder|selfie|human)\b/i;
 
-/** Kinds of clue that are identifiers a person can look up (an address, a plate), not just hints. */
+/** Kinds of clue that can carry an identifier a person can look up (an address, a plate), not just hints. */
 const READABLE = new Set(['text', 'number', 'plate']);
+// Text counts only when it is an address (or a phone number). Live (16-nov): Tokyo shop signs ("ramen", "sake shop")
+// made the attacker "read your address" while it guessed Kyoto, 360 km off. A generic shop sign is a hint, not an address.
+const ADDRESS =
+  /\b(street|road|avenue|boulevard|lane|alley|square|plaza|piazza|rua|rue|calle|carrer|avenida|avinguda|pla[cç]a|pra[cç]a|via|strasse|straße|platz|address|postcode|post code|zip code|postal|phone|chome|banchi)\b|丁目|番地/i;
+// A number is a house number, a plate or a phone until the attacker says it is something else.
+const NOT_AN_ID = /\b(price|bus|route|line|time|clock|date|year|speed|platform|floor|menu)\b/i;
+
+/** Does this clue carry an identifier a person could look up anywhere: a street name, a house number, a plate? */
+export function isIdentifier(c: PhotoClue): boolean {
+  if (!READABLE.has(c.kind)) return false;
+  if (c.kind === 'plate') return true;
+  const what = String(c.what ?? '');
+  if (c.kind === 'number') return !NOT_AN_ID.test(what) || ADDRESS.test(what);
+  return ADDRESS.test(what);
+}
 
 /**
  * Why a verdict counts as exposure:
@@ -97,10 +114,24 @@ const READABLE = new Set(['text', 'number', 'plate']);
  */
 export type ExposureReason = 'readable' | 'near' | 'precise';
 
-export function locationThreat(
-  o: LocationOptions,
-): Threat<Uint8Array, PhotoClue, LocationVerdict> & { masked: number[]; exposureReason(v: LocationVerdict): ExposureReason | null } {
+/**
+ * Red, amber or green, for the user:
+ *  - 'street' (red): an identifier anyone can look up, or a guess within `streetRadiusKm` of you.
+ *  - 'city' (amber): it knows your city, not your street. Fine unless your city is the secret.
+ *  - 'safe' (green): the wrong place, or too unsure to say.
+ * Only red keeps the red-team loop going. Measured with realistic test photos (16-nov): masking cells took the attacker
+ * from your address to your city, but a scene full of local cues still says "Lisbon" with half of it masked, and a
+ * low-confidence "Tokyo" is a city of 14 million people, not where you are.
+ */
+export type LocationTier = 'street' | 'city' | 'safe';
+
+export function locationThreat(o: LocationOptions): Threat<Uint8Array, PhotoClue, LocationVerdict> & {
+  masked: number[];
+  exposureReason(v: LocationVerdict): ExposureReason | null;
+  tier(v: LocationVerdict): LocationTier;
+} {
   const safeRadiusKm = o.safeRadiusKm ?? 50;
+  const streetRadiusKm = o.streetRadiusKm ?? 1;
   const threat = {
     id: 'location',
     question: 'Where was this photo taken?',
@@ -182,14 +213,23 @@ export function locationThreat(
 
     exposureReason(v: LocationVerdict): ExposureReason | null {
       const sure = v.confidence !== 'low';
-      if (sure && v.clues.some((c) => READABLE.has(c.kind))) return 'readable';
+      if (sure && v.clues.some(isIdentifier)) return 'readable';
       if (v.errorKm !== null) return v.errorKm < safeRadiusKm ? 'near' : null;
       return sure && v.radiusKm < safeRadiusKm ? 'precise' : null;
     },
 
+    tier(v: LocationVerdict): LocationTier {
+      const reason = threat.exposureReason(v);
+      if (!reason) return 'safe';
+      if (reason === 'readable') return 'street';
+      const km = reason === 'near' ? (v.errorKm as number) : v.radiusKm;
+      return km < streetRadiusKm ? 'street' : 'city';
+    },
+
     exposed(v: LocationVerdict) {
-      // A confident WRONG guess is not exposure, unless it rests on an identifier anyone could look up.
-      return threat.exposureReason(v) !== null;
+      // A confident WRONG guess is not exposure, unless it rests on an identifier anyone could look up. Knowing your
+      // city (amber) is reported, but does not keep the loop masking: cells rarely hide a city.
+      return threat.tier(v) === 'street';
     },
   };
   return threat;

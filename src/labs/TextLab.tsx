@@ -195,8 +195,8 @@ export function TextLab({ kit, localBackend, degraded, registerLeak }: LabProps)
               {styleClues.length === 0 ? (
                 <p className="good">No habits from your public writing.</p>
               ) : (
-                styleClues.map((m) => (
-                  <div key={m.phrase} className="finding style">
+                styleClues.map((m, i) => (
+                  <div key={`${m.phrase}-${i}`} className="finding style">
                     <code>{m.phrase}</code> <span>{m.why}</span>
                   </div>
                 ))
@@ -207,8 +207,8 @@ export function TextLab({ kit, localBackend, degraded, registerLeak }: LabProps)
               {contentClues.length === 0 ? (
                 <p className="good">{published ? 'None left (checked on your device).' : degraded ? 'Needs the local model.' : 'None found.'}</p>
               ) : (
-                contentClues.map((m) => (
-                  <div key={m.phrase} className="finding content">
+                contentClues.map((m, i) => (
+                  <div key={`${m.phrase}-${i}`} className="finding content">
                     <code>{m.phrase}</code> <span>{m.why}</span>
                   </div>
                 ))
@@ -235,8 +235,8 @@ export function TextLab({ kit, localBackend, degraded, registerLeak }: LabProps)
               Meaning check · {claims.claims.filter((c) => c.kept).length}/{claims.claims.length} claims kept · checked on your device
             </h3>
             <ul>
-              {claims.claims.map((c) => (
-                <li key={c.claim} className={c.kept ? '' : 'lost'}>
+              {claims.claims.map((c, i) => (
+                <li key={`${c.claim}-${i}`} className={c.kept ? '' : 'lost'}>
                   {c.kept ? '✓' : '✗'} {c.claim}
                 </li>
               ))}
@@ -305,8 +305,8 @@ export function TextLab({ kit, localBackend, degraded, registerLeak }: LabProps)
         </div>
         {verdict && verdict.reasons.length > 0 && picks.length === verdict.attempts && (
           <ul className="reasons">
-            {verdict.reasons.map((r) => (
-              <li key={r}>{r}</li>
+            {verdict.reasons.map((r, i) => (
+              <li key={`${r}-${i}`}>{r}</li>
             ))}
           </ul>
         )}

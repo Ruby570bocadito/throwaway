@@ -108,7 +108,11 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak }: LabProps
   }, [kit, original, registerLeak]);
 
   const shown = useObjectUrl(published ? published.value : original);
-  const safe = verdict ? !threat.exposed(verdict) : false;
+  // Red (it found your street), amber (it knows your city, not your street) or green (wrong place, or too unsure).
+  const tier = verdict ? threat.tier(verdict) : null;
+  const safe = tier === 'safe';
+  const city = tier === 'city';
+  const level = safe ? 'good' : city ? 'warn' : 'bad';
   const reason = verdict ? threat.exposureReason(verdict) : null;
   // What the radar plots: how precisely it can place you when it read an identifier, otherwise how far off it landed.
   const shownKm = (v: LocationVerdict) => (threat.exposureReason(v) === 'readable' ? v.radiusKm : (v.errorKm ?? v.radiusKm));
@@ -117,9 +121,13 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak }: LabProps
     : reason === 'readable'
       ? 'It read your address'
       : reason === 'near'
-        ? `Found you: ~${formatKm(verdict.errorKm!)} away`
+        ? city
+          ? `It knows your city: ~${formatKm(verdict.errorKm!)} off`
+          : `Found you: ~${formatKm(verdict.errorKm!)} away`
         : reason === 'precise'
-          ? `It can place you within ~${formatKm(verdict.radiusKm)}`
+          ? city
+            ? `It can tell your city: within ~${formatKm(verdict.radiusKm)}`
+            : `It can place you within ~${formatKm(verdict.radiusKm)}`
           : verdict.errorKm !== null
             ? `Off by ~${formatKm(verdict.errorKm)}`
             : verdict.lat === null
@@ -129,24 +137,28 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak }: LabProps
     ? ''
     : reason === 'readable'
       ? 'It read an address: anyone can look it up'
-      : reason
-        ? 'The attacker found you'
-        : verdict.errorKm !== null
-          ? 'Wrong place: you are safe'
-          : verdict.lat === null
-            ? 'No guess at all: you are safe'
-            : 'Too unsure to find you';
+      : city
+        ? 'It knows your city, not your street'
+        : reason
+          ? 'The attacker found you'
+          : verdict.errorKm !== null
+            ? 'Wrong place: you are safe'
+            : verdict.lat === null
+              ? 'No guess at all: you are safe'
+              : 'Too unsure to find you';
   const verdictDetail = !verdict
     ? ''
     : reason === 'readable'
       ? `Street names, house numbers and plates can be searched by a person even if the AI picked the wrong city${
           verdict.errorKm !== null ? ` (it was ${formatKm(verdict.errorKm)} off)` : ''
         }. Mask them.`
-      : verdict.errorKm !== null
-        ? `Distance from where you really are, computed on your device. Its confidence: ${verdict.confidence}. Safe beyond ${formatKm(50)}.`
-        : verdict.lat === null
-          ? `It gave no place and no coordinates. Its confidence: ${verdict.confidence}.`
-          : `The attacker’s own precision claim. Its confidence: ${verdict.confidence}.`;
+      : city
+        ? `${verdict.errorKm !== null ? 'Distance from where you really are, computed on your device' : 'The attacker’s own precision claim'}. Its confidence: ${verdict.confidence}. Fine if your city is no secret. If it is, crop the photo or post another one: masking cells rarely hides a city.`
+        : verdict.errorKm !== null
+          ? `Distance from where you really are, computed on your device. Its confidence: ${verdict.confidence}. Within ${formatKm(1)} it would know your street; within ${formatKm(50)}, your city.`
+          : verdict.lat === null
+            ? `It gave no place and no coordinates. Its confidence: ${verdict.confidence}.`
+            : `The attacker’s own precision claim. Its confidence: ${verdict.confidence}.`;
 
   async function run(label: string, fn: () => Promise<void>) {
     setBusy(label);
@@ -268,8 +280,8 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak }: LabProps
               ) : (
                 clues
                   .filter((c) => !threat.masked.includes(c.cell))
-                  .map((c) => (
-                    <div key={c.cell} className="finding content">
+                  .map((c, i) => (
+                    <div key={`${c.cell}-${i}`} className="finding content">
                       <code>cell {c.cell}</code> <span>{c.what}</span>
                     </div>
                   ))
@@ -287,11 +299,11 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak }: LabProps
           <span className="chip public">what the cloud sees</span>
         </div>
         <p className="context">A cloud geolocation AI sees only the version you would post, and guesses where you are. Your device scores the guess.</p>
-        <Radar km={verdict ? shownKm(verdict) : null} title={verdictTitle} subtitle={verdict ? `Guess: ${verdict.place}` : ''} safe={safe} history={history} />
+        <Radar km={verdict ? shownKm(verdict) : null} title={verdictTitle} subtitle={verdict ? `Guess: ${verdict.place}` : ''} level={level} history={history} />
         {verdict && (
           <>
             <div className="score">
-              <div className={`big small ${safe ? 'good' : 'bad'}`}>{formatKm(shownKm(verdict))}</div>
+              <div className={`big small ${level}`}>{formatKm(shownKm(verdict))}</div>
               <div>
                 <strong>{verdictHeadline}</strong>
                 <p>
@@ -302,8 +314,9 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak }: LabProps
             </div>
             {verdict.clues.length > 0 && (
               <ul className="reasons">
-                {verdict.clues.map((c) => (
-                  <li key={c.cell}>
+                {/* A cell can hold several clues: keyed by cell alone, React kept a stale item on screen (live, 16-nov). */}
+                {verdict.clues.map((c, i) => (
+                  <li key={`${c.cell}-${i}`}>
                     Cell {c.cell}: {c.what}
                   </li>
                 ))}
@@ -334,7 +347,17 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak }: LabProps
             {busy ? 'Attacking…' : 'Attack again'}
           </button>
         )}
-        {stage === 'safe' && <span className="done">{published ? 'Safe to post: the attacker can only say “' + verdict?.place + '”.' : 'Already safe to post.'}</span>}
+        {stage === 'safe' &&
+          (city ? (
+            <>
+              <span className="done warn">Your street is hidden. It can still tell your city (“{verdict?.place}”): fine if that is no secret.</span>
+              <button onClick={() => setStage('attacked')} disabled={!!busy}>
+                Mask more anyway
+              </button>
+            </>
+          ) : (
+            <span className="done">{published ? 'Safe to post: the attacker can only say “' + verdict?.place + '”.' : 'Already safe to post.'}</span>
+          ))}
       </footer>
     </>
   );

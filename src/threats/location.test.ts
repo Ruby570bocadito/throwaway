@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { clearTaint, CloudModel, Ledger, LocalModel, PrivacyViolation, redTeam, release, secret } from '../framework';
 import { demoBackends } from '../demo/recorded';
-import { distanceKm, locationThreat, type ImageOps } from './location';
+import { distanceKm, isIdentifier, locationThreat, type ImageOps } from './location';
 import { DEMO_TRUTH } from '../demo/photo';
 
 // Fake image ops: no canvas in Node. Masking appends the masked cells, so the bytes change like a real edit would.
@@ -41,9 +41,49 @@ describe('location threat on the demo scene', () => {
     const t1 = locationThreat({ ops: fakeOps });
     const t2 = locationThreat({ ops: fakeOps, truth: secret(DEMO_TRUTH) });
     const tokyo = { place: 'Tokyo', lat: 35.68, lon: 139.65, radiusKm: 10, confidence: 'high', clues: [], errorKm: null };
-    expect(t1.exposed(tokyo)).toBe(true); // a sure 10 km claim, and nothing to check it against
+    expect(t1.tier(tokyo)).toBe('city'); // a sure 10 km claim, and nothing to check it against: it can tell the city
+    expect(t1.exposed(tokyo)).toBe(false);
+    expect(t1.tier({ ...tokyo, radiusKm: 0.3 })).toBe('street'); // a sure street-level claim
+    expect(t1.exposed({ ...tokyo, radiusKm: 0.3 })).toBe(true);
     expect(t1.exposed({ ...tokyo, confidence: 'low' })).toBe(false); // an unsure claim is not exposure
     expect(t2.exposed({ ...tokyo, errorKm: distanceKm(tokyo, DEMO_TRUTH) })).toBe(false); // it is 10,000+ km off
+  });
+
+  it('red, amber, green: street, city or wrong place (the live test-photo results, 16-nov)', () => {
+    const t = locationThreat({ ops: fakeOps, truth: secret(DEMO_TRUTH) });
+    const v = (o: Partial<{ errorKm: number | null; confidence: string; clues: { cell: number; kind: string; what: string }[]; lat: number | null }>) => ({
+      place: 'x', lat: 1, lon: 1, radiusKm: 1, confidence: 'low', clues: [], errorKm: null, ...o,
+    });
+    const sign = [{ cell: 8, kind: 'text', what: 'Street sign reading Rua de São Miguel' }];
+    expect(t.tier(v({ errorKm: 0.034, confidence: 'high', clues: sign }))).toBe('street'); // Lisbon as-is: read the plaque
+    expect(t.tier(v({ errorKm: 0.876, confidence: 'high' }))).toBe('street'); // Lisbon, 8 cells masked: 876 m
+    expect(t.tier(v({ errorKm: 2, confidence: 'low' }))).toBe('city'); // Paris, sign masked: ~2 km
+    expect(t.tier(v({ errorKm: 3, confidence: 'low' }))).toBe('city'); // Tokyo: ~3 km, a city of millions
+    expect(t.tier(v({ errorKm: null, lat: null }))).toBe('safe'); // control: no guess at all
+    expect(t.tier(v({ errorKm: 950 }))).toBe('safe'); // the demo scene after masking: Rome
+    expect(t.exposed(v({ errorKm: 3, confidence: 'low' }))).toBe(false); // amber does not keep the loop masking
+  });
+
+  it('a shop sign is a hint, not an address (live, 16-nov: "ramen" and "sake shop" signs, guess Kyoto, 360 km off)', () => {
+    const t = locationThreat({ ops: fakeOps, truth: secret(DEMO_TRUTH) });
+    const kyoto = {
+      place: 'Kyoto, Japan', lat: 35.01, lon: 135.77, radiusKm: 5, confidence: 'medium', errorKm: 360,
+      clues: [
+        { cell: 7, kind: 'text', what: 'Japanese signage saying ramen and sake shop (酒店)' },
+        { cell: 8, kind: 'text', what: 'Japanese confectionery and alcohol store signage' },
+        { cell: 2, kind: 'architecture', what: 'Typical dense utility poles and power lines' },
+      ],
+    };
+    expect(t.exposureReason(kyoto)).toBeNull();
+    expect(t.tier(kyoto)).toBe('safe'); // 360 km off and no address: the wrong place
+    // Identifiers still count, in the words the live attacker used:
+    expect(isIdentifier({ cell: 8, kind: 'text', what: 'Street sign reading Rua de São Miguel' })).toBe(true);
+    expect(isIdentifier({ cell: 15, kind: 'text', what: 'Blue street sign indicating Rue Oberkampf' })).toBe(true);
+    expect(isIdentifier({ cell: 7, kind: 'number', what: 'Building number 23' })).toBe(true);
+    expect(isIdentifier({ cell: 7, kind: 'number', what: '23' })).toBe(true);
+    expect(isIdentifier({ cell: 4, kind: 'plate', what: 'a car plate' })).toBe(true);
+    expect(isIdentifier({ cell: 5, kind: 'number', what: 'Bus route number 28' })).toBe(false);
+    expect(isIdentifier({ cell: 6, kind: 'text', what: 'Shop sign for a bakery' })).toBe(false);
   });
 
   it('treats "Unknown" at 0,0 as no guess, not as a guess 4,500 km off (live, 16-nov)', async () => {

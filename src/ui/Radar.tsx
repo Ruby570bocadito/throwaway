@@ -9,7 +9,10 @@ const R1 = 168;
 const radius = (km: number) => R0 + ((Math.log10(Math.min(Math.max(km, 0.05), 5000)) - MIN) / (MAX - MIN)) * (R1 - R0);
 const RINGS = [0.1, 1, 10, 100, 1000];
 
-export function Radar({ km, title, subtitle, safe, history }: { km: number | null; title: string; subtitle: string; safe: boolean; history: number[] }) {
+const DOT = { good: '#35d98f', warn: '#ffb020', bad: '#ff4b3e' };
+
+/** `level`: good (wrong place), warn (it knows your city, not your street) or bad (it found you). */
+export function Radar({ km, title, subtitle, level, history }: { km: number | null; title: string; subtitle: string; level: 'good' | 'warn' | 'bad'; history: number[] }) {
   return (
     <div className="radar">
       <svg viewBox="0 0 360 360" role="img" aria-label={km === null ? 'Not attacked yet' : `${title}. ${subtitle}`}>
@@ -32,15 +35,15 @@ export function Radar({ km, title, subtitle, safe, history }: { km: number | nul
         {history.slice(0, -1).map((h, i) => (
           <circle key={i} cx="180" cy="180" r={radius(h)} fill="none" stroke="rgba(255,75,62,0.35)" strokeDasharray="2 4" />
         ))}
-        {km !== null && <circle className={`blast ${safe ? 'safe' : ''}`} cx="180" cy="180" r={radius(km)} />}
-        <circle cx="180" cy="180" r="5" fill={km === null ? '#8d919b' : safe ? '#35d98f' : '#ff4b3e'} />
+        {km !== null && <circle className={`blast ${level === 'good' ? 'safe' : level}`} cx="180" cy="180" r={radius(km)} />}
+        <circle cx="180" cy="180" r="5" fill={km === null ? '#8d919b' : DOT[level]} />
       </svg>
       <div className="radar-caption">
         {km === null ? (
           <span>Not attacked yet</span>
         ) : (
           <>
-            <strong className={safe ? 'good' : 'bad'}>{title}</strong>
+            <strong className={level}>{title}</strong>
             <span>{subtitle}</span>
           </>
         )}
