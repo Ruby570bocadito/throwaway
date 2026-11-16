@@ -15,7 +15,7 @@ For a text (a Glassdoor review, a tip to a journalist, a post from an alt accoun
 2. **Attack, in the cloud.** The first attack measures the text as you would post it, and it only leaves the device once you confirm that. Gemini, through Firebase AI Logic (`ONLY_IN_CLOUD`), gets the text plus a lineup of ten public writers and tries to pick the author. It is never told which candidate is you.
 3. **Rewrite, on your device.** Fixed rules generalise the identifying details ("three years" → "several years"). Then Gemini Nano, through Firebase AI Logic (`ONLY_ON_DEVICE`), rewrites the draft without your habits. **Only a version you chose to post ever reaches the cloud.** With no local model, Throwaway does not fall back to the cloud: you edit, it attacks.
 4. **Attack again** until you are at chance level, one in ten.
-5. **Take it with you.** Copy the safe version, or compare it word by word with your original. For a photo, download the masked version.
+5. **Take it with you.** Copy the version you checked, or compare it word by word with your original. For a photo, download the masked version.
 
 To fingerprint you rather than the demo writer, paste writing you have already published under your name. It stays in the tab and is never stored; for the attack it is one of the ten public candidates.
 
@@ -39,7 +39,7 @@ interface Threat<Input, Clue, Verdict> {
 }
 ```
 
-`redTeam(threat, input, kit)` runs the loop: attack, sanitize with the attacker's feedback, attack again, until you are safe.
+`redTeam(threat, input, kit)` runs the loop: attack, sanitize with the attacker's feedback, attack again, until the attacker stops finding you.
 
 **The privacy contract is enforced, not promised:**
 

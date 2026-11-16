@@ -178,6 +178,9 @@ mark.content { background-image: linear-gradient(transparent 12%, var(--peach) 1
 .finding.generalised span { color: var(--green); }
 .finding.generalised em.by { color: var(--muted); font-style: normal; }
 p.good { margin: 0; font-size: 13.5px; }
+/* without a local model: what the fixed rules could not check */
+.unchecked { margin: 16px 0 0; padding: 10px 14px; border: 1px solid #ecd09a; border-radius: var(--r-md); background: var(--amber-soft); color: #5a3a08; font-size: 13.5px; line-height: 1.5; }
+.unchecked strong { color: var(--amber); }
 .claims { margin-top: 18px; padding: 12px 14px; border: 1px solid #b5d9c3; border-radius: var(--r-md); background: var(--green-soft); }
 .claims h3 { color: var(--green); }
 .claims ul { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 14px; margin: 0; padding: 0; color: #1f5a3a; font-size: 13.5px; list-style: none; }
@@ -378,6 +381,8 @@ a.button-link:hover { background: #24613f; color: #fff; transform: translateY(-1
 .dock-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 10px 14px; min-height: 48px; }
 .dock .restart { flex: none; padding: 11px 16px; font-size: 14px; }
 .outcome { flex: 1 1 260px; margin: 0; color: var(--green); font: 600 16px/1.35 var(--serif); text-align: center; animation: rise 0.45s var(--ease) both; }
+/* what the next attack sends, said before it is sent */
+.dock-note { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.4; text-align: center; animation: rise 0.35s var(--ease) both; }
 .outcome.bad { color: var(--red); }
 .outcome.warn { color: var(--amber); }
 
@@ -435,6 +440,7 @@ a.button-link:hover { background: #24613f; color: #fff; transform: translateY(-1
   .dock-row { justify-content: flex-start; gap: 8px 10px; min-height: 46px; }
   .dock-row > button:not(.ghost), .dock-row > a.button-link { flex: 1 1 auto; }
   .outcome { flex-basis: 100%; font-size: 14.5px; text-align: left; }
+  .dock-note { font-size: 12.5px; text-align: left; }
   button { padding: 12px 16px; font-size: 15px; }
   a.button-link { justify-content: center; padding: 12px 18px; font-size: 15px; }
   .intro { padding: 20px 0 16px; }

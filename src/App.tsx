@@ -169,9 +169,13 @@ export default function App() {
 
       {degraded && (
         <div className="banner">
+          {/* Says what still runs and what does not: "will not analyse" next to a scan button confused two testers (16-nov). */}
           <p>
-            <strong>Degraded mode.</strong> No local model on this device, so Throwaway will not analyse or rewrite for you — your original never goes to the
-            cloud. {tab === 'text' ? 'Edit the text yourself' : 'Tap the cells you want to mask'}: the attacker only sees what you choose to publish.
+            <strong>No local model on this device.</strong>{' '}
+            {tab === 'text'
+              ? 'Throwaway can still check your writing habits, counts and dates, but not names, places or companies, and it cannot rewrite for you: edit the text yourself.'
+              : 'Throwaway cannot look for clues in your photo: tap the cells you want to mask.'}{' '}
+            Nothing goes to the cloud unless you choose to test it.
             {live && !simulateNoNano && (
               <>
                 {' '}
@@ -242,8 +246,10 @@ export default function App() {
             <LedgerTable entries={entries} />
           )}
           <p className="total">
-            Sent to the cloud: {sentOut.toLocaleString('en-US')} bytes — only what you released for publication, plus public data. Private originals cannot reach
-            a cloud model: the types forbid it and a run-time guard blocks it.
+            Sent to the cloud: {sentOut.toLocaleString('en-US')} bytes —{' '}
+            {sentAsIs
+              ? 'your original, because you chose to test it as is, plus what you released for publication and public data. Without that choice, private originals cannot reach a cloud model: the types forbid it and a run-time guard blocks it.'
+              : 'only what you released for publication, plus public data. Private originals cannot reach a cloud model: the types forbid it and a run-time guard blocks it.'}
           </p>
         </section>
       </main>

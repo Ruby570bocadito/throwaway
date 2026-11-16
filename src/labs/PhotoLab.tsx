@@ -20,6 +20,8 @@ const SCAN_PLAN: PlanStep[] = [
 /** Time between two cells pixelating, one after another. */
 const PIX_STAGGER = 170;
 const at = (i: number) => ({ '--i': i }) as CSSProperties;
+// The demo's "real location" is the scene's, not the visitor's: said so on screen (a tester took it for a leak, 16-nov).
+const SCENE_TRUTH = 'Palma (where the demo scene is set)';
 
 /**
  * A blob URL for the bytes. `url` may still be the previous one for a render (an <img> keeps showing it, so swapping photos
@@ -58,7 +60,7 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak, recorded, 
   const acted = useRef(false);
   // The user's real location: private, only used on the device to score each attack. In the demo it is the scene's.
   const [source, setSource] = useState<'demo' | 'own'>('demo');
-  const [truthLabel, setTruthLabel] = useState('Palma (where the demo scene is set)');
+  const [truthLabel, setTruthLabel] = useState(SCENE_TRUTH);
   const [threat, setThreat] = useState(() => locationThreat({ ops: browserImageOps, truth: secret(DEMO_TRUTH, 'your real location') }));
   const fileInput = useRef<HTMLInputElement>(null);
 
@@ -213,6 +215,15 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak, recorded, 
           : verdict.lat === null
             ? `It gave no place and no coordinates. Its confidence: ${verdict.confidence}.`
             : `The attacker’s own precision claim. Its confidence: ${verdict.confidence}.`;
+  // What the last attack got wrong, said as it happened rather than as a promise ("Looks safe to post" read as a guarantee
+  // to both testers, 16-nov).
+  const missed = !verdict
+    ? ''
+    : verdict.errorKm !== null
+      ? `the attacker guesses “${verdict.place}”: ${formatKm(verdict.errorKm)} from where it was taken`
+      : verdict.lat === null
+        ? 'the attacker cannot place it at all'
+        : `the attacker is too unsure to find it (it says “${verdict.place}”)`;
 
   async function run(label: string, fn: () => Promise<void>) {
     acted.current = true;
@@ -321,6 +332,8 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak, recorded, 
       {working && busySince !== null && (
         <WorkLog ledger={kit.ledger} since={busySince} plan={SCAN_PLAN} title="Scanning your photo on this device" recorded={recorded} download={download} />
       )}
+      {!busy && stage === 'scanned' && <p className="dock-note">Sends this photo, as it is, to a cloud AI, as if you had posted it.</p>}
+      {!busy && stage === 'masked' && <p className="dock-note">Sends only the masked photo, never the original.</p>}
       <div className="dock-row">
         {stage === 'photo' && (
           <button className="primary" onClick={scan} disabled={!!busy} aria-busy={busy === 'scan'}>
@@ -365,7 +378,8 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak, recorded, 
           ) : (
             <>
               <p className="outcome" role="status">
-                {published ? 'Looks safe to post: the attacker can only say “' + verdict?.place + '”.' : 'Looks safe to post as it is.'}
+                {published ? 'After masking, ' : 'As it is, '}
+                {missed}.
               </p>
               {published && publishedUrl && (
                 <a className="button-link" href={publishedUrl} download="throwaway-photo.png">
@@ -402,7 +416,11 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak, recorded, 
         <p className="context">
           {source === 'demo' ? 'About to post a selfie from home · illustrated scene, fictional street in Palma' : 'Your photo · decoded and EXIF-stripped on this device'}
           {' · '}
-          <span className="private-note">your real location, known only to this device: {truthLabel}</span>
+          <span className="private-note">
+            {truthLabel === SCENE_TRUTH
+              ? 'where the scene really is stays on this device, to score each guess'
+              : `your real location, known only to this device: ${truthLabel}`}
+          </span>
         </p>
         {stage === 'photo' && recorded && (
           <p className="hint">
@@ -541,7 +559,7 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak, recorded, 
             </div>
             {verdict.clues.length > 0 && (
               <div className="reasons-box rise" key={`r${history.length}`}>
-                <h3>What the attacker used</h3>
+                <h3>{safe ? 'What the attacker went by, and still missed' : 'What the attacker used'}</h3>
                 <ul className="reasons">
                   {/* A cell can hold several clues: keyed by cell alone, React kept a stale item on screen (live, 16-nov). */}
                   {verdict.clues.map((c, i) => (

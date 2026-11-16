@@ -309,16 +309,18 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
 
   // The line under the lineup: whose field the nine writers share, and what follows from it.
   const canPickField = stage === 'draft' && !!ownText && !!packs;
+  // "like you" read as "they resemble you" to both testers (16-nov): the field is what is shared, so it says so.
+  const sameField = ', the same field as you: the attacker has to recognise your style, not your subject.';
   const fieldNote = !ownText
     ? recorded || draft === DRAFT
-      ? ', like you: the attacker has to recognise a style, not a subject.'
-      : ', like the sample writer who stands in for you until you add your own public writing.'
+      ? sameField
+      : ', the sample writer’s field: she stands in for you until you add your own public writing.'
     : packsFailed
       ? ' (the other fields did not load).'
       : !lineupOf.clear
         ? `: no field stood out in your writing${stage === 'draft' ? ', so pick the closest one' : ''}.`
         : lineupOf.wanted === lineupOf.matched
-          ? ', like you: the attacker has to recognise a style, not a subject.'
+          ? sameField
           : `. Your writing reads as ${FIELD_LABELS[lineupOf.matched]}, so the attacker may go by subject, not style.`;
 
   const busyLabel =
@@ -345,6 +347,11 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
           recorded={recorded}
           download={download}
         />
+      )}
+      {/* What the next attack sends, said before it is sent: the as-is test read as a formality to two testers (16-nov). */}
+      {!busy && stage === 'scanned' && <p className="dock-note">Sends this exact text to a cloud AI, ten times, as if you had posted it.</p>}
+      {!busy && stage === 'rewritten' && published && (
+        <p className="dock-note">{degraded ? 'Sends only your edited version, never the original.' : 'Sends only the rewritten version, never the original.'}</p>
       )}
       <div className="dock-row">
         {stage === 'draft' && (
@@ -381,10 +388,11 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
           ) : (
             <>
               <p className="outcome" role="status">
-                Looks safe to publish: in this test you are one of ten, and no identifying details are left.
+                {final ? `The attacker picked you ${final.hits} of ${final.answered} times, no better than chance` : 'The attacker did not find you'}
+                {degraded ? ', and no counts or dates are left. Names, places and companies were not checked.' : ', and no identifying details are left.'}
               </p>
               <button className="safe" onClick={copySafe}>
-                {copied ? 'Copied' : 'Copy the safe version'}
+                {copied ? 'Copied' : 'Copy this version'}
               </button>
             </>
           ))}
@@ -470,7 +478,7 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
           <div className="takeaway rise">
             <div className="takeaway-actions">
               <button className="mini" onClick={copySafe}>
-                {copied ? 'Copied' : 'Copy the safe version'}
+                {copied ? 'Copied' : 'Copy this version'}
               </button>
               <button className="mini" aria-expanded={showCompare} onClick={() => setShowCompare((v) => !v)}>
                 {showCompare ? 'Hide the comparison' : 'Compare with your original'}
@@ -498,7 +506,9 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
             <div className="finding-col">
               <h3>Identifying details</h3>
               {contentClues.length === 0 ? (
-                <p className="good rise">{published ? 'None left (checked on your device).' : degraded ? 'Needs the local model.' : 'None found.'}</p>
+                <p className="good rise">
+                  {degraded ? (published ? 'No counts or dates left.' : 'No counts or dates found.') : published ? 'None left (checked on your device).' : 'None found.'}
+                </p>
               ) : (
                 contentClues.map((m, i) => (
                   <div key={`${m.phrase}-${i}`} className="finding content rise" style={at(i)}>
@@ -506,7 +516,6 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
                   </div>
                 ))
               )}
-              {degraded && !published && contentClues.length > 0 && <p className="context">Counts and dates only: names and places need the local model.</p>}
               {generalised.map((g, i) => (
                 <div key={`${g.phrase}-${i}`} className="finding generalised rise" style={at(i)}>
                   <code>{g.phrase}</code>{' '}
@@ -518,6 +527,14 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
               ))}
             </div>
           </div>
+        )}
+
+        {/* Without a local model only the fixed rules ran: say what that left unchecked, where the findings are (16-nov). */}
+        {stage !== 'draft' && degraded && (
+          <p className="unchecked rise">
+            <strong>Not checked: names, places and companies.</strong> There is no local model on this device, so look for them yourself before you
+            post.
+          </p>
         )}
 
         {published && claims?.meaningCheck === 'failed' && (
@@ -543,7 +560,7 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
 
         <div className="meter" ref={meterRef}>
           <div className="meter-top">
-            <span className="meter-label">Your rank among ten writers (#1 = reads most like you)</span>
+            <span className="meter-label">Your rank among ten writers: #1 reads most like you, #10 least</span>
             <strong className={!stylo || tooShort ? '' : stylo.rank === 1 ? 'bad' : 'good'}>
               #{stylo && !tooShort ? Math.round(rank) : '–'} <span>of 10</span>
             </strong>

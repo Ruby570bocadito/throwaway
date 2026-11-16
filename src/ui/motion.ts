@@ -13,6 +13,10 @@ export const useReducedMotion = () => useSyncExternalStore(subscribe, () => matc
 /**
  * A number that eases to each new value, so a score or a distance is seen changing rather than swapped. `log` interpolates
  * on a log scale (a distance going from 500 m to 869 km). It jumps straight to the value under reduced motion.
+ *
+ * It always ends on the value, even when the browser paints no frames (a background tab, a hidden window, an automated
+ * check): a timer finishes what animation frames did not. Two testers read a rank, a receipt and a distance stopped
+ * halfway in a hidden window ("#1 of 10" next to "Steady at #10", 16-nov).
  */
 export function useAnimatedNumber(value: number, { duration = 800, log = false } = {}): number {
   const reduce = useReducedMotion();
@@ -26,6 +30,11 @@ export function useAnimatedNumber(value: number, { duration = 800, log = false }
     const g = log ? (y: number) => 10 ** y : (y: number) => y;
     const t0 = performance.now();
     let raf = 0;
+    const land = () => {
+      cancelAnimationFrame(raf);
+      current.current = value;
+      setShown(value);
+    };
     const tick = (now: number) => {
       const t = Math.min(1, (now - t0) / duration);
       const eased = 1 - (1 - t) ** 3;
@@ -35,7 +44,11 @@ export function useAnimatedNumber(value: number, { duration = 800, log = false }
       if (t < 1) raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
+    const timer = setTimeout(land, duration + 100);
+    return () => {
+      cancelAnimationFrame(raf);
+      clearTimeout(timer);
+    };
   }, [value, duration, log, reduce]);
   if (reduce) {
     current.current = value;
