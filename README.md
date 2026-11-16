@@ -1,0 +1,118 @@
+# Throwaway
+
+**Before you post anonymously, let an AI try to unmask you.**
+
+Your words give away **who** you are. Your photos give away **where** you are. Throwaway attacks both before anyone else does.
+
+| Threat | The attacker asks | On your device | In the cloud |
+|---|---|---|---|
+| Text | Who wrote this? | Stylometric fingerprint, identifying details, rewrite (Gemini Nano) | A lineup attack: ten public writers, shuffled, you are never labeled |
+| Photo | Where was this taken? | Location clues on a 4×4 grid (Gemini Nano), pixelation | A geolocation attack on the masked photo only |
+
+For a text (a Glassdoor review, a tip to a journalist, a post from an alt account):
+
+1. **Fingerprint, in your browser.** Burrows' Delta over function words and your habit phrases, compared with writing you have already made public. 0 bytes sent.
+2. **Attack, in the cloud.** Gemini, through Firebase AI Logic (`ONLY_IN_CLOUD`), gets the text plus a lineup of ten public writers and tries to pick the author. It is never told which candidate is you.
+3. **Rewrite, on your device.** Fixed rules generalise the identifying details ("three years" → "several years"). Then Gemini Nano, through Firebase AI Logic (`ONLY_ON_DEVICE`), rewrites the draft without your habits. **The draft never leaves the device.** With no local model, Throwaway does not fall back to the cloud: you edit, it attacks.
+4. **Attack again** until you are at chance level, one in ten.
+
+> Status: hackathon prototype for #BuildHybridAI 2026. The demo mode replays recorded AI responses so the video is reproducible; the stylometry is always computed live. Live mode needs a Firebase project (see `.env.example`).
+
+## The framework: local defender, cloud attacker
+
+Throwaway is the reference app of a small TypeScript framework on top of Firebase AI Logic hybrid inference. A **threat** is four functions:
+
+```ts
+interface Threat<Input, Clue, Verdict> {
+  findClues(input: Private<Input>, kit): Promise<Clue[]>;        // on-device
+  sanitize(input: Private<Input>, clues, feedback, kit): Promise<Publishable<Input>>; // on-device
+  attack(published: Publishable<Input>, kit): Promise<Verdict>;  // cloud
+  exposed(verdict: Verdict): boolean;
+}
+```
+
+`redTeam(threat, input, kit)` runs the loop: attack, sanitize with the attacker's feedback, attack again, until you are safe.
+
+**The privacy contract is enforced, not promised:**
+
+- `Private<T>` (your draft, your photo) can only be read by `LocalModel` (Firebase AI Logic `ONLY_ON_DEVICE`). Passing it to `CloudModel` (`ONLY_IN_CLOUD`) **does not compile**.
+- If private text is smuggled into a plain string, a run-time taint check (8-word shingles, image hashes) **blocks the call** and logs it as `blocked` in the ledger. Try the "Try to leak the draft" button.
+- The only way out is `release()`, which refuses content that still carries the private original unless the user confirms they would publish it as-is.
+- If the SDK ever served a local call from the cloud, `LocalModel` throws.
+- Every call lands in a ledger: where it ran, how long, how many bytes left the device.
+
+For a photo: Nano marks the grid cells that reveal where you are (street plaque, house number, shop sign, vegetation), the device pixelates them, and a cloud geolocation attacker estimates where the **masked** photo was taken. If it still narrows you down, it says which cells helped, and the loop masks those too: ~100 m → ~6 km → "Southern Europe".
+
+Code: [`src/framework/`](src/framework) · threats: [`authorship.ts`](src/threats/authorship.ts), [`location.ts`](src/threats/location.ts) · tests: `npm test`
+
+## Run it
+
+```bash
+npm install
+npm run dev
+```
+
+Copy `.env.example` to `.env.local` and fill in your Firebase config to enable live mode. Never commit `.env.local`.
+
+No Gemini Nano in your Chrome? Add `?demo` to the URL (or click **Replay a recorded run**). The app replays recorded model answers through the same framework: privacy guard, fixed rules, ledger and shuffled lineups.
+
+## How hybrid inference is used
+
+| Step | Firebase AI Logic mode | What leaves the device |
+|---|---|---|
+| Fingerprint | none (plain JavaScript) | nothing |
+| Find identifying details | `ONLY_ON_DEVICE` (Gemini Nano) | nothing |
+| Generalise those details in the draft | none (fixed rules, plain JavaScript) | nothing |
+| Rewrite the style, then the meaning check | `ONLY_ON_DEVICE` (Gemini Nano) | nothing |
+| Check the final text for added numbers, dates or names | none (plain JavaScript) | nothing |
+| Attack | `ONLY_IN_CLOUD` | the text you are about to publish + public writing |
+
+Code: [`src/framework/firebase.ts`](src/framework/firebase.ts) · [`src/engine/stylometry.ts`](src/engine/stylometry.ts)
+
+## Measured, not claimed
+
+Live runs through Firebase AI Logic on 15 and 16-nov-2026 (cloud attacker: `gemini-3.5-flash-lite`, ~1 s per call):
+
+| Test | Result |
+|---|---|
+| Text, draft as-is, lineup of 10 same-field writers | Attacker picked the real author **10/10** ("So, honestly / basically / anyway / sorry not sorry") |
+| Text, a rewrite we wrote by hand (15-nov) | **0/10** (chance is 1/10) |
+| Text, rewritten **by Gemini Nano on the device** (Chrome) | **0/10**: the attacker now picks the "formal, academic" writer |
+| Text, full on-device pipeline in Chrome (16-nov, v4: Nano rewrites, then generalises the details sentence by sentence) | **10/10 → 0/10**, no specific detail left, fingerprint #10 of 10, meaning check 5/5. But Nano wrote our prompt's examples into the text (see below), so the pipeline changed |
+| Text, full on-device pipeline in Chrome (16-nov, v5: fixed rules generalise the details first, then Nano rewrites the style) | **10/10 → 0/10** (9 picks of one decoy, 1 of another). Five details generalised in 3 ms, nothing added by the rewrite, meaning check 6/6, fingerprint #10 of 10. The rewrite stage took ~25 s on a laptop (v4: ~60 s). This is the run the demo replays |
+| Photo, as-is | "Carrer de la Llum, 23, Palma", 0.5 km, high confidence: it read the plaque, the house number and the Catalan bakery sign |
+| Photo, clues found by Gemini Nano **on the device** | Cells 3 (street plaque), 7 (house number), 8 (bakery sign), 12 (orange tree) and 1 (a poster it read as a "Japanese flag") |
+| Photo, those 5 cells pixelated on the device | "Rome, Italy", low confidence: ~950 km off |
+
+What the live runs taught us (and changed):
+
+- **Decoys must share your topic.** With off-topic decoys, the rewritten review was still attributed to its author 3/9 times, by subject ("the only one writing about design teams"). The lineup now uses writers from the same field.
+- **An attacker's confidence is not your exposure.** A confident wrong guess ("Venice, 5 km") looked like a leak. The photo threat now scores the guess against your real location, on your device, and the location never leaves it.
+- **Hiding your style is not hiding your story.** Gemini Nano's rewrite beat the lineup (0/10) but kept "Lisbon office", "three years" and "Figma migration": your manager would still know it was you. Five live iterations taught us to **let the small model decide what identifies you, and let deterministic code make sure it is gone**:
+  - Pasted replacements broke the grammar ("the most recent a period") and chased generic words Nano over-flagged ("team", "transition").
+  - A whole-text rewrite copied a placeholder from our own prompt ("what you wrote instead") seven times, and Nano's own meaning check still passed it.
+  - Sentence by sentence, Nano kept all five details.
+  - When it did generalise them, it copied the examples from our instructions into the wrong sentences. It invented "This was an internal project involving a much smaller team" and garbled the team-size claim, and its meaning check still said 5/5.
+
+  Now the details never reach the rewrite. Gemini Nano finds them on the device, and fixed rules, with no AI, generalise them in the draft: "three years" → "several years", "after the March reorg" → "after the reorg", "the Lisbon office" → "the office", "6 people to 2" → "several people to a few". Nano then rewrites the style of a draft that has no details left, so it can neither keep them nor fill them in. A deterministic check catches any number, date or name the rewrite adds, and the same rules generalise it. Nano went from five calls to three, and the meaning check still compares the original and the final text on the device. Throwaway does not say "safe" while a specific detail is left.
+- **Small models copy examples wherever they are in the prompt**, not only in JSON templates: placeholders, then the examples in our instructions. The prompts now carry none.
+- **A readable address is exposure even when the AI gets the city wrong.** On the as-is photo a live run read the plaque and the house number but said "Barcelona" (the street is fictional), 206 km from the scene. Scoring only by distance called that safe; a person would simply search that address everywhere. Street names, house numbers and plates now count as exposure on their own.
+- **Your face is not a location clue.** Gemini Nano also flagged the person in the selfie; people are now excluded, so Throwaway never pixelates the face you want to post.
+- **On-device structured output is set per model instance.** Gemini Nano ignored `generationConfig` and wrapped JSON in markdown; the framework now passes a JSON schema as Chrome's `responseConstraint`.
+- `gemini-3.8-flash` took 40–60 s per call on the free tier, too slow for a ten-attempt lineup, so the attacker defaults to Flash-Lite.
+
+The demo mode (`?demo`) replays the full v5 run recorded in Chrome on 16-nov: the five details, the attack before (10/10), Nano's rewrite, the meaning check and the attack after (0/10).
+
+## Limits we know about
+
+- A cloud provider that sees many attempts could intersect lineups (you are the one constant). Throwaway limits attempts; decoy lineups are on the roadmap.
+- Stylometry on short texts is noisy. The local score is a signal, not proof.
+- Detail detection depends on the local model: the fixed rules only generalise what Gemini Nano flags in your draft. Their wording is plain, not elegant. Codes such as "24/7" are left as they are and stay reported.
+- The meaning check runs on the small local model and is lenient (live, it passed a garbled sentence). Read the final text before you post it.
+- Pixelation hides what a model can read today; it is not a guarantee against every future technique. Cropping is safer.
+- The image guard recognises the exact private bytes. Re-encoding them as text would get past the hash (the types still forbid passing a `Private` value).
+- The demo photo is an illustrated, fictional street: a live attacker may place it in any Catalan-speaking city. Use your own photo and location for a real score.
+- The attacker is a general model, not a specialised geolocation system: a stronger attacker plugs into the same framework.
+- Like Tor or Signal, anonymity tools can be misused. Throwaway attacks no one; it only measures your own text.
+
+Built with the help of AI coding assistants.

@@ -1,0 +1,316 @@
+import { useEffect, useRef, useState } from 'react';
+import { PrivacyViolation, release, secret, type Private, type Publishable } from '../framework';
+import { browserImageOps, normalizeToPng, svgToPng } from '../engine/image';
+import { DEMO_TRUTH, SCENE_H, SCENE_SVG, SCENE_W } from '../demo/photo';
+import { GRID, locationThreat, type LocationVerdict, type PhotoClue } from '../threats/location';
+import { Radar } from '../ui/Radar';
+import { formatKm, type LabProps } from '../ui/shared';
+
+type Stage = 'loading' | 'photo' | 'scanned' | 'attacked' | 'masked' | 'safe';
+
+function useObjectUrl(bytes: Uint8Array | null) {
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => {
+    if (!bytes) return;
+    const u = URL.createObjectURL(new Blob([bytes.slice()], { type: 'image/png' }));
+    setUrl(u);
+    return () => URL.revokeObjectURL(u);
+  }, [bytes]);
+  return url;
+}
+
+export function PhotoLab({ kit, localBackend, degraded, registerLeak }: LabProps) {
+  const [stage, setStage] = useState<Stage>('loading');
+  const [original, setOriginal] = useState<Uint8Array | null>(null);
+  const [published, setPublished] = useState<Publishable<Uint8Array> | null>(null);
+  const [clues, setClues] = useState<PhotoClue[]>([]);
+  const [verdict, setVerdict] = useState<LocationVerdict | null>(null);
+  const [history, setHistory] = useState<number[]>([]);
+  const [manual, setManual] = useState<number[]>([]);
+  const [busy, setBusy] = useState('');
+  const [error, setError] = useState('');
+  const privatePhoto = useRef<Private<Uint8Array> | null>(null);
+  // The user's real location: private, only used on the device to score each attack. In the demo it is the scene's.
+  const [source, setSource] = useState<'demo' | 'own'>('demo');
+  const [truthLabel, setTruthLabel] = useState('Palma (where the demo scene is set)');
+  const [threat, setThreat] = useState(() => locationThreat({ ops: browserImageOps, truth: secret(DEMO_TRUTH, 'your real location') }));
+  const fileInput = useRef<HTMLInputElement>(null);
+
+  async function useOwnPhoto(file: File) {
+    setError('');
+    try {
+      const { png } = await normalizeToPng(file);
+      kit.ledger.add({ op: 'Load your photo (EXIF stripped, resized)', route: 'local-js', ms: 0, bytesOut: 0 });
+      setOriginal(png);
+      setSource('own');
+      // Without a location the attack is scored on the attacker's claimed precision, until the user shares one.
+      setTruthLabel('not set — tap “Use my location” for a real score');
+      setThreat(locationThreat({ ops: browserImageOps }));
+    } catch (e) {
+      setError(`Could not read that image: ${(e as Error).message}`);
+    }
+  }
+
+  function useMyLocation() {
+    if (!navigator.geolocation) return setError('This browser cannot share a location.');
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const truth = secret({ lat: pos.coords.latitude, lon: pos.coords.longitude }, 'your real location');
+        setTruthLabel(`your current location, ±${Math.round(pos.coords.accuracy)} m — never sent`);
+        setThreat(locationThreat({ ops: browserImageOps, truth }));
+        kit.ledger.add({ op: 'Read your location (for local scoring only)', route: 'local-js', ms: 0, bytesOut: 0 });
+      },
+      (err) => setError(`Location not available: ${err.message}`),
+      { enableHighAccuracy: false, timeout: 10000 },
+    );
+  }
+
+  useEffect(() => {
+    svgToPng(SCENE_SVG, SCENE_W, SCENE_H).then((png) => {
+      setOriginal(png);
+      setStage('photo');
+    });
+  }, []);
+
+  useEffect(() => {
+    registerLeak(async () => {
+      if (!privatePhoto.current || !original) return 'Scan your photo first, so the framework knows what is private.';
+      try {
+        // A careless developer passes the original photo to the cloud model, bypassing release() with a cast.
+        await kit.cloud.generate([{ image: { value: original } as unknown as Publishable<Uint8Array>, mime: 'image/png' }], {
+          op: 'Leak test: original photo to the cloud',
+        });
+        return 'The photo was sent. This should never happen.';
+      } catch (e) {
+        return e instanceof PrivacyViolation ? 'Blocked by the privacy guard. 0 bytes left the device.' : (e as Error).message;
+      }
+    });
+    return () => registerLeak(null);
+  }, [kit, original, registerLeak]);
+
+  const shown = useObjectUrl(published ? published.value : original);
+  const safe = verdict ? !threat.exposed(verdict) : false;
+  const reason = verdict ? threat.exposureReason(verdict) : null;
+  // What the radar plots: how precisely it can place you when it read an identifier, otherwise how far off it landed.
+  const shownKm = (v: LocationVerdict) => (threat.exposureReason(v) === 'readable' ? v.radiusKm : (v.errorKm ?? v.radiusKm));
+  const verdictTitle = !verdict
+    ? ''
+    : reason === 'readable'
+      ? 'It read your address'
+      : reason === 'near'
+        ? `Found you: ~${formatKm(verdict.errorKm!)} away`
+        : reason === 'precise'
+          ? `It can place you within ~${formatKm(verdict.radiusKm)}`
+          : verdict.errorKm !== null
+            ? `Off by ~${formatKm(verdict.errorKm)}`
+            : 'Unsure where you are';
+  const verdictHeadline = !verdict
+    ? ''
+    : reason === 'readable'
+      ? 'It read an address: anyone can look it up'
+      : reason
+        ? 'The attacker found you'
+        : verdict.errorKm !== null
+          ? 'Wrong place: you are safe'
+          : 'Too unsure to find you';
+  const verdictDetail = !verdict
+    ? ''
+    : reason === 'readable'
+      ? `Street names, house numbers and plates can be searched by a person even if the AI picked the wrong city${
+          verdict.errorKm !== null ? ` (it was ${formatKm(verdict.errorKm)} off)` : ''
+        }. Mask them.`
+      : verdict.errorKm !== null
+        ? `Distance from where you really are, computed on your device. Its confidence: ${verdict.confidence}. Safe beyond ${formatKm(50)}.`
+        : `The attacker’s own precision claim. Its confidence: ${verdict.confidence}.`;
+
+  async function run(label: string, fn: () => Promise<void>) {
+    setBusy(label);
+    setError('');
+    try {
+      await fn();
+    } catch (e) {
+      setError(e instanceof PrivacyViolation ? e.message : `Something failed: ${(e as Error).message}`);
+    } finally {
+      setBusy('');
+    }
+  }
+
+  const scan = () =>
+    run('scan', async () => {
+      privatePhoto.current = secret(original!, 'your photo');
+      if (degraded) {
+        kit.ledger.add({ op: 'Find location clues', route: 'blocked', ms: 0, bytesOut: 0, note: 'no local model — tap cells to mask them yourself' });
+      } else {
+        if (localBackend.prepare) await localBackend.prepare(); // first user gesture: Chrome requires it before on-device inference
+        setClues(await threat.findClues(privatePhoto.current, kit));
+      }
+      setStage('scanned');
+    });
+
+  const attack = (target: Publishable<Uint8Array>) =>
+    run('attack', async () => {
+      const v = await threat.attack(target, kit);
+      setVerdict(v);
+      setHistory((h) => [...h, shownKm(v)]);
+      setStage(threat.exposed(v) ? 'attacked' : 'safe');
+    });
+
+  const attackAsIs = () => attack(release(original!, 'baseline — user would post this photo as-is', { userConfirmedAsIs: true }));
+
+  const mask = () =>
+    run('mask', async () => {
+      if (degraded) {
+        threat.masked = [...new Set([...threat.masked, ...manual])].sort((a, b) => a - b);
+        const bytes = await browserImageOps.maskCells(original!, threat.masked, GRID);
+        kit.ledger.add({ op: `Pixelate ${threat.masked.length} cells (your choice)`, route: 'local-js', ms: 40, bytesOut: 0 });
+        setPublished(release(bytes, `masked by the user: ${threat.masked.join(',')}`));
+      } else {
+        if (localBackend.prepare) await localBackend.prepare();
+        setPublished(await threat.sanitize(privatePhoto.current!, clues, verdict, kit));
+      }
+      setStage('masked');
+    });
+
+  const clueAt = (cell: number) => clues.find((c) => c.cell === cell && !threat.masked.includes(c.cell));
+  const attackerAt = (cell: number) => verdict?.clues.find((c) => c.cell === cell && !threat.masked.includes(c.cell));
+  const canPick = degraded && (stage === 'scanned' || stage === 'attacked');
+
+  return (
+    <>
+      {error && <div className="banner error span">{error}</div>}
+      <section className="card draft">
+        <div className="card-head">
+          <h2>
+            <span className="step">1</span> Your photo
+          </h2>
+          <span className="chip private">{published ? 'released for publication' : 'private · stays on this device'}</span>
+        </div>
+        <p className="context">
+          {source === 'demo' ? 'About to post a selfie from home · illustrated scene, fictional street in Palma' : 'Your photo · decoded and EXIF-stripped on this device'}
+          {' · '}
+          <span className="private-note">real location: {truthLabel}</span>
+        </p>
+        {stage === 'photo' && (
+          <div className="photo-tools">
+            <button className="mini" onClick={() => fileInput.current?.click()}>
+              Use my own photo
+            </button>
+            <button className="mini" onClick={useMyLocation}>
+              Use my location (stays on this device)
+            </button>
+            <input
+              ref={fileInput}
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              hidden
+              onChange={(e) => e.target.files?.[0] && useOwnPhoto(e.target.files[0])}
+            />
+          </div>
+        )}
+        <div className="photo">
+          {shown ? <img src={shown} alt="Selfie at home with the street visible through the window" /> : <div className="photo-loading">Rendering…</div>}
+          {stage !== 'loading' && stage !== 'photo' && (
+            <div className="cells" style={{ gridTemplateColumns: `repeat(${GRID}, 1fr)` }}>
+              {Array.from({ length: GRID * GRID }, (_, i) => i + 1).map((cell) => {
+                const c = clueAt(cell);
+                const a = attackerAt(cell);
+                const isMasked = threat.masked.includes(cell);
+                const picked = manual.includes(cell);
+                return (
+                  <button
+                    key={cell}
+                    className={`cell ${c ? 'clue' : ''} ${a && !safe ? 'attacker' : ''} ${isMasked ? 'masked' : ''} ${picked && !isMasked ? 'picked' : ''}`}
+                    disabled={!canPick || isMasked}
+                    onClick={() => setManual((m) => (m.includes(cell) ? m.filter((x) => x !== cell) : [...m, cell]))}
+                    aria-label={`Cell ${cell}${c ? `: ${c.what}` : ''}`}
+                  >
+                    <span className="n">{cell}</span>
+                    {c && <span className="tag">{c.kind}</span>}
+                    {!c && a && !safe && <span className="tag atk">used by attacker</span>}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {stage !== 'loading' && stage !== 'photo' && (
+          <div className="findings one">
+            <div className="finding-col">
+              <h3>{degraded ? 'No local model: tap the cells you want to mask' : 'Location clues found on your device'}</h3>
+              {clues.filter((c) => !threat.masked.includes(c.cell)).length === 0 && !degraded ? (
+                <p className="good">{threat.masked.length ? `Masked ${threat.masked.length} cells on-device: ${threat.masked.join(', ')}.` : 'None found.'}</p>
+              ) : (
+                clues
+                  .filter((c) => !threat.masked.includes(c.cell))
+                  .map((c) => (
+                    <div key={c.cell} className="finding content">
+                      <code>cell {c.cell}</code> <span>{c.what}</span>
+                    </div>
+                  ))
+              )}
+            </div>
+          </div>
+        )}
+      </section>
+
+      <section className="card lineup">
+        <div className="card-head">
+          <h2>
+            <span className="step">2</span> The attacker’s map
+          </h2>
+          <span className="chip public">what the cloud sees</span>
+        </div>
+        <p className="context">A cloud geolocation AI sees only the version you would post, and guesses where you are. Your device scores the guess.</p>
+        <Radar km={verdict ? shownKm(verdict) : null} title={verdictTitle} subtitle={verdict ? `Guess: ${verdict.place}` : ''} safe={safe} history={history} />
+        {verdict && (
+          <>
+            <div className="score">
+              <div className={`big small ${safe ? 'good' : 'bad'}`}>{formatKm(shownKm(verdict))}</div>
+              <div>
+                <strong>{verdictHeadline}</strong>
+                <p>
+                  {verdictDetail}
+                  {history.length > 1 ? ` First attempt: ${formatKm(history[0])}.` : ''}
+                </p>
+              </div>
+            </div>
+            {verdict.clues.length > 0 && (
+              <ul className="reasons">
+                {verdict.clues.map((c) => (
+                  <li key={c.cell}>
+                    Cell {c.cell}: {c.what}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </>
+        )}
+      </section>
+
+      <footer className="actions">
+        {stage === 'photo' && (
+          <button onClick={scan} disabled={!!busy}>
+            {busy ? 'Looking at your photo locally…' : 'Scan my photo locally'}
+          </button>
+        )}
+        {stage === 'scanned' && (
+          <button className="danger" onClick={attackAsIs} disabled={!!busy}>
+            {busy ? 'Attacking…' : 'Attack it as I would post it'}
+          </button>
+        )}
+        {stage === 'attacked' && (
+          <button className="safe" onClick={mask} disabled={!!busy || (degraded && manual.length === 0)}>
+            {busy ? 'Masking on your device…' : degraded ? `Mask ${manual.length} cells` : published ? 'Mask what the attacker used' : 'Mask clues on-device'}
+          </button>
+        )}
+        {stage === 'masked' && published && (
+          <button className="danger" onClick={() => attack(published)} disabled={!!busy}>
+            {busy ? 'Attacking…' : 'Attack again'}
+          </button>
+        )}
+        {stage === 'safe' && <span className="done">{published ? 'Safe to post: the attacker can only say “' + verdict?.place + '”.' : 'Already safe to post.'}</span>}
+      </footer>
+    </>
+  );
+}
