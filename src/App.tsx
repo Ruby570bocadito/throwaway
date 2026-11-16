@@ -109,6 +109,12 @@ export default function App() {
         <div className="banner">
           <strong>Degraded mode.</strong> No local model on this device, so Throwaway will not analyse or rewrite for you — your original never goes to the
           cloud. {tab === 'text' ? 'Edit the text yourself' : 'Tap the cells you want to mask'}: the attacker only sees what you choose to publish.
+          {live && !simulateNoNano && (
+            <>
+              {' '}
+              To see the full on-device flow, <a href="?demo">replay a run recorded with Gemini Nano</a>.
+            </>
+          )}
         </div>
       )}
 

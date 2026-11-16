@@ -18,6 +18,11 @@ For a text (a Glassdoor review, a tip to a journalist, a post from an alt accoun
 
 > Status: hackathon prototype for #BuildHybridAI 2026. The demo mode replays recorded AI responses so the video is reproducible; the stylometry is always computed live. Live mode needs a Firebase project (see `.env.example`).
 
+## Try it
+
+- **Live:** [throwaway-hybrid.web.app](https://throwaway-hybrid.web.app). Use Chrome 139+ on a desktop with Gemini Nano (Chrome's Prompt API; about 22 GB of free disk, and a GPU with more than 4 GB of VRAM or 16 GB of RAM). If Nano is not available, enable `chrome://flags/#prompt-api-for-gemini-nano-multimodal-input` and restart Chrome. Without a local model, Throwaway never sends your draft to the cloud: it switches to a degraded mode where you edit and it attacks.
+- **Recorded run:** [throwaway-hybrid.web.app/?demo](https://throwaway-hybrid.web.app/?demo) replays a real run recorded in Chrome, through the same framework. It works in any browser.
+
 ## The framework: local defender, cloud attacker
 
 Throwaway is the reference app of a small TypeScript framework on top of Firebase AI Logic hybrid inference. A **threat** is four functions:
@@ -55,6 +60,13 @@ npm run dev
 Copy `.env.example` to `.env.local` and fill in your Firebase config to enable live mode. Never commit `.env.local`.
 
 No Gemini Nano in your Chrome? Add `?demo` to the URL (or click **Replay a recorded run**). The app replays recorded model answers through the same framework: privacy guard, fixed rules, ledger and shuffled lineups.
+
+### Deploy (Firebase Hosting)
+
+1. Create a reCAPTCHA Enterprise (Fraud Defense) **web key** for your Hosting domains, score-based (no challenge). Do not add `localhost`.
+2. Register it in Firebase console → App Check → your web app. App Check is enforced for Firebase AI Logic; locally the debug provider is used instead.
+3. Put the site key in `.env.production.local` as `VITE_RECAPTCHA_SITE_KEY`. Site keys are public, but the file stays local.
+4. Run `npm run deploy`: tests, build, then `firebase deploy --only hosting`. [`firebase.json`](firebase.json) adds security headers: nosniff, no framing, a strict-origin referrer (reCAPTCHA needs the origin), camera and microphone off, geolocation for this origin only.
 
 ## How hybrid inference is used
 
