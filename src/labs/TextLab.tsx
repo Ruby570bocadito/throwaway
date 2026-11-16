@@ -1,10 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { styleMarkers } from '../engine/stylometry';
 import { DECOYS, DRAFT, LINEUP, MARTA_PUBLIC, SELF_ID } from '../demo/scenario';
 import { PrivacyViolation, release, secret, type Private, type Publishable } from '../framework';
 import { hasPhrase, ruleDetails, type AuthorshipVerdict, type Clue } from '../threats/authorship';
 import { buildAuthorship } from '../kit';
-import { Silhouette, type LabProps } from '../ui/shared';
+import { friendlyError, Silhouette, type LabProps } from '../ui/shared';
 
 type Stage = 'draft' | 'scanned' | 'attacked' | 'rewritten' | 'reattacked';
 const LETTERS = 'ABCDEFGHIJ';
@@ -108,7 +108,7 @@ export function TextLab({ kit, localBackend, degraded, registerLeak }: LabProps)
     try {
       await fn();
     } catch (e) {
-      setError(e instanceof PrivacyViolation ? e.message : `Something failed: ${(e as Error).message}`);
+      setError(friendlyError(e));
     } finally {
       setBusy('');
       setCurrent(null);
@@ -217,7 +217,7 @@ export function TextLab({ kit, localBackend, degraded, registerLeak }: LabProps)
                 <p className="context">Counts and dates only: names and places need the local model.</p>
               )}
               {generalised.map((g, i) => (
-                <div key={`${g.phrase}-${i}`} className="finding generalised">
+                <div key={`${g.phrase}-${i}`} className="finding generalised" style={{ '--i': i } as CSSProperties}>
                   <code>{g.phrase}</code>{' '}
                   <span>
                     {g.generic ? `→ “${g.generic.length > 70 ? `${g.generic.slice(0, 70)}…` : g.generic}”` : '→ removed'}
@@ -270,7 +270,9 @@ export function TextLab({ kit, localBackend, degraded, registerLeak }: LabProps)
             const isMe = c.id === SELF_ID;
             return (
               <div key={c.id} className={`suspect ${current === c.id ? 'pointed' : ''} ${n > 0 ? 'picked' : ''} ${isMe ? 'me' : ''}`}>
-                <Silhouette hot={isMe && n >= 3} />
+                <div className="shot">
+                  <Silhouette hot={isMe && n >= 3} />
+                </div>
                 <span className="letter">{c.letter}</span>
                 {isMe && <span className="you">you · local only</span>}
                 {n > 0 && <span className="count">{n}</span>}
@@ -283,8 +285,8 @@ export function TextLab({ kit, localBackend, degraded, registerLeak }: LabProps)
             <>
               <div className="big">{picks.length ? `${hits}/${picks.length}` : '—'}</div>
               <div>
-                <strong>{busy === 'attack' ? `Attacking… attempt ${Math.min(picks.length + 1, 10)} of 10` : 'Not attacked yet'}</strong>
-                <p>Chance level is 1 in 10.</p>
+                <strong>{busy === 'attack' ? `Attacking… attempt ${Math.min(picks.length + 1, 10)} of 10` : 'No one has looked yet'}</strong>
+                <p>{busy === 'attack' ? 'Chance level is 1 in 10.' : 'Attack it to see who the cloud picks. Chance level is 1 in 10.'}</p>
               </div>
             </>
           ) : (

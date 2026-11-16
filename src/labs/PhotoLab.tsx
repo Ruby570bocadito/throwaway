@@ -4,7 +4,7 @@ import { browserImageOps, normalizeToPng, svgToPng } from '../engine/image';
 import { DEMO_TRUTH, SCENE_H, SCENE_SVG, SCENE_W } from '../demo/photo';
 import { GRID, locationThreat, type LocationVerdict, type PhotoClue } from '../threats/location';
 import { Radar } from '../ui/Radar';
-import { formatKm, type LabProps } from '../ui/shared';
+import { formatKm, friendlyError, type LabProps } from '../ui/shared';
 
 type Stage = 'loading' | 'photo' | 'scanned' | 'attacked' | 'masked' | 'safe';
 
@@ -166,7 +166,7 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak }: LabProps
     try {
       await fn();
     } catch (e) {
-      setError(e instanceof PrivacyViolation ? e.message : `Something failed: ${(e as Error).message}`);
+      setError(friendlyError(e));
     } finally {
       setBusy('');
     }
@@ -299,7 +299,7 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak }: LabProps
           <span className="chip public">what the cloud sees</span>
         </div>
         <p className="context">A cloud geolocation AI sees only the version you would post, and guesses where you are. Your device scores the guess.</p>
-        <Radar km={verdict ? shownKm(verdict) : null} title={verdictTitle} subtitle={verdict ? `Guess: ${verdict.place}` : ''} level={level} history={history} />
+        <Radar km={verdict ? shownKm(verdict) : null} title={verdictTitle} subtitle={verdict ? `Guess: ${verdict.place}` : ''} level={level} history={history} scanning={busy === 'attack'} />
         {verdict && (
           <>
             <div className="score">

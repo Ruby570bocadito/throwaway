@@ -45,6 +45,7 @@ interface Threat<Input, Clue, Verdict> {
 - The only way out is `release()`, which refuses content that still carries the private original unless the user confirms they would publish it as-is.
 - If the SDK ever served a local call from the cloud, `LocalModel` throws.
 - Every call lands in a ledger: where it ran, how long, how many bytes left the device.
+- No third-party requests besides Firebase and its App Check: fonts are bundled, so opening Throwaway tells no font CDN who you are.
 
 For a photo: Nano marks the grid cells that reveal where you are (street plaque, house number, shop sign, vegetation), the device pixelates them, and a cloud geolocation attacker estimates where the **masked** photo was taken. If it still narrows you down, it says which cells helped, and the loop masks those too: ~100 m → ~6 km → "Southern Europe".
 

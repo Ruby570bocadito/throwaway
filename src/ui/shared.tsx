@@ -1,4 +1,13 @@
-import type { Kit } from '../framework';
+import { isTemporary, PrivacyViolation, type Kit } from '../framework';
+
+/** What happened and what to do, in plain words. A raw exception string is never shown alone. */
+export function friendlyError(e: unknown): string {
+  if (e instanceof PrivacyViolation) return e.message;
+  const msg = e instanceof Error ? e.message : String(e);
+  if (isTemporary(e)) return 'The cloud model is busy right now. Wait a minute and try again.';
+  if (/app ?check|\b40[13]\b|permission_denied/i.test(msg)) return 'This browser could not prove it is the real app (App Check). Reload the page and try again.';
+  return `That didn't work: ${msg.replace(/\.$/, '')}. Try again.`;
+}
 
 export interface LabProps {
   kit: Kit;

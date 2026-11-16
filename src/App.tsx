@@ -5,7 +5,7 @@ import { deviceModelStatus } from './framework/firebase';
 import { buildKit, isConfigured } from './kit';
 import { TextLab } from './labs/TextLab';
 import { PhotoLab } from './labs/PhotoLab';
-import { Silhouette } from './ui/shared';
+import { Logo } from './ui/Logo';
 
 type Tab = 'text' | 'photo';
 
@@ -57,12 +57,12 @@ export default function App() {
     <div className="app">
       <header className="top">
         <div className="brand">
-          <span className="logo" aria-hidden>
-            <Silhouette hot={false} />
-          </span>
+          <Logo />
           <div>
             <h1>throwaway</h1>
-            <p className="tag">Before you post anonymously, let an AI try to unmask you.</p>
+            <p className="tag">
+              Before you post anonymously, let an AI try to <span className="marker">unmask you</span>.
+            </p>
           </div>
         </div>
         <div className="status">
@@ -152,7 +152,7 @@ export default function App() {
               {entries.length === 0 && (
                 <tr>
                   <td colSpan={4} className="empty">
-                    Nothing has run yet.
+                    Nothing has run yet. Every step will show up here: where it ran, how long it took and how many bytes left your device.
                   </td>
                 </tr>
               )}
