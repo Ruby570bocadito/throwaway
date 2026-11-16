@@ -19,7 +19,7 @@ function useObjectUrl(bytes: Uint8Array | null) {
   return url;
 }
 
-export function PhotoLab({ kit, localBackend, degraded, registerLeak }: LabProps) {
+export function PhotoLab({ kit, localBackend, degraded, registerLeak, recorded }: LabProps) {
   const [stage, setStage] = useState<Stage>('loading');
   const [original, setOriginal] = useState<Uint8Array | null>(null);
   const [published, setPublished] = useState<Publishable<Uint8Array> | null>(null);
@@ -144,9 +144,9 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak }: LabProps
         : reason
           ? 'The attacker found you'
           : verdict.errorKm !== null
-            ? 'Wrong place: you are safe'
+            ? 'Wrong place: it guessed far from you'
             : verdict.lat === null
-              ? 'No guess at all: you are safe'
+              ? 'It could not place you at all'
               : 'Too unsure to find you';
   const verdictDetail = !verdict
     ? ''
@@ -246,7 +246,13 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak }: LabProps
           {' · '}
           <span className="private-note">your real location, known only to this device: {truthLabel}</span>
         </p>
-        {stage === 'photo' && (
+        {stage === 'photo' && recorded && (
+          <p className="hint">
+            Recorded run: the demo photo is fixed, because the attacks were recorded for it. To check your own photo,{' '}
+            <a href={location.pathname}>open the live version</a>.
+          </p>
+        )}
+        {stage === 'photo' && !recorded && (
           <div className="photo-tools">
             <button className="mini" onClick={() => fileInput.current?.click()}>
               Use my own photo
@@ -382,9 +388,21 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak }: LabProps
               <button onClick={() => setStage('attacked')} disabled={!!busy}>
                 Mask more anyway
               </button>
+              {published && shown && (
+                <a className="button-link" href={shown} download="throwaway-photo.png">
+                  Download the masked photo
+                </a>
+              )}
             </>
           ) : (
-            <span className="done">{published ? 'Looks safe to post: the attacker can only say “' + verdict?.place + '”.' : 'Looks safe to post as it is.'}</span>
+            <>
+              <span className="done">{published ? 'Looks safe to post: the attacker can only say “' + verdict?.place + '”.' : 'Looks safe to post as it is.'}</span>
+              {published && shown && (
+                <a className="button-link" href={shown} download="throwaway-photo.png">
+                  Download the masked photo
+                </a>
+              )}
+            </>
           ))}
       </footer>
     </>

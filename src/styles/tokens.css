@@ -1,0 +1,26 @@
+/* Design tokens shared by the app (/app/) and the landing page (/). Direction B: paper and marker. */
+:root {
+  --bg: #f6ecdd;
+  --paper: #fffaf2;
+  --paper-2: #fbf3e8;
+  --sheet: #fffdf8;
+  --line: #e3d3bb;
+  --ink: #1d1d1f;
+  --text: #2b2f3a;
+  --muted: #5b6070;
+  --slate: #4e5e80;
+  --slate-soft: #e4e8f1;
+  --peach: #ffddbf;
+  --peach-2: #ffc49a;
+  --red: #b4382b;
+  --red-soft: #f7ddd7;
+  --amber: #925c10;
+  --amber-soft: #f9e8c9;
+  --green: #2b734c;
+  --green-soft: #dcefe3;
+  --serif: 'Eczar', Georgia, serif;
+  --sans: 'Work Sans', system-ui, sans-serif;
+  --mono: 'JetBrains Mono', ui-monospace, monospace;
+  --shadow: 0 1px 0 rgba(43, 47, 58, 0.04), 0 10px 28px rgba(78, 94, 128, 0.09);
+  --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+}

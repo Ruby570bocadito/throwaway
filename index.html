@@ -3,24 +3,457 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Throwaway</title>
-    <meta name="description" content="Before you post anonymously, let an AI try to unmask you. Gemini Nano rewrites on your device; the cloud only sees what the world will see." />
+    <script>
+      // Links shared before this page existed (/?demo, #truth=…) belong to the app. And if the page script never runs,
+      // show everything anyway: the motion is a layer, never a gate.
+      (function () {
+        var s = location.search, h = location.hash, root = document.documentElement;
+        if (/[?&]demo\b/.test(s) || /truth=/.test(h)) location.replace('/app/' + s + h);
+        root.classList.add('js');
+        setTimeout(function () { if (!window.__landing) root.classList.remove('js'); }, 2500);
+      })();
+    </script>
+    <title>Throwaway: let an AI try to unmask you before you post</title>
+    <meta name="description" content="Before you post anonymously, a cloud AI tries to identify you from your writing or your photo. Gemini Nano then fixes it on your device, until the attacker is back to guessing. Built on Firebase AI Logic hybrid inference." />
     <meta name="theme-color" content="#f6ecdd" />
-    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="icon" href="/brand/favicon-64.png" type="image/png" sizes="64x64" />
+    <link rel="icon" href="/brand/favicon-32.png" type="image/png" sizes="32x32" />
+    <link rel="apple-touch-icon" href="/brand/apple-touch-icon.png" />
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="Throwaway" />
     <meta property="og:title" content="Throwaway: before you post anonymously, let an AI try to unmask you" />
-    <meta property="og:description" content="Gemini Nano finds what gives you away and rewrites it on your device; a cloud AI attacks only what you would publish. Built on Firebase AI Logic hybrid inference." />
+    <meta property="og:description" content="A cloud AI attacks only what you would publish. Gemini Nano finds what gives you away and fixes it on your device. Built on Firebase AI Logic hybrid inference." />
     <meta property="og:url" content="https://throwaway-hybrid.web.app/" />
-    <meta name="twitter:card" content="summary" />
+    <meta property="og:image" content="https://throwaway-hybrid.web.app/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="stylesheet" href="/src/landing/landing.css" />
   </head>
   <body>
-    <noscript>
-      <p style="font-family: Georgia, serif; max-width: 34rem; margin: 3rem auto; padding: 0 1rem; line-height: 1.6; color: #2b2f3a">
-        Throwaway needs JavaScript: everything it does with your post or photo runs here, in your browser, so the original never has to leave it.
-      </p>
-    </noscript>
-    <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
+    <a class="skip" href="#main">Skip to content</a>
+
+    <svg class="defs" aria-hidden="true" focusable="false">
+      <symbol id="sil" viewBox="0 0 64 64"><circle cx="32" cy="22" r="11" /><path d="M10 60c2-14 11-21 22-21s20 7 22 21z" /></symbol>
+    </svg>
+
+    <header class="nav">
+      <div class="wrap">
+        <a class="brand" href="/" aria-label="Throwaway, home">
+          <img class="logo" src="/brand/bola-128.webp" width="40" height="40" alt="" />
+          <span class="wordmark">throwaway</span>
+        </a>
+        <nav aria-label="Sections">
+          <a href="#threats">The threat</a>
+          <a href="#how">How it works</a>
+          <a href="#privacy">Privacy</a>
+          <a href="#developers">Developers</a>
+        </nav>
+        <a class="btn small" href="/app/">Open the app</a>
+      </div>
+    </header>
+
+    <main id="main">
+      <section class="hero">
+        <div class="wrap">
+          <div class="hero-copy">
+            <p class="eyebrow">Hybrid AI · Firebase AI Logic · Gemini Nano</p>
+            <h1>Before you post anonymously, let an AI try to <span class="marker">unmask you</span>.</h1>
+            <p class="lede">
+              Your words give away <em>who</em> you are. Your photos give away <em>where</em> you are. Throwaway attacks both with a cloud AI, then fixes them
+              on your device with Gemini Nano, until the attacker is back to guessing.
+            </p>
+            <div class="ctas">
+              <a class="btn primary" href="/app/" data-cta="live">Try it live <span class="arrow" aria-hidden="true">→</span></a>
+              <a class="btn ghost" href="/app/?demo" data-cta="demo">Watch a recorded run</a>
+            </div>
+            <p class="fine" data-nano>Live needs Chrome on a desktop with Gemini Nano. The recorded run replays a real one, step by step, in any browser.</p>
+          </div>
+
+          <figure class="replay" aria-labelledby="replay-cap">
+            <div class="sheet">
+              <div class="sheet-head"><span class="chip private" data-label>your anonymous post · private</span></div>
+              <div class="post">
+                <p class="before">
+                  <mark class="habit">So, honestly,</mark> I loved this company for <mark class="detail">three years</mark> — but the last
+                  <mark class="detail">six months</mark> have been <mark class="habit">kind of</mark> a mess. <mark class="habit">Anyway</mark>, after the
+                  <mark class="detail">March reorg</mark> our design team in the <mark class="detail">Lisbon office</mark> went from
+                  <mark class="detail">6 people to 2</mark> (and nobody told us why).
+                </p>
+                <p class="after" aria-hidden="true">
+                  An attachment to this organization existed for a period of several years; however, the preceding several months have presented
+                  challenges. Following a restructuring, the design team’s personnel transitioned from numerous individuals to a smaller number, without
+                  explanation.
+                </p>
+              </div>
+            </div>
+            <div class="handoff" aria-hidden="true"><span>only what you would post</span></div>
+            <div class="board" aria-hidden="true">
+              <div class="board-head">
+                <span class="chip public">the lineup · what the cloud sees</span>
+                <span class="verdict"><strong class="num">10/10 → 0/10</strong><span class="what">found you, then lost you</span></span>
+              </div>
+              <div class="pols">
+                <span class="pol"><span class="shot"><svg class="sil" viewBox="0 0 64 64"><use href="#sil" /></svg></span><span class="letter">A</span><span class="count" hidden></span></span>
+                <span class="pol"><span class="shot"><svg class="sil" viewBox="0 0 64 64"><use href="#sil" /></svg></span><span class="letter">B</span><span class="count" hidden></span></span>
+                <span class="pol me hot"><span class="shot"><svg class="sil" viewBox="0 0 64 64"><use href="#sil" /></svg></span><span class="you">you</span><span class="letter">C</span><span class="count">10</span></span>
+                <span class="pol"><span class="shot"><svg class="sil" viewBox="0 0 64 64"><use href="#sil" /></svg></span><span class="letter">D</span><span class="count" hidden></span></span>
+                <span class="pol"><span class="shot"><svg class="sil" viewBox="0 0 64 64"><use href="#sil" /></svg></span><span class="letter">E</span><span class="count" hidden></span></span>
+                <span class="pol"><span class="shot"><svg class="sil" viewBox="0 0 64 64"><use href="#sil" /></svg></span><span class="letter">F</span><span class="count" hidden></span></span>
+                <span class="pol"><span class="shot"><svg class="sil" viewBox="0 0 64 64"><use href="#sil" /></svg></span><span class="letter">G</span><span class="count" hidden></span></span>
+                <span class="pol"><span class="shot"><svg class="sil" viewBox="0 0 64 64"><use href="#sil" /></svg></span><span class="letter">H</span><span class="count" hidden></span></span>
+                <span class="pol"><span class="shot"><svg class="sil" viewBox="0 0 64 64"><use href="#sil" /></svg></span><span class="letter">I</span><span class="count" hidden></span></span>
+                <span class="pol"><span class="shot"><svg class="sil" viewBox="0 0 64 64"><use href="#sil" /></svg></span><span class="letter">J</span><span class="count" hidden></span></span>
+              </div>
+            </div>
+            <figcaption id="replay-cap">
+              A recorded run. As posted, a cloud model picked the real author 10 times out of 10. After the rewrite on the device: 0 out of 10.
+            </figcaption>
+          </figure>
+        </div>
+      </section>
+
+      <section class="stack" aria-label="Built on">
+        <div class="wrap">
+          <span class="stack-label">Built on</span>
+          <ul>
+            <li>Firebase AI Logic</li>
+            <li>Gemini Nano, on your device</li>
+            <li>Gemini, in the cloud</li>
+            <li>Chrome Prompt API</li>
+            <li>Firebase App Check</li>
+            <li>Firebase Hosting</li>
+          </ul>
+        </div>
+      </section>
+
+      <section class="stats" aria-label="Measured in live runs">
+        <div class="wrap">
+          <div class="stat-row">
+            <div class="stat reveal">
+              <strong><span class="bad">10/10</span> → <span class="good">0/10</span></strong>
+              <p>times a cloud model picked the real author out of ten writers, before and after the rewrite on the device</p>
+            </div>
+            <div class="stat reveal">
+              <strong><span class="bad">0.5 km</span> → <span class="good">~950 km</span></strong>
+              <p>how far off its guess of the photo was, before and after masking five cells on the device</p>
+            </div>
+            <div class="stat reveal">
+              <strong>6/6</strong>
+              <p>claims the rewrite still makes, checked by Gemini Nano on the device</p>
+            </div>
+            <div class="stat reveal">
+              <strong>0 bytes</strong>
+              <p>of your draft sent anywhere to rewrite it</p>
+            </div>
+          </div>
+          <p class="stats-note">
+            Live runs through Firebase AI Logic on 15–16 Nov 2026. Cloud attacker: gemini-3.5-flash-lite.
+            <a href="https://github.com/Ruby570bocadito/throwaway-Firebase-Hackaton#measured-not-claimed">Every measurement</a>
+          </p>
+        </div>
+      </section>
+
+      <section id="threats" class="section">
+        <div class="wrap">
+          <div class="section-head">
+            <p class="kicker reveal">The threat</p>
+            <h2 class="reveal">Two ways an anonymous post gives you away</h2>
+          </div>
+          <div class="threats">
+            <article class="threat reveal">
+              <img class="threat-icon" src="/brand/huella-256.webp" width="76" height="76" alt="" />
+              <h3 class="q">Who wrote this?</h3>
+              <p>
+                Your writing is a fingerprint. In 2013, stylometry helped tie <cite>The Cuckoo’s Calling</cite>, signed Robert Galbraith, to J.&nbsp;K. Rowling.
+                The small words you cannot stop using do the same to you.
+              </p>
+              <p class="small">In the demo post, compared with ten writers from the same field:</p>
+              <ul class="habits">
+                <li><code>honestly</code> 53× more often</li>
+                <li><code>basically</code> 40×</li>
+                <li><code>sorry</code> 27×</li>
+                <li><code>so</code> 9×</li>
+                <li><code>anyway</code> 7×</li>
+              </ul>
+              <p>
+                Then there are the details: <mark class="detail">three years</mark>, <mark class="detail">the Lisbon office</mark>,
+                <mark class="detail">6 people to 2</mark>. Your manager needs no AI for those.
+              </p>
+            </article>
+
+            <article class="threat reveal" data-photo data-show="asis">
+              <img class="threat-icon" src="/brand/pin-256.webp" width="76" height="76" alt="" />
+              <h3 class="q">Where was this taken?</h3>
+              <p>
+                A street plaque, a house number, a bakery sign through the window. As posted, a cloud model read all three and placed the demo selfie half
+                a kilometre from the spot. After Gemini Nano found the clues and your device pixelated them, it guessed Rome.
+              </p>
+              <figure class="polaroid">
+                <div class="scene" role="img" aria-label="Illustrated demo selfie at a window, with a street plaque, a house number and a bakery sign outside">
+                  <p class="scene-fallback">Illustrated demo photo: a selfie at a window, with a street plaque, a house number and a bakery sign outside.</p>
+                  <div class="grid4" aria-hidden="true">
+                    <span class="m"></span><span></span><span class="clue m" data-tag="plaque"></span><span></span>
+                    <span></span><span></span><span class="clue m" data-tag="house no."></span><span class="clue m" data-tag="bakery sign"></span>
+                    <span></span><span></span><span></span><span class="m"></span>
+                    <span></span><span></span><span></span><span></span>
+                  </div>
+                </div>
+                <figcaption class="pol-foot">
+                  <span class="toggle" role="group" aria-label="Which version the cloud sees">
+                    <button type="button" data-show="asis" aria-pressed="true" disabled>As posted</button>
+                    <button type="button" data-show="masked" aria-pressed="false" disabled>Masked on your device</button>
+                  </span>
+                  <span class="guess" aria-live="polite">Cloud’s guess: <strong>“Carrer de la Llum, 23, Palma”</strong> · 0.5 km from the spot</span>
+                </figcaption>
+              </figure>
+            </article>
+          </div>
+
+          <div class="who reveal">
+            <h3>Who it is for</h3>
+            <img
+              class="who-art"
+              src="/illus/quien-1400.webp"
+              srcset="/illus/quien-800.webp 800w, /illus/quien-1400.webp 1400w"
+              sizes="(max-width: 1240px) 100vw, 1180px"
+              width="1536"
+              height="1024"
+              loading="lazy"
+              alt="Three people who post anonymously: an employee writing a review late at night, a source handing an envelope to a journalist, and someone posting from an anonymous account."
+            />
+            <ul>
+              <li><strong>Employees</strong> reviewing their own company.</li>
+              <li><strong>Sources and whistleblowers</strong> talking to journalists.</li>
+              <li><strong>Alt accounts</strong> where being identified has a cost: health, sexuality, politics.</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <section class="section fixes">
+        <div class="wrap">
+          <div class="section-head">
+            <p class="kicker reveal">What people do today</p>
+            <h2 class="reveal">The usual fixes make it worse</h2>
+          </div>
+          <div class="cards three">
+            <div class="card reveal">
+              <h3><span class="struck">Write “weird” on purpose</span></h3>
+              <p>Hard to keep up, and sometimes easier to spot than your normal voice.</p>
+            </div>
+            <div class="card reveal">
+              <h3><span class="struck">Translate it there and back</span></h3>
+              <p>It mangles the text, and nothing tells you whether you are still recognisable.</p>
+            </div>
+            <div class="card reveal">
+              <h3><span class="struck">Ask a chatbot to rewrite it</span></h3>
+              <p>It hands your original to a third party: the one thing you were trying not to do.</p>
+            </div>
+          </div>
+          <p class="punch reveal">Throwaway attacks first, fixes it <span class="marker-soft">on your device</span>, then attacks again to check.</p>
+        </div>
+      </section>
+
+      <section id="how" class="section">
+        <div class="wrap">
+          <div class="section-head">
+            <p class="kicker reveal">How it works</p>
+            <h2 class="reveal">A local defender and a cloud attacker</h2>
+            <p class="sub reveal">
+              Firebase AI Logic runs Gemini in two places, on purpose. Gemini Nano, on your device, reads your original. Gemini in the cloud only sees what
+              you would post.
+            </p>
+          </div>
+          <img
+            class="how-art reveal"
+            src="/illus/defensor-atacante-1400.webp"
+            srcset="/illus/defensor-atacante-800.webp 800w, /illus/defensor-atacante-1400.webp 1400w"
+            sizes="(max-width: 1240px) 100vw, 1100px"
+            width="1536"
+            height="1024"
+            loading="lazy"
+            alt="On the left, your post sits safe on your desk under a glass dome. On the right, a cloud with a magnifying glass studies a board of ten suspects."
+          />
+          <div class="flow reveal">
+            <div class="zone device">
+              <span class="chip private">your device · private</span>
+              <ol>
+                <li data-n="1"><span><strong>Fingerprint.</strong> Burrows’ Delta over the small words you use, in plain JavaScript. 0 bytes sent.</span></li>
+                <li data-n="2">
+                  <span><strong>Find what identifies you.</strong> Gemini Nano with <code>ONLY_ON_DEVICE</code>: names, places, dates and counts in a text; plaques, signs and plates in a photo.</span>
+                </li>
+                <li data-n="4">
+                  <span><strong>Fix it.</strong> Fixed rules generalise the details, then Gemini Nano rewrites your style and checks the meaning. Photos are pixelated cell by cell.</span>
+                </li>
+              </ol>
+            </div>
+            <div class="gate">
+              <span class="door"><code>release()</code><span>the only door out</span></span>
+            </div>
+            <div class="zone cloud">
+              <span class="chip public">the cloud · what the world will see</span>
+              <ol>
+                <li data-n="3">
+                  <span><strong>Attack.</strong> Gemini with <code>ONLY_IN_CLOUD</code> gets the post and ten public writers, shuffled every time, and picks the author. It is never told which one is you. For a photo, it guesses where you are.</span>
+                </li>
+                <li data-n="5"><span><strong>Attack again,</strong> until it is back to chance: one in ten, or the wrong place.</span></li>
+              </ol>
+            </div>
+          </div>
+
+          <div class="contract">
+            <div class="term reveal">
+              <code>Private&lt;T&gt;</code>
+              <p>Your draft or photo. Only local models can read it: a cloud call with it does not compile.</p>
+            </div>
+            <div class="term reveal">
+              <code>release()</code>
+              <p>The only way out. It refuses anything that still carries your original, unless you confirm you would post it as it is.</p>
+            </div>
+            <div class="term reveal">
+              <code>Publishable&lt;T&gt;</code>
+              <p>The only thing a cloud model accepts. A run-time guard checks every payload anyway.</p>
+            </div>
+          </div>
+
+          <figure class="receipt reveal">
+            <figcaption>The route ledger: every step, where it ran, and what left your device</figcaption>
+            <div class="table-scroll">
+              <table>
+                <thead>
+                  <tr><th scope="col">Step</th><th scope="col">Where</th><th scope="col">Bytes out</th></tr>
+                </thead>
+                <tbody>
+                  <tr><td>Fingerprint (Burrows’ Delta)</td><td><span class="route local">local-js</span></td><td>0</td></tr>
+                  <tr><td>Find identifying details</td><td><span class="route device">on-device</span></td><td>0</td></tr>
+                  <tr><td>Attack attempt 1 of 10 · your post as-is, your choice</td><td><span class="route cloud">cloud</span></td><td>4,404</td></tr>
+                  <tr><td>Fixed rules generalised 6 details</td><td><span class="route local">local-js</span></td><td>0</td></tr>
+                  <tr><td>Rewrite on-device</td><td><span class="route device">on-device</span></td><td>0</td></tr>
+                  <tr><td>Meaning check</td><td><span class="route device">on-device</span></td><td>0</td></tr>
+                  <tr><td>Attack attempt 1 of 10 · the rewrite</td><td><span class="route cloud">cloud</span></td><td>4,496</td></tr>
+                  <tr><td>Leak test: the draft pasted into a cloud prompt</td><td><span class="route blocked">blocked</span></td><td>0</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <p class="receipt-note">From the recorded run. Each attack sends the post plus ten public texts. The leak test is a deliberate developer mistake, and the guard stops it.</p>
+          </figure>
+        </div>
+      </section>
+
+      <section id="privacy" class="section">
+        <div class="wrap">
+          <div class="privacy-head">
+            <img class="privacy-mark reveal" src="/brand/mascara-256.webp" width="128" height="128" alt="" />
+            <div class="section-head">
+              <p class="kicker reveal">Privacy</p>
+              <h2 class="reveal">No account. Nothing stored. Nothing to breach.</h2>
+            </div>
+          </div>
+          <div class="cards three">
+            <div class="card reveal">
+              <h3>No login</h3>
+              <p>A tool for staying anonymous should not know who you are. There is no account to create and nothing to sign in to.</p>
+            </div>
+            <div class="card reveal">
+              <h3>Nothing stored, nothing tracked</h3>
+              <p>Your draft and your photo live in this browser tab and are gone when you close it. No analytics, no cookies of ours, and the fonts are bundled.</p>
+            </div>
+            <div class="card reveal">
+              <h3>Only what you would post leaves</h3>
+              <p>The first attack measures your post as you would publish it, after you confirm. Finding clues, rewriting and masking all happen on your device.</p>
+            </div>
+          </div>
+          <p class="legal reveal">
+            The recorded run makes no requests to third parties. The live mode uses Firebase App Check with reCAPTCHA Enterprise, so only this web app can call
+            the model. This site is protected by reCAPTCHA and the Google <a href="https://policies.google.com/privacy">Privacy Policy</a> and
+            <a href="https://policies.google.com/terms">Terms of Service</a> apply.
+          </p>
+        </div>
+      </section>
+
+      <section id="developers" class="section">
+        <div class="wrap dev">
+          <div>
+            <p class="kicker reveal">For developers</p>
+            <h2 class="reveal">A threat is four functions</h2>
+            <p class="sub reveal">
+              Throwaway is the reference app of a small TypeScript framework on Firebase AI Logic hybrid inference. You write a threat; the privacy types,
+              the run-time guard and the ledger come with it.
+            </p>
+            <p class="reveal">
+              <code>redTeam(threat, input, kit)</code> runs the loop: attack, fix with the attacker’s feedback, attack again, until you are safe. Two threats
+              ship today: who wrote a text, and where a photo was taken.
+            </p>
+            <p class="reveal"><a class="btn ghost" href="https://github.com/Ruby570bocadito/throwaway-Firebase-Hackaton">Read the code on GitHub</a></p>
+          </div>
+          <pre class="code reveal"><code><span class="k">interface</span> <span class="t">Threat</span>&lt;Input, Clue, Verdict&gt; {
+  <span class="c">// on your device</span>
+  findClues(input: <span class="t">Private</span>&lt;Input&gt;, kit): <span class="t">Promise</span>&lt;Clue[]&gt;;
+  sanitize(input: <span class="t">Private</span>&lt;Input&gt;, clues, feedback, kit):
+    <span class="t">Promise</span>&lt;<span class="t">Publishable</span>&lt;Input&gt;&gt;;
+  <span class="c">// in the cloud</span>
+  attack(published: <span class="t">Publishable</span>&lt;Input&gt;, kit): <span class="t">Promise</span>&lt;Verdict&gt;;
+  exposed(verdict: Verdict): <span class="k">boolean</span>;
+}</code></pre>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="wrap">
+          <div class="section-head">
+            <p class="kicker reveal">Honest limits</p>
+            <h2 class="reveal">What it cannot promise</h2>
+          </div>
+          <ul class="limits reveal">
+            <li>Stylometry on short texts is noisy. The local score is a signal, not proof.</li>
+            <li>The meaning check runs on a small local model and is lenient. Read the final text before you post it.</li>
+            <li>Names and places are caught only when Gemini Nano flags them. Counts and dates are always generalised.</li>
+            <li>Pixelation hides what a model can read today. Cropping is safer.</li>
+            <li>A provider that sees many attempts could intersect lineups, since you are the one constant. Throwaway limits attempts.</li>
+          </ul>
+        </div>
+      </section>
+
+      <section class="section final">
+        <div class="wrap">
+          <div class="final-stage">
+            <img
+              class="final-art"
+              src="/illus/compartir-1400.webp"
+              srcset="/illus/compartir-800.webp 800w, /illus/compartir-1400.webp 1400w"
+              sizes="(max-width: 1240px) 100vw, 1180px"
+              width="1536"
+              height="1024"
+              loading="lazy"
+              alt=""
+            />
+            <div class="final-copy">
+              <h2 class="reveal">Attack your post before anyone else does.</h2>
+              <div class="ctas reveal">
+                <a class="btn primary" href="/app/" data-cta="live">Try it live <span class="arrow" aria-hidden="true">→</span></a>
+                <a class="btn ghost" href="/app/?demo" data-cta="demo">Watch a recorded run</a>
+              </div>
+              <p class="fine reveal">Live: Chrome 139+ on a desktop with Gemini Nano (about 22 GB of free disk). Recorded run: any browser, any device.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="foot">
+      <div class="wrap">
+        <a class="brand" href="/" aria-label="Throwaway, home">
+          <img class="logo-small" src="/brand/bola-128.webp" width="28" height="28" alt="" />
+          <span class="wordmark">throwaway</span>
+        </a>
+        <span>Built for #BuildHybridAI 2026</span>
+        <a href="https://github.com/Ruby570bocadito/throwaway-Firebase-Hackaton">Source on GitHub</a>
+        <span>Apache-2.0</span>
+        <a href="#privacy">Privacy</a>
+      </div>
+    </footer>
+
+    <script type="module" src="/src/landing/landing.ts"></script>
   </body>
 </html>

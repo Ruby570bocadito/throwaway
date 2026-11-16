@@ -5,6 +5,7 @@ import { PrivacyViolation, release, secret, type Private, type Publishable } fro
 import { hasPhrase, ruleDetails, type AuthorshipVerdict, type Clue } from '../threats/authorship';
 import { buildAuthorship } from '../kit';
 import { friendlyError, Silhouette, type LabProps } from '../ui/shared';
+import { Compare } from '../ui/Compare';
 
 type Stage = 'draft' | 'scanned' | 'attacked' | 'rewritten' | 'reattacked';
 const LETTERS = 'ABCDEFGHIJ';
@@ -31,7 +32,7 @@ function Highlighted({ text, marks }: { text: string; marks: { phrase: string; k
   return <p className="draft-text">{parts.map((p, i) => (p.k ? <mark key={i} className={p.k}>{p.t}</mark> : <span key={i}>{p.t}</span>))}</p>;
 }
 
-export function TextLab({ kit, localBackend, degraded, registerLeak }: LabProps) {
+export function TextLab({ kit, localBackend, degraded, registerLeak, recorded }: LabProps) {
   const [stage, setStage] = useState<Stage>('draft');
   const [draft, setDraft] = useState(DRAFT);
   const [edited, setEdited] = useState('');
@@ -44,6 +45,13 @@ export function TextLab({ kit, localBackend, degraded, registerLeak }: LabProps)
   const [busy, setBusy] = useState('');
   // "Attack it as I would post it" sends the draft as it is: the user's choice, and the chip says so.
   const [sentAsIs, setSentAsIs] = useState(false);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [copied, setCopied] = useState(false);
+  const [showCompare, setShowCompare] = useState(false);
+  // Writing you already published under your name (optional, live only, never stored): the fingerprint compares you with you.
+  const [ownPublic, setOwnPublic] = useState('');
+  const ownWords = ownPublic.trim() ? ownPublic.trim().split(/\s+/).length : 0;
+  const selfCorpus = ownPublic.trim() || MARTA_PUBLIC;
   const [error, setError] = useState('');
   const privateDraft = useRef<Private<string> | null>(null);
   // On-device steps can take a while on a laptop (measured: 15–40 s each): show which one just finished.
@@ -63,8 +71,8 @@ export function TextLab({ kit, localBackend, degraded, registerLeak }: LabProps)
       buildAuthorship((pickId) => {
         setCurrent(pickId);
         setPicks((p) => [...p, pickId]);
-      }),
-    [],
+      }, ownPublic),
+    [ownPublic],
   );
 
   // The shell's "Try to leak" button: a careless developer concatenates the draft into a cloud prompt.
@@ -87,8 +95,8 @@ export function TextLab({ kit, localBackend, degraded, registerLeak }: LabProps)
   const shownText = published ? published.value : stage === 'draft' ? draft : degraded && edited ? edited : draft;
   const stylo = useMemo(() => threat.fingerprint(shownText), [threat, shownText]);
   const liveStyle = useMemo(
-    () => styleMarkers(shownText, MARTA_PUBLIC, DECOYS.map((d) => d.corpus)).map((m) => ({ ...m, kind: 'style' as const })),
-    [shownText],
+    () => styleMarkers(shownText, selfCorpus, DECOYS.map((d) => d.corpus)).map((m) => ({ ...m, kind: 'style' as const })),
+    [shownText, selfCorpus],
   );
   const styleClues = published ? liveStyle : clues.filter((c) => c.kind === 'style');
   // After a rewrite, trust the fresh on-device re-check of the final text; for a manual edit, fall back to string matching.
@@ -125,7 +133,7 @@ export function TextLab({ kit, localBackend, degraded, registerLeak }: LabProps)
       if (degraded) {
         // No local model: only the deterministic fingerprint and fixed rules run. Nothing is sent anywhere.
         const rules = ruleDetails(draft).map((d) => ({ ...d, kind: 'content' as const }));
-        setClues([...styleMarkers(draft, MARTA_PUBLIC, DECOYS.map((d) => d.corpus)).map((m) => ({ ...m, kind: 'style' as const })), ...rules]);
+        setClues([...styleMarkers(draft, selfCorpus, DECOYS.map((d) => d.corpus)).map((m) => ({ ...m, kind: 'style' as const })), ...rules]);
         kit.ledger.add({ op: 'Fingerprint (Burrows’ Delta)', route: 'local-js', ms: 3, bytesOut: 0 });
         kit.ledger.add({ op: 'Find identifying details', route: 'blocked', ms: 0, bytesOut: 0, note: 'no local model — skipped, not sent to cloud' });
         kit.ledger.add({ op: 'Find counts and dates (fixed rules)', route: 'local-js', ms: 1, bytesOut: 0, note: `no model · ${rules.length} found` });
@@ -173,6 +181,18 @@ export function TextLab({ kit, localBackend, degraded, registerLeak }: LabProps)
 
   const editing = stage === 'draft' || (degraded && (stage === 'scanned' || stage === 'attacked'));
 
+  // The take-away: the version you would post, copied to the clipboard (it never leaves the device this way either).
+  const copySafe = async () => {
+    if (!published) return;
+    try {
+      await navigator.clipboard.writeText(published.value);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2500);
+    } catch {
+      setError('Your browser blocked the clipboard. Select the text and copy it by hand.');
+    }
+  };
+
   return (
     <>
       {error && <div className="banner error span">{error}</div>}
@@ -185,10 +205,15 @@ export function TextLab({ kit, localBackend, degraded, registerLeak }: LabProps)
             {published ? 'released for publication' : sentAsIs ? 'sent as-is to the attacker · your choice' : 'private · stays on this device'}
           </span>
         </div>
-        <p className="context">Glassdoor review · posted from a throwaway account</p>
+        <p className="context">
+          {draft === DRAFT ? 'Sample post: an anonymous review of an employer, from a throwaway account' : 'Your post, about to be published anonymously'}
+        </p>
         {editing ? (
           <textarea
+            ref={textareaRef}
             aria-label="Your anonymous post"
+            placeholder="Paste the post you are about to publish…"
+            readOnly={recorded && stage === 'draft'}
             value={stage === 'draft' ? draft : edited}
             onChange={(e) => (stage === 'draft' ? setDraft(e.target.value) : setEdited(e.target.value))}
             rows={9}
@@ -201,6 +226,58 @@ export function TextLab({ kit, localBackend, degraded, registerLeak }: LabProps)
         )}
         {published && claims && (
           <p className="hint">Rewritten in a plain, neutral voice on purpose: your writing style is what gave you away.</p>
+        )}
+        {stage === 'draft' && !recorded && (
+          <div className="draft-tools">
+            <span className="hint">Edit this sample, or paste the post you are about to publish.</span>
+            <button
+              className="mini"
+              onClick={() => {
+                setDraft('');
+                textareaRef.current?.focus();
+              }}
+            >
+              Clear and paste mine
+            </button>
+          </div>
+        )}
+        {stage === 'draft' && !recorded && (
+          <details className="own-writing">
+            <summary>Compare with your own public writing{ownWords ? ` · ${ownWords} words` : ' (optional)'}</summary>
+            <p className="hint">
+              Paste things you have already published under your name: blog posts, LinkedIn posts, comments. The fingerprint compares them with your
+              anonymous post on this device. For the attack they go to the cloud as one of the ten writers, so paste only writing that is already public.
+              Nothing is stored.
+            </p>
+            <textarea
+              aria-label="Your public writing"
+              rows={5}
+              value={ownPublic}
+              onChange={(e) => setOwnPublic(e.target.value)}
+              placeholder="Paste a few paragraphs you have published under your name…"
+            />
+            {ownWords > 0 && ownWords < 150 && <p className="hint">At least 150 words make a useful fingerprint.</p>}
+          </details>
+        )}
+        {stage === 'draft' && recorded && (
+          <p className="hint">
+            Recorded run: the sample post is fixed, because the model answers were recorded for it. To check your own post,{' '}
+            <a href={location.pathname}>open the live version</a> in Chrome with Gemini Nano.
+          </p>
+        )}
+        {published && (
+          <div className="takeaway">
+            <div className="takeaway-actions">
+              <button className="mini" onClick={copySafe}>
+                {copied ? 'Copied' : 'Copy the safe version'}
+              </button>
+              <button className="mini" aria-expanded={showCompare} onClick={() => setShowCompare((v) => !v)}>
+                {showCompare ? 'Hide the comparison' : 'Compare with your original'}
+              </button>
+            </div>
+            {showCompare && <Compare original={draft} final={published.value} />}
+            <p className="hint">Read it before you post: the meaning check runs on a small model and can miss a change.</p>
+          </div>
         )}
 
         {stage !== 'draft' && (
@@ -268,6 +345,9 @@ export function TextLab({ kit, localBackend, degraded, registerLeak }: LabProps)
             <i style={{ width: `${Math.round(stylo.score * 100)}%` }} className={stylo.score > 0.6 ? 'bad' : 'good'} />
           </div>
           <small>Local fingerprint: Burrows’ Delta on function words · computed in your browser · 0 bytes sent</small>
+          {draft !== DRAFT && !ownPublic.trim() && !recorded && (
+            <p className="hint">Compared with the sample writer’s public posts. Add your own public writing above for a fingerprint of you.</p>
+          )}
         </div>
       </section>
 
@@ -331,7 +411,7 @@ export function TextLab({ kit, localBackend, degraded, registerLeak }: LabProps)
 
       <footer className="actions">
         {stage === 'draft' && (
-          <button onClick={scan} disabled={!!busy}>
+          <button onClick={scan} disabled={!!busy || !draft.trim()}>
             {busy ? `Reading your draft locally…${lastStep ? ` · ${lastStep}` : ''}` : 'Scan my post locally'}
           </button>
         )}
@@ -364,7 +444,12 @@ export function TextLab({ kit, localBackend, degraded, registerLeak }: LabProps)
               Your style is hidden, but {contentClues.length} detail{contentClues.length > 1 ? 's' : ''} can still identify you.
             </span>
           ) : (
-            <span className="done">Looks safe to publish: in this test you are one of ten, and no identifying details are left.</span>
+            <>
+              <span className="done">Looks safe to publish: in this test you are one of ten, and no identifying details are left.</span>
+              <button className="safe" onClick={copySafe}>
+                {copied ? 'Copied' : 'Copy the safe version'}
+              </button>
+            </>
           ))}
       </footer>
     </>

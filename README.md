@@ -15,13 +15,16 @@ For a text (a Glassdoor review, a tip to a journalist, a post from an alt accoun
 2. **Attack, in the cloud.** The first attack measures the text as you would post it, and it only leaves the device once you confirm that. Gemini, through Firebase AI Logic (`ONLY_IN_CLOUD`), gets the text plus a lineup of ten public writers and tries to pick the author. It is never told which candidate is you.
 3. **Rewrite, on your device.** Fixed rules generalise the identifying details ("three years" → "several years"). Then Gemini Nano, through Firebase AI Logic (`ONLY_ON_DEVICE`), rewrites the draft without your habits. **Only a version you chose to post ever reaches the cloud.** With no local model, Throwaway does not fall back to the cloud: you edit, it attacks.
 4. **Attack again** until you are at chance level, one in ten.
+5. **Take it with you.** Copy the safe version, or compare it word by word with your original. For a photo, download the masked version.
+
+To fingerprint you rather than the demo writer, paste writing you have already published under your name. It stays in the tab and is never stored; for the attack it is one of the ten public candidates.
 
 > Status: hackathon prototype for #BuildHybridAI 2026. The demo mode replays recorded AI responses so the video is reproducible; the stylometry is always computed live. Live mode needs a Firebase project (see `.env.example`).
 
 ## Try it
 
-- **Live:** [throwaway-hybrid.web.app](https://throwaway-hybrid.web.app). Use Chrome 139+ on a desktop with Gemini Nano (Chrome's Prompt API; about 22 GB of free disk, and a GPU with more than 4 GB of VRAM or 16 GB of RAM). If Nano is not available, enable `chrome://flags/#prompt-api-for-gemini-nano-multimodal-input` and restart Chrome. Without a local model, Throwaway does not hand the private steps to the cloud: it switches to a degraded mode where you edit and it attacks.
-- **Recorded run:** [throwaway-hybrid.web.app/?demo](https://throwaway-hybrid.web.app/?demo) replays a real run recorded in Chrome, through the same framework. It works in any browser.
+- **Live:** [throwaway-hybrid.web.app/app/](https://throwaway-hybrid.web.app/app/). The home page, [throwaway-hybrid.web.app](https://throwaway-hybrid.web.app), explains it in two minutes. Use Chrome 139+ on a desktop with Gemini Nano (Chrome's Prompt API; about 22 GB of free disk, and a GPU with more than 4 GB of VRAM or 16 GB of RAM). If Nano is not available, enable `chrome://flags/#prompt-api-for-gemini-nano-multimodal-input` and restart Chrome. Without a local model, Throwaway does not hand the private steps to the cloud: it switches to a degraded mode where you edit and it attacks.
+- **Recorded run:** [throwaway-hybrid.web.app/app/?demo](https://throwaway-hybrid.web.app/app/?demo) replays a real run recorded in Chrome, through the same framework. It works in any browser.
 
 ## The framework: local defender, cloud attacker
 

@@ -1,29 +1,5 @@
 /* Direction B · paper and marker. Your side is paper; what the cloud sees is shown on the same desk, never as yours. */
-:root {
-  --bg: #f6ecdd;
-  --paper: #fffaf2;
-  --paper-2: #fbf3e8;
-  --sheet: #fffdf8;
-  --line: #e3d3bb;
-  --ink: #1d1d1f;
-  --text: #2b2f3a;
-  --muted: #5b6070;
-  --slate: #4e5e80;
-  --slate-soft: #e4e8f1;
-  --peach: #ffddbf;
-  --peach-2: #ffc49a;
-  --red: #b4382b;
-  --red-soft: #f7ddd7;
-  --amber: #925c10;
-  --amber-soft: #f9e8c9;
-  --green: #2b734c;
-  --green-soft: #dcefe3;
-  --serif: 'Eczar', Georgia, serif;
-  --sans: 'Work Sans', system-ui, sans-serif;
-  --mono: 'JetBrains Mono', ui-monospace, monospace;
-  --shadow: 0 1px 0 rgba(43, 47, 58, 0.04), 0 10px 28px rgba(78, 94, 128, 0.09);
-  --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
-}
+@import './styles/tokens.css';
 
 * { box-sizing: border-box; }
 html, body, #root { margin: 0; min-height: 100%; background: var(--bg); color: var(--text); font-family: var(--sans); }
@@ -36,8 +12,11 @@ a { color: var(--slate); text-underline-offset: 3px; }
 /* header */
 .top { display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; margin-bottom: 18px; }
 .brand { display: flex; gap: 14px; align-items: center; }
-.logo-mark { display: block; flex: none; }
-.logo-stroke { stroke-dasharray: 1; stroke-dashoffset: 1; animation: draw 0.7s var(--ease) 0.25s forwards; }
+.logo-mark { display: block; flex: none; animation: toss 0.9s var(--ease) both; }
+.home-link { display: block; flex: none; border-radius: 16px; }
+.tag .how { margin-left: 6px; font-size: 13px; white-space: nowrap; }
+/* the paper ball lands on the desk, as if tossed */
+@keyframes toss { from { opacity: 0; transform: translateY(-14px) rotate(-40deg) scale(0.7); } 60% { opacity: 1; transform: translateY(2px) rotate(8deg) scale(1.04); } to { transform: none; } }
 h1 { font-family: var(--serif); font-size: 36px; line-height: 1; letter-spacing: -0.02em; margin: 0; font-weight: 700; color: var(--ink); }
 .tag { margin: 6px 0 0; color: var(--muted); font-size: 15px; }
 .marker { background: linear-gradient(var(--peach), var(--peach)) no-repeat 0 85% / 0 0.55em; color: var(--ink); animation: highlight 0.6s var(--ease) 0.6s forwards; padding: 0 2px; }
@@ -240,7 +219,26 @@ button.reset { position: fixed; right: 20px; bottom: 22px; z-index: 5; font-size
 @keyframes wobble { 0% { rotate: var(--tilt, 0deg); } 35% { rotate: calc(var(--tilt, 0deg) - 3deg); } 70% { rotate: calc(var(--tilt, 0deg) + 2deg); } 100% { rotate: var(--tilt, 0deg); } }
 @keyframes spin { to { transform: rotate(360deg); } }
 
+/* your own input, the take-away, and the developer corner */
+.draft-tools { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; margin-top: 10px; }
+.draft-tools .hint { margin: 0; }
+textarea[readonly] { cursor: default; }
+.takeaway { margin-top: 14px; padding: 12px 14px; border: 1px dashed var(--line); border-radius: 10px; background: var(--paper-2); }
+.takeaway-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.compare { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 12px; }
+.compare p { margin: 0; color: var(--ink); font-family: var(--serif); font-size: 15px; line-height: 1.6; }
+.compare del { background: var(--red-soft); color: var(--red); text-decoration-thickness: 2px; }
+.compare ins { background: var(--green-soft); color: var(--green); text-decoration: none; }
+a.button-link { display: inline-flex; align-items: center; padding: 13px 26px; border-radius: 999px; background: var(--green); color: #fff; font-size: 16px; font-weight: 600; text-decoration: none; box-shadow: 0 2px 0 rgba(43, 47, 58, 0.18); }
+.own-writing { margin-top: 12px; padding: 10px 14px; border: 1px dashed var(--line); border-radius: 10px; background: var(--paper-2); }
+.own-writing summary { cursor: pointer; color: var(--slate); font-size: 14px; font-weight: 600; }
+.own-writing textarea { margin-top: 8px; font-size: 15px; }
+.devtools { margin-top: 10px; }
+.devtools summary { cursor: pointer; color: var(--muted); font-family: var(--mono); font-size: 12px; }
+.devtools .hint { margin: 8px 0; }
+
 @media (max-width: 900px) {
+  .compare { grid-template-columns: 1fr; }
   .grid { grid-template-columns: 1fr; grid-template-areas: 'draft' 'lineup' 'ledger'; }
   .findings, .claims ul { grid-template-columns: 1fr; }
   .app { padding: 16px 16px 120px; }

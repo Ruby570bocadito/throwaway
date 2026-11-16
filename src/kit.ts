@@ -33,10 +33,16 @@ export function buildKit(ledger: Ledger) {
   return { live, kit: { local: new LocalModel(backends.local, ledger), cloud: new CloudModel(backends.cloud, ledger), ledger }, backends };
 }
 
-export function buildAuthorship(onAttempt: (pickId: string, i: number) => void) {
+/**
+ * The authorship threat. `ownPublic` is writing the user has already published under their name: with it, the fingerprint
+ * and the lineup compare the anonymous post with the user, not with the demo persona. It is public by definition, so it may
+ * go to the attacker as one of the ten candidates (and the guard still blocks it if it carries the private draft).
+ */
+export function buildAuthorship(onAttempt: (pickId: string, i: number) => void, ownPublic = '') {
+  const own = ownPublic.trim();
   return authorshipThreat({
     selfId: SELF_ID,
-    self: publicData(MARTA_PUBLIC, 'your public blog'),
+    self: own ? publicData(own, 'your public writing') : publicData(MARTA_PUBLIC, 'your public blog'),
     decoys: DECOYS.map((d) => ({ id: d.id, text: publicData(d.corpus, 'public decoy') })),
     onAttempt,
   });

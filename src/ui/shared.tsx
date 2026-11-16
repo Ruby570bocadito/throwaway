@@ -17,6 +17,8 @@ export interface LabProps {
   degraded: boolean;
   /** The shell's "Try to leak" button calls the function the active lab registers here. */
   registerLeak: (fn: (() => Promise<string>) | null) => void;
+  /** Recorded run (?demo): the model answers were recorded for the sample post and photo, so your own input is not offered there. */
+  recorded: boolean;
 }
 
 export function Silhouette({ hot }: { hot: boolean }) {
