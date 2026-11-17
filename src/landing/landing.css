@@ -290,6 +290,8 @@ mark.detail { background-image: linear-gradient(transparent 12%, var(--peach) 12
 .final-art { width: 100%; }
 .final-copy { position: relative; z-index: 1; max-width: 46%; padding-left: 3%; }
 .final h2 { margin: 0; }
+/* "does." alone on the last line read as a typo to a judge (17-nov): the circled words and the verb wrap together. */
+.final h2 .keep { white-space: nowrap; }
 
 .foot { margin-top: 24px; border-top: 1px dashed var(--line); }
 .foot .wrap { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 24px; padding-top: 24px; padding-bottom: 32px; color: var(--muted); font-family: var(--mono); font-size: 12.5px; }

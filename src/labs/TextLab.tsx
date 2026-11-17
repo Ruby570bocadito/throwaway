@@ -4,7 +4,7 @@ import { readsAsEnglish, styleMarkers, type Reliability } from '../engine/stylom
 import { DECOYS, DRAFT, MARTA_PUBLIC, SELF_ID } from '../demo/scenario';
 import { FIELD_IDS, FIELD_LABELS, type DecoyPackId } from '../demo/fields';
 import { keptPassages, PrivacyViolation, release, secret, type Private, type Publishable } from '../framework';
-import { aboutSubject, hasPhrase, quotesNotIn, ruleDetails, type AuthorshipVerdict, type Clue } from '../threats/authorship';
+import { aboutSubject, deterministicGeneralise, hasPhrase, nameDetails, quotesNotIn, ruleDetails, type AuthorshipVerdict, type Clue } from '../threats/authorship';
 import { buildAuthorship, lineupField, loadDecoyPacks, type DecoyPacks } from '../kit';
 import { ErrorNote, friendlyError, Silhouette, type LabProps } from '../ui/shared';
 import { Compare } from '../ui/Compare';
@@ -30,6 +30,12 @@ const SCAN_PLAN: PlanStep[] = [
   { match: /^Fingerprint/, label: 'Fingerprint your style', route: 'local-js' },
   { match: /^Find identifying details/, label: 'Find what identifies you', route: 'on-device', slow: true },
   { match: /^Find counts and dates/, label: 'Find every count and date', route: 'local-js' },
+];
+// Without a local model: no model step runs, and capital letters stand in for it as pointers to names.
+const SCAN_PLAN_NO_MODEL: PlanStep[] = [
+  { match: /^Fingerprint/, label: 'Fingerprint your style', route: 'local-js' },
+  { match: /^Find identifying details/, label: 'Find what identifies you', route: 'skipped' },
+  { match: /^Find counts, dates and names/, label: 'Find counts, dates and capitalised names', route: 'local-js' },
 ];
 const REWRITE_PLAN: PlanStep[] = [
   { match: /^Fixed rules generalised/, label: 'Generalise the details', route: 'local-js', optional: true },
@@ -75,9 +81,10 @@ function Highlighted({ text, marks }: { text: string; marks: { phrase: string; k
   );
 }
 
-export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, dock }: LabProps) {
+export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, dock, kept, keep }: LabProps) {
   const [stage, setStage] = useState<Stage>('draft');
-  const [draft, setDraft] = useState(DRAFT);
+  // Your own post and public writing come back after "Start over" or the Gemini Nano switch (the shell keeps them in memory).
+  const [draft, setDraft] = useState(() => (!recorded && kept?.draft) || DRAFT);
   const [edited, setEdited] = useState('');
   const [published, setPublished] = useState<Publishable<string> | null>(null);
   const [clues, setClues] = useState<Clue[]>([]);
@@ -101,8 +108,13 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [copied, setCopied] = useState(false);
   const [showCompare, setShowCompare] = useState(false);
+  // Without a local model the fixed rules can still generalise counts and dates in your edit, when you ask (17-nov).
+  const [genNote, setGenNote] = useState('');
   // Writing you already published under your name (optional, live only, never stored): the fingerprint compares you with you.
-  const [ownPublic, setOwnPublic] = useState('');
+  const [ownPublic, setOwnPublic] = useState(() => (!recorded && kept?.ownPublic) || '');
+  useEffect(() => {
+    if (!recorded) keep?.({ draft, ownPublic });
+  }, [draft, ownPublic, recorded, keep]);
   const ownWords = ownPublic.trim() ? ownPublic.trim().split(/\s+/).length : 0;
   const selfCorpus = ownPublic.trim() || MARTA_PUBLIC;
   const [error, setError] = useState('');
@@ -244,13 +256,17 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
     run('scan', async () => {
       privateDraft.current = secret(draft, 'your draft');
       if (degraded) {
-        // No local model: only the deterministic fingerprint and fixed rules run. Nothing is sent anywhere.
-        const rules = ruleDetails(draft).map((d) => ({ ...d, kind: 'content' as const }));
+        // No local model: only the deterministic fingerprint and fixed rules run. Nothing is sent anywhere. Capital letters
+        // point at names, places and companies, which only a model could find (two testers' names went unflagged, 17-nov).
+        const counts = ruleDetails(draft);
+        const names = nameDetails(draft).filter((n) => !counts.some((c) => hasPhrase(c.phrase, n.phrase)));
+        const rules = [...counts, ...names].map((d) => ({ ...d, kind: 'content' as const }));
         setClues([...styleMarkers(draft, selfCorpus, decoys.map((d) => d.corpus)).map((m) => ({ ...m, kind: 'style' as const })), ...rules]);
         kit.ledger.add({ op: 'Fingerprint (Burrows’ Delta)', route: 'local-js', ms: 3, bytesOut: 0 });
-        kit.ledger.add({ op: 'Find identifying details', route: 'blocked', ms: 0, bytesOut: 0, note: 'no local model — skipped, not sent to cloud' });
-        kit.ledger.add({ op: 'Find counts and dates (fixed rules)', route: 'local-js', ms: 1, bytesOut: 0, note: `no model · ${rules.length} found` });
+        kit.ledger.add({ op: 'Find identifying details', route: 'skipped', ms: 0, bytesOut: 0, note: 'no local model, and not sent to the cloud instead' });
+        kit.ledger.add({ op: 'Find counts, dates and names (fixed rules)', route: 'local-js', ms: 1, bytesOut: 0, note: `no model · ${rules.length} found` });
         setEdited(draft);
+        setGenNote('');
       } else {
         await prepare();
         setClues(await threat.findClues(privateDraft.current, kit));
@@ -277,6 +293,21 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
       if (after && threat.exposed(v)) setRounds((r) => r + 1);
       setStage(after && !threat.exposed(v) ? 'reattacked' : 'attacked');
     });
+
+  // No local model, no rewrite: the fixed rules still generalise the counts and dates in your edit when you ask, as they do
+  // before Gemini Nano rewrites. Names are left to you: the rules would turn "shouted at Kelly" into "shouted somewhere".
+  const ruleCounts = useMemo(() => (degraded ? ruleDetails(draft).map((d) => d.phrase) : []), [degraded, draft]);
+  const generaliseForMe = () => {
+    const r = deterministicGeneralise(edited, ruleCounts);
+    setEdited(r.text);
+    const n = r.done.length;
+    const shown = r.done.slice(0, 3).map((d) => `“${d.phrase}” → “${d.generic || 'removed'}”`);
+    setGenNote(
+      n
+        ? `Generalised ${n} detail${n > 1 ? 's' : ''} with fixed rules, no AI: ${shown.join(', ')}${n > 3 ? ` and ${n - 3} more` : ''}. Names and your habits are still yours to change.`
+        : 'No counts or dates left to generalise in your edit.',
+    );
+  };
 
   // Baseline: the user confirms they would publish the draft exactly as it is, so the attacker may see it.
   const attackAsIs = () => {
@@ -334,7 +365,20 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
   // A post of the user's own with no public writing of theirs: the lineup then looks for the sample writer, not for them,
   // and the verdict says nothing about them. Said before scanning, before attacking and in the verdict (judge, 17-nov).
   const standIn = !recorded && !ownText && draft.trim() !== '' && draft !== DRAFT;
-  const reasonItems = verdict ? verdict.reasons.map((r) => ({ r, notIn: quotesNotIn(r, attackedText) })) : [];
+  // The attacker names writers by the letters of its own shuffle, while on screen every writer keeps a fixed seat: a reason
+  // called the user "Writer H", seated at C (17-nov). Its letters are put back to the seats.
+  const seatOf = (id?: string) => lineup.find((s) => s.id === id)?.letter;
+  const relabel = (r: string) => {
+    const order = verdict?.reasonsOrder;
+    if (!order) return r;
+    return r.replace(/\b(Writer|writer) ([A-J])\b/g, (m: string, w: string, l: string) => {
+      const seat = seatOf(order[LETTERS.indexOf(l)]);
+      return seat ? `${w} ${seat}` : m;
+    });
+  };
+  const reasonItems = verdict ? verdict.reasons.map(relabel).map((r) => ({ r, notIn: quotesNotIn(r, attackedText) })) : [];
+  // Reasons for a pick that is not you are about another writer's text: a tester read "refund policies" as about him (17-nov).
+  const reasonsSeat = verdict?.reasonsPick && verdict.reasonsPick !== SELF_ID ? seatOf(verdict.reasonsPick) : undefined;
   const shownReasons = reasonItems.filter((x) => x.notIn.length === 0 || showUngrounded);
   const foldedReasons = showUngrounded ? 0 : reasonItems.length - shownReasons.length;
   // Found by what the post is about, not by how it is written: the decoys may be from another field.
@@ -375,7 +419,7 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
         <WorkLog
           ledger={kit.ledger}
           since={busySince}
-          plan={busy === 'scan' ? SCAN_PLAN : REWRITE_PLAN}
+          plan={busy === 'scan' ? (degraded ? SCAN_PLAN_NO_MODEL : SCAN_PLAN) : REWRITE_PLAN}
           title={busy === 'scan' ? 'Scanning your post on this device' : 'Fixing your post on this device'}
           recorded={recorded}
           download={download}
@@ -397,7 +441,7 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
         <p className="dock-note warn">Without your own public writing, the attack will look for the sample writer, not you. Add yours under the post first.</p>
       )}
       {!busy && stage === 'scanned' && standIn && (
-        <p className="dock-note warn">No public writing of yours: this attack looks for the sample writer, not you. Start over to add yours.</p>
+        <p className="dock-note warn">No public writing of yours: this attack looks for the sample writer, not you. Start over to add yours: your post stays.</p>
       )}
       {!busy && stage === 'scanned' && <p className="dock-note">Sends this exact text to a cloud AI, ten times, as if you had posted it.</p>}
       {!busy && stage === 'rewritten' && published && (
@@ -487,7 +531,21 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
           )}
         </div>
         {degraded && stage === 'attacked' && (
-          <p className="hint">Your turn to rewrite (no local model here): edit the text above, drop the habits and details listed below, then use your edited version.</p>
+          <div className="draft-tools">
+            <span className="hint">
+              Your turn to rewrite (no local model here): edit the text above, drop the habits and details listed below, then use your edited version.
+            </span>
+            {ruleCounts.length > 0 && (
+              <button className="mini" onClick={generaliseForMe}>
+                Generalise counts and dates for me
+              </button>
+            )}
+          </div>
+        )}
+        {degraded && stage === 'attacked' && genNote && (
+          <p className="hint gen-note" role="status">
+            {genNote}
+          </p>
         )}
         {published && claims && <p className="hint">Rewritten in a plain, neutral voice on purpose: your writing style is what gave you away.</p>}
         {stage === 'draft' && !recorded && (
@@ -508,8 +566,8 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
           <details className="own-writing" onToggle={(e) => e.currentTarget.open && setWantPacks(true)}>
             <summary>Compare with your own public writing{ownWords ? ` · ${ownWords} words` : ' (optional)'}</summary>
             <p className="hint">
-              Paste things you have already published under your name: blog posts, LinkedIn posts, comments. The fingerprint compares them with your
-              anonymous post on this device. For the attack they go to the cloud as one of the ten writers, so paste only writing that is already public.
+              Paste things you have already published under your name, 150 words or more: blog posts, LinkedIn posts, comments. The fingerprint
+              compares them with your anonymous post on this device. For the attack they go to the cloud as one of the ten writers, so paste only writing that is already public.
               Nothing is stored.
             </p>
             <textarea
@@ -561,7 +619,13 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
               <h3>Identifying details</h3>
               {contentClues.length === 0 ? (
                 <p className="good rise">
-                  {degraded ? (published ? 'No counts or dates left.' : 'No counts or dates found.') : published ? 'None left (checked on your device).' : 'None found.'}
+                  {degraded
+                    ? published
+                      ? 'No counts, dates or capitalised names left.'
+                      : 'No counts, dates or capitalised names found.'
+                    : published
+                      ? 'None left (checked on your device).'
+                      : 'None found.'}
                 </p>
               ) : (
                 contentClues.map((m, i) => (
@@ -586,8 +650,8 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
         {/* Without a local model only the fixed rules ran: say what that left unchecked, where the findings are (16-nov). */}
         {stage !== 'draft' && degraded && (
           <p className="unchecked rise">
-            <strong>Not checked: names, places and companies.</strong> There is no local model on this device, so look for them yourself before you
-            post.
+            <strong>Names, places and companies: only guessed from capital letters.</strong> There is no local model on this device, so read your
+            post for them too before you post.
           </p>
         )}
 
@@ -685,7 +749,8 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
                   <Silhouette hot={isMe && n >= 3} />
                 </div>
                 <span className="letter">{c.letter}</span>
-                {isMe && <span className="you">you · local only</span>}
+                {/* Without your own writing this seat holds the sample writer: "you" on it misled a judge (17-nov). */}
+                {isMe && <span className="you">{standIn ? 'stand-in for you' : 'you · local only'}</span>}
                 {n > 0 && (
                   <span className="count" key={n}>
                     {n}
@@ -722,8 +787,8 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
                     ? 'Inconclusive: too few answers'
                     : standIn
                       ? exposedNow
-                        ? 'It picked the sample writer, not you'
-                        : 'It did not pick the sample writer'
+                        ? 'It found the sample writer'
+                        : 'It did not find the sample writer'
                       : exposedNow
                         ? 'The attacker found you'
                         : 'You are one of ten'}
@@ -732,7 +797,7 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
                   Chance level is 1 in 10.
                   {final.answered < final.attempts ? ` ${final.attempts - final.answered} attempts got no answer (model busy).` : ''}
                   {inconclusive ? ' Too few answers came back from the cloud: wait a minute and attack again.' : ''}
-                  {standIn ? ' This test looked for the sample writer, not you: add your own public writing for a real one.' : ''}
+                  {standIn ? ' This test is about the sample writer, not you: add your own public writing to test yourself.' : ''}
                   {before !== null && stage === 'reattacked' ? ` Before: ${before}/10.` : ''}
                 </p>
               </div>
@@ -742,6 +807,12 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
         {verdict && verdict.reasons.length > 0 && picks.length === verdict.attempts && (
           <div className="reasons-box rise">
             <h3>The attacker’s reasons</h3>
+            {reasonsSeat && (
+              <p className="hint reasons-whose">
+                For its last pick, Writer {reasonsSeat}
+                {standIn ? '' : ', not you'}: why it matched the post with {reasonsSeat}’s writing.
+              </p>
+            )}
             <ul className="reasons">
               {shownReasons.map(({ r, notIn }, i) => (
                 // A quote that is not in the attacked text is the model citing another writer, or guessing: say so.

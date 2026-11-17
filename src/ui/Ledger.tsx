@@ -25,7 +25,7 @@ function groupEntries(entries: LedgerEntry[]): Row[] {
   return rows;
 }
 
-const ROUTE_LABEL: Record<Route, string> = { 'on-device': 'on-device', 'local-js': 'local-js', cloud: 'cloud', blocked: 'blocked' };
+const ROUTE_LABEL: Record<Route, string> = { 'on-device': 'on-device', 'local-js': 'local-js', cloud: 'cloud', blocked: 'blocked', skipped: 'not run' };
 const bytes = (b: number) => `${b.toLocaleString('en-US')} B`;
 const clean = (note?: string) => note?.replace(/( · )?recorded$/, '').trim() || '';
 

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { clearTaint, CloudModel, isTemporary, Ledger, LocalModel, publicData, release, secret, type ModelBackend } from '../framework';
-import { aboutSubject, authorshipThreat, deterministicGeneralise, hasPhrase, isSpecific, letterIndex, looksBroken, newSpecifics, quotesNotIn, ruleDetails, sample, shuffled } from './authorship';
+import { aboutSubject, authorshipThreat, deterministicGeneralise, hasPhrase, isSpecific, letterIndex, looksBroken, nameDetails, newSpecifics, quotesNotIn, ruleDetails, sample, shuffled } from './authorship';
 import { ATTACK_AFTER, ATTACK_BEFORE, CONTENT_DETAILS, DECOYS, DRAFT, MARTA_PUBLIC, NANO_REWRITE_RECORDED, NANO_REWRITE_V3_RECORDED, REWRITE, SELF_ID } from '../demo/scenario';
 import { FIELD_WORDS } from '../demo/decoys';
 
@@ -367,6 +367,20 @@ describe("the attacker's reasons", () => {
     expect(quotesNotIn("Matches Writer C's rhythm and 'so, honestly'", 'So, honestly, it was fine.')).toEqual([]);
     expect(quotesNotIn('Uses “per se” and "inter alia"', 'Nothing Latin here.')).toEqual(['per se', 'inter alia']);
     expect(quotesNotIn('No quotes at all', 'text')).toEqual([]);
+  });
+});
+
+describe('names without a local model', () => {
+  it('are the capitalised words in the middle of a sentence: not dates, roles, or the word that opens one', () => {
+    // A test user's post (17-nov): "Dave" and "Kelly" went unflagged without Gemini Nano.
+    const post =
+      'Our regional manager, Dave, came in after the restructure in March 2026. He cut Saturday cover, and in April he shouted at Kelly from the bakery. HR said they would look into it. Anyway, ask about the rota at the Forn Pastisseria counter.';
+    expect(nameDetails(post).map((n) => n.phrase)).toEqual(['Dave', 'Kelly', 'Forn Pastisseria']);
+    expect(nameDetails(post)[0].why).toMatch(/maybe a name, place or company/);
+  });
+
+  it('find the sample post’s place and product, as Gemini Nano did', () => {
+    expect(nameDetails(DRAFT).map((n) => n.phrase)).toEqual(['Lisbon', 'Figma']);
   });
 });
 

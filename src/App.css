@@ -347,6 +347,7 @@ p.good { margin: 0; font-size: 13.5px; }
 .route.local-js { border-color: var(--line); background: var(--paper-2); color: var(--muted); }
 .route.cloud { border-color: #c7cfe0; background: var(--slate-soft); color: var(--slate); }
 .route.blocked { border-color: #e7b0a6; background: var(--red-soft); color: var(--red); }
+.route.skipped { border-style: dashed; border-color: var(--line-2); background: transparent; color: var(--muted); }
 .ledger-empty { display: flex; align-items: center; gap: 14px; margin-top: 12px; padding: 14px 16px; border: 1px dashed var(--line); border-radius: var(--r-md); color: var(--muted); font-size: 14px; }
 .ledger-empty img { width: 56px; height: 56px; flex: none; border-radius: var(--r-md); }
 .total { margin: 12px 0 0; padding-top: 10px; border-top: 2px dashed var(--line); color: var(--text); font: 400 12px/1.6 var(--mono); }
@@ -402,6 +403,7 @@ a.button-link:hover { background: #24613f; color: #fff; transform: translateY(-1
 .wl-mark { display: grid; place-items: center; color: var(--green); font-size: 12px; }
 .worklog li.now .wl-mark { color: var(--slate); }
 .worklog li.blocked .wl-mark, .worklog li.blocked .wl-where { color: var(--red); }
+.worklog li.skipped .wl-mark, .worklog li.skipped .wl-where { color: var(--muted); }
 .worklog li.now .spinner { width: 12px; height: 12px; }
 .worklog li.todo .wl-mark::before { content: ''; width: 8px; height: 8px; border: 1.5px solid var(--line-2); border-radius: 50%; }
 .wl-where { color: var(--muted); font-weight: 400; }

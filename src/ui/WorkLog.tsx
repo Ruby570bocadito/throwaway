@@ -22,7 +22,7 @@ interface Row {
   slow?: boolean;
 }
 
-const WHERE: Record<Route, string> = { 'on-device': 'Gemini Nano', 'local-js': 'plain JavaScript', cloud: 'cloud', blocked: 'blocked' };
+const WHERE: Record<Route, string> = { 'on-device': 'Gemini Nano', 'local-js': 'plain JavaScript', cloud: 'cloud', blocked: 'blocked', skipped: 'not run: no local model' };
 
 /**
  * Honest progress for the long on-device steps: what has finished (read from the ledger, with its real duration), what is
@@ -99,10 +99,10 @@ export function WorkLog({
           </li>
         )}
         {rows.map((r) => (
-          <li key={r.key} className={`${r.state} ${r.route === 'blocked' ? 'blocked' : ''}`}>
-            {/* a step the guard stopped did not succeed: no tick for it */}
+          <li key={r.key} className={`${r.state} ${r.route === 'blocked' || r.route === 'skipped' ? r.route : ''}`}>
+            {/* a step the guard stopped did not succeed, and a skipped one did not run: no tick for either */}
             <span className="wl-mark" aria-hidden="true">
-              {r.state === 'done' ? (r.route === 'blocked' ? '✕' : '✓') : r.state === 'now' ? <span className="spinner" /> : ''}
+              {r.state === 'done' ? (r.route === 'blocked' ? '✕' : r.route === 'skipped' ? '–' : '✓') : r.state === 'now' ? <span className="spinner" /> : ''}
             </span>
             <span className="wl-label">
               {r.label}

@@ -59,6 +59,14 @@ describe('recorded text run (v5, 16-nov)', () => {
     const attacks = events.filter((e) => e.type === 'attacked') as { verdict: AuthorshipVerdict }[];
     expect(attacks.map((a) => [a.verdict.hits, a.verdict.answered])).toEqual([[10, 10], [0, 10]]);
     expect(attacks[1].verdict.picks.filter((p) => p === 'd1')).toHaveLength(9);
+    // The reasons say whose they are, and name that writer by its letter in that attempt's shuffle (the screen puts it back
+    // to the writer's seat): before the rewrite they are about the author; after it, about the last writer picked.
+    const [asIs, rewritten] = attacks.map((a) => a.verdict);
+    expect(asIs.reasonsPick).toBe(SELF_ID);
+    const letter = 'ABCDEFGHIJ'[asIs.reasonsOrder!.indexOf(SELF_ID)];
+    expect(asIs.reasons[2]).toBe(`Strong conversational stylometry matching Writer ${letter}'s specific syntactic rhythm.`);
+    expect(rewritten.reasonsPick).toBe('d8');
+    expect(rewritten.reasonsOrder).toHaveLength(10);
 
     const published = (events[2] as { published: { value: string } }).published.value;
     expect(published).toBe(PUBLISHED);

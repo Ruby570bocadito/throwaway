@@ -256,7 +256,7 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak, recorded, 
     run('scan', async () => {
       privatePhoto.current = secret(original!, 'your photo');
       if (degraded) {
-        kit.ledger.add({ op: 'Find location clues', route: 'blocked', ms: 0, bytesOut: 0, note: 'no local model — tap cells to mask them yourself' });
+        kit.ledger.add({ op: 'Find location clues', route: 'skipped', ms: 0, bytesOut: 0, note: 'no local model: you tap the cells to mask' });
       } else {
         await prepare();
         setClues(await threat.findClues(privatePhoto.current, kit));
@@ -304,7 +304,9 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak, recorded, 
 
   const clueAt = (cell: number) => clues.find((c) => c.cell === cell && !threat.masked.includes(c.cell));
   const attackerAt = (cell: number) => verdict?.clues.find((c) => c.cell === cell && !threat.masked.includes(c.cell));
-  const canPick = degraded && (stage === 'scanned' || stage === 'attacked');
+  // Cells are chosen once the attacker has seen the photo as it is: chosen before, they were ignored by that first attack,
+  // and a tester could not tell which step came first (17-nov).
+  const canPick = degraded && stage === 'attacked';
   // The budget is spent and the attacker only points at cells that are not identifiers: another round would add nothing.
   const budgetFull =
     !degraded &&
@@ -320,7 +322,7 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak, recorded, 
   const visibleClues = clues.filter((c) => !threat.masked.includes(c.cell));
 
   const steps: StepDef[] = [
-    { label: 'Scan', where: degraded ? 'you choose cells' : 'on your device' },
+    { label: 'Scan', where: degraded ? 'no local model' : 'on your device' },
     { label: 'Attack', where: 'in the cloud' },
     { label: 'Mask', where: degraded ? 'you choose cells' : 'on your device' },
     { label: 'Attack again', where: 'in the cloud' },
@@ -517,8 +519,16 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak, recorded, 
         {stage !== 'loading' && stage !== 'photo' && (
           <div className="findings one">
             <div className="finding-col">
-              <h3>{degraded ? 'No local model: tap the cells you want to mask' : 'Location clues found on your device'}</h3>
-              {canPick && verdict && chosen.length > 0 && <p className="hint">Already selected: the cells the attacker used. Tap a cell to add or remove it.</p>}
+              <h3>
+                {!degraded
+                  ? 'Location clues found on your device'
+                  : canPick || stage === 'masked' || stage === 'safe'
+                    ? 'No local model: tap the cells you want to mask'
+                    : 'No local model: first see what the attacker finds, then tap the cells to mask'}
+              </h3>
+              {canPick && verdict && chosen.length > 0 && (
+                <p className="hint">Already selected: the cells the attacker used. Tap a cell to add or remove it; “Mask” pixelates them on this device.</p>
+              )}
               {visibleClues.length === 0 && !degraded ? (
                 <p className="good rise">{threat.masked.length ? `Masked ${threat.masked.length} cells on-device: ${threat.masked.join(', ')}.` : 'None found.'}</p>
               ) : (

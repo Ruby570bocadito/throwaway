@@ -9,7 +9,7 @@ const loadPhotoLab = () => import('./labs/PhotoLab');
 const PhotoLab = lazy(() => loadPhotoLab().then((m) => ({ default: m.PhotoLab })));
 import { Logo } from './ui/Logo';
 import { LedgerSummary, LedgerTable } from './ui/Ledger';
-import type { LabProps } from './ui/shared';
+import type { KeptTexts, LabProps } from './ui/shared';
 
 type Tab = 'text' | 'photo';
 type Device = 'checking' | 'available' | 'downloadable' | 'unavailable';
@@ -64,6 +64,12 @@ export default function App() {
     [dock],
   );
 
+  // Your post and your public writing survive "Start over", the Gemini Nano switch and a change of tab: the switch wiped a
+  // tester's pasted post, and "Start over to add yours" would have too (17-nov). In memory only: a reload clears them.
+  const kept = useRef<KeptTexts | null>(null);
+  const keep = useCallback((texts: KeptTexts) => {
+    kept.current = texts;
+  }, []);
   const reset = () => {
     ledger.clear();
     clearTaint();
@@ -91,8 +97,11 @@ export default function App() {
     registerLeak,
     recorded: !live,
     dock,
+    kept: kept.current,
+    keep,
   };
-  const nano = simulateNoNano ? 'off (simulated)' : device;
+  // "off (simulated)" meant nothing to a tester (17-nov).
+  const nano = simulateNoNano ? 'off for this test' : device;
 
   return (
     <div className="app">
@@ -226,6 +235,13 @@ export default function App() {
             </span>
           </div>
           <LedgerSummary entries={entries} />
+          {/* "· recorded" on every model step read as a fake to a judge, without a word on what is replayed (17-nov). */}
+          {!live && (
+            <p className="hint ledger-note">
+              Recorded run: Gemini’s answers are replayed from real runs in Chrome (15–16 November). The fingerprint, the fixed rules, the privacy
+              guard, the shuffled lineups and this receipt run live, in this tab.
+            </p>
+          )}
           {/* A proof for developers and judges, not a step for someone checking a post (review, 16-nov). */}
           <details className="devtools">
             <summary>For developers: try to break it</summary>

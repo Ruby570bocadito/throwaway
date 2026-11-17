@@ -1,6 +1,8 @@
 // Every model call is recorded: where it ran, how long it took, and how many bytes left the device.
 
-export type Route = 'on-device' | 'cloud' | 'local-js' | 'blocked';
+// "blocked": the guard stopped data from leaving. "skipped": a step that did not run (no local model), which is not a
+// block: counted as one, it made the receipt show a blocked leak before anyone tried one (a judge, 17-nov).
+export type Route = 'on-device' | 'cloud' | 'local-js' | 'blocked' | 'skipped';
 
 export interface LedgerEntry {
   at: number;

@@ -38,7 +38,10 @@ export function demoBackends() {
       const isRewrite = prompt.includes(REWRITE.slice(0, 40));
       const run = isRewrite ? ATTACK_AFTER : ATTACK_BEFORE;
       const i = isRewrite ? afterCall++ % run.picks.length : beforeCall++ % run.picks.length;
-      return JSON.stringify({ pick: letterFor(prompt, run.picks[i]), confidence: isRewrite ? 'low' : 'high', reasons: run.reasons });
+      const pick = letterFor(prompt, run.picks[i]);
+      // The recorded reasons name the writer they picked by its letter in that run; this lineup is shuffled again.
+      const reasons = run.reasons.map((r) => r.replace(/\bWriter [A-J]\b/g, `Writer ${pick}`));
+      return JSON.stringify({ pick, confidence: isRewrite ? 'low' : 'high', reasons });
     },
     220,
   );

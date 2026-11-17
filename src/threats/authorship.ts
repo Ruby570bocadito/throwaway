@@ -259,6 +259,31 @@ export function ruleDetails(text: string): { phrase: string; why: string }[] {
   return found.map(({ phrase, why }) => ({ phrase, why }));
 }
 
+/** Capitalised words that are not names: roles, departments and everyday abbreviations. */
+const NOT_NAMES = new Set(['OK', 'AI', 'TV', 'PC', 'FYI', 'ASAP', 'CEO', 'CFO', 'CTO', 'COO', 'HR', 'IT', 'PR', 'PS']);
+const DATE_WORD = new RegExp(`^(?:${MONTH}|${WEEKDAY})$`);
+
+/**
+ * Capitalised words in the middle of a sentence ("Dave", "Kelly", "the Lisbon office"): without a local model, the only
+ * pointer to names, places and companies. Two test users' names and towns went unflagged without Gemini Nano (17-nov).
+ * Flagged for the user to change, not generalised: the fixed rules would turn "shouted at Kelly" into "shouted somewhere".
+ * A guess, and said as one: it also flags "English" or "Easter", and misses a name that only ever opens a sentence.
+ */
+export function nameDetails(text: string): { phrase: string; why: string }[] {
+  const out: { phrase: string; why: string }[] = [];
+  for (const m of text.matchAll(/(?<![\p{L}\p{M}\p{N}_])\p{Lu}[\p{L}\p{M}]+(?:\s+\p{Lu}[\p{L}\p{M}]+)*/gu)) {
+    // A run of capitalised words is one name ("Forn Pastisseria"); the word that opens a sentence is not part of it.
+    const phrase = m[0]
+      .split(/\s+/)
+      .filter((w) => !NOT_NAMES.has(w) && !DATE_WORD.test(w) && isProperNoun(w, text))
+      .join(' ');
+    if (phrase && !out.some((o) => o.phrase.toLowerCase() === phrase.toLowerCase())) {
+      out.push({ phrase, why: 'Capital letter: maybe a name, place or company. Fixed rule, no AI.' });
+    }
+  }
+  return out;
+}
+
 /**
  * Specific tokens in `text` (numbers, dates, proper nouns) that do not occur in `source`: things a model added.
  * A count is compared with the word it counts, so "six individuals" is new even if the source said "six months".
@@ -458,6 +483,13 @@ export interface AuthorshipVerdict {
   /** Attempts that got a usable answer. Scoring is a rate over these, never an absolute count. */
   answered: number;
   reasons: string[];
+  /** Whom the reasons are about: the pick of the last attempt that gave reasons ('none' if there were none). */
+  reasonsPick?: string;
+  /**
+   * The lineup of that attempt, by letter (candidate ids): the reasons say "Writer H" in the attempt's own shuffle, while
+   * the screen seats every writer at a fixed letter. A reason named the user "Writer H" while the user sat at C (17-nov).
+   */
+  reasonsOrder?: string[];
 }
 
 /** Below this many answers the lineup result is not meaningful. */
@@ -750,6 +782,8 @@ export function authorshipThreat(o: AuthorshipOptions): Threat<string, Clue, Aut
     async attack(published: Publishable<string>, kit: Kit): Promise<AuthorshipVerdict> {
       const picks: string[] = [];
       let reasons: string[] = [];
+      let reasonsPick = 'none';
+      let reasonsOrder: string[] = [];
       let answered = 0;
       let lastError: unknown = null;
       let failedInARow = 0;
@@ -787,7 +821,11 @@ export function authorshipThreat(o: AuthorshipOptions): Threat<string, Clue, Aut
             failedInARow = 0;
           } else failedInARow++;
           const why = Array.isArray(parsed.reasons) ? parsed.reasons.filter((r): r is string => typeof r === 'string' && r.trim() !== '') : [];
-          if (why.length) reasons = why.slice(0, 3);
+          if (why.length) {
+            reasons = why.slice(0, 3);
+            reasonsPick = pickId;
+            reasonsOrder = order.map((c) => c.id);
+          }
         } catch (e) {
           // A privacy block is never swallowed. A busy or broken cloud answer costs one attempt, not the whole attack
           // (the cloud model already wrote it in the ledger, with the bytes it may have sent).
@@ -799,7 +837,7 @@ export function authorshipThreat(o: AuthorshipOptions): Threat<string, Clue, Aut
         o.onAttempt?.(pickId, i);
       }
       if (answered === 0 && lastError) throw lastError;
-      return { picks, hits: picks.filter((p) => p === o.selfId).length, attempts, answered, reasons };
+      return { picks, hits: picks.filter((p) => p === o.selfId).length, attempts, answered, reasons, reasonsPick, reasonsOrder };
     },
 
     /** Exposed if the attacker picks the user more often than `maxHits` out of `attempts`, as a rate over the answers. */

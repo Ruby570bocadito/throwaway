@@ -61,6 +61,14 @@ export interface LabProps {
   registerLeak: (fn: (() => Promise<string>) | null) => void;
   /** Recorded run (?demo): the model answers were recorded for the sample post and photo, so your own input is not offered there. */
   recorded: boolean;
+  /** The user's own texts, kept by the shell across "Start over", the Gemini Nano switch and a change of tab: in memory only. */
+  kept?: KeptTexts | null;
+  keep?: (texts: KeptTexts) => void;
+}
+
+export interface KeptTexts {
+  draft: string;
+  ownPublic: string;
 }
 
 export function Silhouette({ hot }: { hot: boolean }) {
