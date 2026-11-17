@@ -175,6 +175,12 @@ mark.content { background-image: linear-gradient(transparent 12%, var(--peach) 1
 .stale { opacity: 0.45; filter: grayscale(0.6); transition: opacity 0.3s, filter 0.3s; }
 .stale-note { margin: 4px 0 0; color: var(--amber); }
 .reasons .from-pick { color: var(--muted); font-style: normal; }
+.lineup-texts { margin: 10px 0 2px; font-size: 13px; }
+.lineup-texts summary { width: fit-content; color: var(--slate); cursor: pointer; }
+.lineup-texts ul { display: grid; gap: 5px; margin: 8px 0 0; padding: 0; list-style: none; color: var(--muted); line-height: 1.45; }
+.lineup-texts b { display: inline-block; min-width: 1.4em; color: var(--ink); font-family: var(--serif); }
+.lineup-texts em { color: var(--ink); font-style: normal; }
+.add-writing { margin-top: 8px; }
 /* a generalised detail is struck out with a marker, one after another */
 .finding.generalised { display: block; }
 .finding.generalised code { margin-right: 4px; padding: 2px 3px; background: transparent; color: var(--ink); }

@@ -222,8 +222,8 @@ function generalisePhrase(span: string, after: string, text: string): { g: strin
 
 /** A count with the word it counts: "six individuals", "6 people", or the number alone ("to 2"). One is skipped. */
 const COUNT = new RegExp(`(?<![\\w\\-/.])(${NUM})(?![\\w\\-/])(?:\\s+([a-z][a-z-]*))?`, 'gi');
-/** A range: "6 people to 2", "6 to 2 people", "fourteen to nine" (the words checked by the caller). */
-const RANGE = new RegExp(`(?<![\\w\\-/.])(${NUM})(?:\\s+([a-z][a-z-]*))?\\s+to\\s+(${NUM})(?![\\w\\-/])(?:\\s+([a-z][a-z-]*))?`, 'gi');
+/** A range: "6 people to 2", "14 staff from 22", "6 to 2 people", "fourteen to nine" (the words checked by the caller). */
+const RANGE = new RegExp(`(?<![\\w\\-/.])(${NUM})(?:\\s+([a-z][a-z-]*))?\\s+(?:to|from)\\s+(${NUM})(?![\\w\\-/])(?:\\s+([a-z][a-z-]*))?`, 'gi');
 function countPhrase(m: RegExpMatchArray): string | null {
   if (numberValue(m[1]) === 1 || isVersion(m[1])) return null;
   return m[2] && !FUNCTION_WORDS.has(m[2].toLowerCase()) ? `${m[1]} ${m[2]}` : m[1];
@@ -285,12 +285,19 @@ const A_DATE = new RegExp(`^(?:${TIME})$`, 'i');
 /**
  * Names used before a noun ("the Lisbon office", "a Figma migration", "our Brindley Road store"): the fixed rules drop them
  * cleanly ("the office", "a migration"), so a person's own edit can have them generalised too. A name on its own ("Dave",
- * "at Kelly") stays with the person: "shouted at Kelly" would become "shouted somewhere". Every use must be before a noun.
+ * "at Kelly") stays with the person: "shouted at Kelly" would become "shouted somewhere". Every use must sit between a
+ * determiner and a noun: "manager Gavin cut" passed the noun test alone, and became "manager [redacted] cut" (17-nov).
  */
 export function modifierNames(text: string, names: string[]): string[] {
   return names.filter((n) => {
     const uses = [...text.matchAll(new RegExp(`(?<![\\p{L}\\p{M}\\p{N}_])${escapeRe(n)}(?![\\p{L}\\p{M}\\p{N}_'’-])`, 'gu'))];
-    return uses.length > 0 && uses.every((m) => isContentWord(nextWord(text.slice((m.index ?? 0) + m[0].length))));
+    return (
+      uses.length > 0 &&
+      uses.every((m) => {
+        const before = text.slice(0, m.index ?? 0).match(/([A-Za-z]+)\s+$/)?.[1]?.toLowerCase() ?? '';
+        return DETERMINERS.has(before) && isContentWord(nextWord(text.slice((m.index ?? 0) + m[0].length)));
+      })
+    );
   });
 }
 
@@ -421,7 +428,9 @@ export function deterministicGeneralise(text: string, phrases: string[]): { text
   out = out
     .replace(/[ \t]{2,}/g, ' ')
     .replace(/[ \t]+([.,;:!?])/g, '$1')
-    .replace(/([,;:])(?:[ \t]*[,;:])+/g, '$1');
+    .replace(/([,;:])(?:[ \t]*[,;:])+/g, '$1')
+    // Two dates side by side become one: "Last Tuesday in October" read "Recently recently" (a tester, 17-nov).
+    .replace(/\b(recently|several|many)(?:[ \t]+\1\b)+/gi, '$1');
   return { text: out, done };
 }
 

@@ -76,6 +76,12 @@ export default function App() {
     setLeakMsg('');
     setLabKey((k) => k + 1);
   };
+  // Start over with your post kept and the box for your public writing open: without writing of your own, a tester could
+  // not find where to add it, four rounds running (17-nov).
+  const addWriting = () => {
+    kept.current = { draft: kept.current?.draft ?? '', ownPublic: kept.current?.ownPublic ?? '', openOwn: true };
+    reset();
+  };
   const switchTab = (t: Tab) => {
     if (t !== tab) {
       setTab(t);
@@ -99,6 +105,7 @@ export default function App() {
     dock,
     kept: kept.current,
     keep,
+    addWriting,
   };
   // "off (simulated)" meant nothing to a tester (17-nov).
   const nano = simulateNoNano ? 'off for this test' : device;
@@ -184,9 +191,10 @@ export default function App() {
         <div className="banner">
           {/* Says what still runs and what does not: "will not analyse" next to a scan button confused two testers (16-nov). */}
           <p>
-            <strong>No local model on this device.</strong>{' '}
+            {/* What "local model" means, in a sentence: a tester did not know what Gemini Nano was (17-nov). */}
+            <strong>No on-device AI here.</strong> Gemini Nano, the AI built into Chrome on some computers, is not available in this browser.{' '}
             {tab === 'text'
-              ? 'Throwaway can still check your writing habits, counts and dates, but not names, places or companies, and it cannot rewrite for you: edit the text yourself.'
+              ? 'Throwaway can still check your writing habits, counts, dates and capitalised names, and generalise some of them, but it cannot rewrite your style: you do that.'
               : 'Throwaway cannot look for clues in your photo: tap the cells you want to mask.'}{' '}
             Nothing goes to the cloud unless you choose to test it.
             {live && !simulateNoNano && (

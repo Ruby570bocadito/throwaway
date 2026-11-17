@@ -412,6 +412,17 @@ describe('a range with the word it counts', () => {
     expect(r.text).toContain('went from several people to a few');
   });
 
+  it('a hand edit of the next tester’s post: no "[redacted]", no "recently recently", and "14 staff from 22" as one range', () => {
+    // A test user's post (17-nov): "manager Gavin cut" became "manager [redacted] cut", and "Last Tuesday in October"
+    // became "Recently recently".
+    const post = "Our regional manager Gavin cut Priya's hours. We're down to 14 staff from 22. Last Tuesday in October he shouted at Dev.";
+    expect(modifierNames(post, nameDetails(post).map((n) => n.phrase))).toEqual([]);
+    expect(ruleDetails(post).map((d) => d.phrase)).toContain('14 staff from 22');
+    const r = deterministicGeneralise(post, generalisableByHand(ruleDetails(post).map((d) => d.phrase)));
+    expect(r.text).not.toMatch(/recently recently|\[redacted\]/i);
+    expect(r.text).toContain('Gavin');
+  });
+
   it('names before a noun are generalised by hand too, names on their own are not', () => {
     expect(modifierNames(DRAFT, nameDetails(DRAFT).map((n) => n.phrase))).toEqual(['Lisbon', 'Figma']);
     const post = 'Our regional manager, Dave, cut cover at our Brindley Road store and shouted at Kelly from the bakery.';

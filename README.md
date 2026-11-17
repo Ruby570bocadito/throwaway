@@ -9,7 +9,7 @@
 
 In 2013, a stylometry analysis unmasked J. K. Rowling as "Robert Galbraith" from her writing alone. A cloud AI now attempts the same in seconds: in our live tests it picked the author of an anonymous employer review out of ten writers, 10 times out of 10. Asking a chatbot to "make it anonymous" hands it the very draft you want to protect, and nothing checks the result.
 
-Your words give away **who** you are. Your photos give away **where** you are. Throwaway attacks both before anyone else does: **Gemini Nano defends on your device, and a cloud Gemini, through Firebase AI Logic, attacks only what you would publish.**
+Your words give away **who** you are. Your photos give away **where** you are. Throwaway attacks both before anyone else does: **Gemini Nano defends on your device, and a cloud Gemini, through Firebase AI Logic, attacks only the versions you choose to test.**
 
 | Threat | The attacker asks | On your device | In the cloud |
 |---|---|---|---|
@@ -46,7 +46,7 @@ flowchart TB
   subgraph device["Your device"]
     secret["Draft or photo"] --> nano["Gemini Nano · ONLY_ON_DEVICE"] --> out["release()"]
   end
-  out -->|"only what you would post"| attacker["Cloud Gemini · ONLY_IN_CLOUD"]
+  out -->|"only what you choose to test"| attacker["Cloud Gemini · ONLY_IN_CLOUD"]
   attacker -.->|"guess + reasons"| nano
 ```
 

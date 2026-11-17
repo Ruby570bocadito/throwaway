@@ -64,11 +64,15 @@ export interface LabProps {
   /** The user's own texts, kept by the shell across "Start over", the Gemini Nano switch and a change of tab: in memory only. */
   kept?: KeptTexts | null;
   keep?: (texts: KeptTexts) => void;
+  /** Start over with the texts kept and the box for your own public writing open. */
+  addWriting?: () => void;
 }
 
 export interface KeptTexts {
   draft: string;
   ownPublic: string;
+  /** Open the box for your own public writing when the lab mounts (set by addWriting). */
+  openOwn?: boolean;
 }
 
 export function Silhouette({ hot }: { hot: boolean }) {

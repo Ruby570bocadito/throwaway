@@ -56,6 +56,13 @@ const REWRITE_PLAN: PlanStep[] = [
 ];
 
 const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+/** The opening of a writer's text, cut at a word: enough to hear the voice and see the field. */
+const firstLine = (text: string, max = 120) => {
+  const t = text.replace(/\s+/g, ' ').trim();
+  if (t.length <= max) return t;
+  const cut = t.slice(0, max);
+  return `${cut.slice(0, cut.lastIndexOf(' ') > 60 ? cut.lastIndexOf(' ') : max).replace(/[,;:.]+$/, '')}…`;
+};
 const phraseRe = (p: string) => (p.includes(' ') ? esc(p).replace(/ /g, '[\\s,]+') : p === '—' ? '—' : `\\b${esc(p)}\\b`);
 const at = (i: number) => ({ '--i': i }) as CSSProperties;
 
@@ -92,7 +99,7 @@ function Highlighted({ text, marks }: { text: string; marks: { phrase: string; k
   );
 }
 
-export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, dock, kept, keep }: LabProps) {
+export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, dock, kept, keep, addWriting }: LabProps) {
   const [stage, setStage] = useState<Stage>('draft');
   // Your own post and public writing come back after "Start over" or the Gemini Nano switch (the shell keeps them in memory).
   const [draft, setDraft] = useState(() => (!recorded && kept?.draft) || DRAFT);
@@ -126,6 +133,15 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
   useEffect(() => {
     if (!recorded) keep?.({ draft, ownPublic });
   }, [draft, ownPublic, recorded, keep]);
+  // "Add my public writing" starts over with the box open, in view and ready to paste into.
+  const ownRef = useRef<HTMLDetailsElement>(null);
+  useEffect(() => {
+    const box = ownRef.current;
+    if (!kept?.openOwn || !box) return;
+    box.open = true;
+    box.scrollIntoView({ block: 'center' });
+    box.querySelector('textarea')?.focus({ preventScroll: true });
+  }, [kept]);
   const ownWords = ownPublic.trim() ? ownPublic.trim().split(/\s+/).length : 0;
   const selfCorpus = ownPublic.trim() || MARTA_PUBLIC;
   const [error, setError] = useState('');
@@ -318,6 +334,8 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
   );
   // While you edit without a local model, what you already removed is crossed out: a tester could not tell what was left (17-nov).
   const editingByHand = degraded && stage === 'attacked';
+  // The edit is the draft until you change it; after a release, the released text.
+  const editUnchanged = edited.trim() === (published ? published.value : draft).trim();
   // The same match as the highlighter: a habit like "so honestly i" is still there in "So, honestly, I".
   const goneFromEdit = (phrase: string) => editingByHand && !new RegExp(phraseRe(phrase), 'i').test(edited);
   const generaliseForMe = () => {
@@ -410,7 +428,9 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
         // Made up only if it is in none of the texts the attacker was given: the post and the ten writers.
         const notIn = notInPost.length ? quotesNotIn(r, [attackedText, selfCorpus, ...decoys.map((d) => d.corpus)].join('\n')) : [];
         const fromPick = pickCorpus ? notInPost.filter((q) => quotesNotIn(`“${q}”`, pickCorpus).length === 0) : [];
-        return { r, notIn, fromPick, fromOther: !fromPick.length && notInPost.length > notIn.length };
+        // "Writer C" is your seat: a tester could not tell whether C was her or a public writer (17-nov).
+        const namesYou = new RegExp(`\\bWriter ${seatOf(SELF_ID)}\\b`, 'i').test(r);
+        return { r, notIn, fromPick, fromOther: !fromPick.length && notInPost.length > notIn.length, namesYou };
       })
     : [];
   // Reasons for a pick that is not you are about another writer's text: a tester read "refund policies" as about him (17-nov).
@@ -504,11 +524,14 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
           </button>
         )}
         {stage === 'attacked' && (
-          <button className="safe" onClick={rewrite} disabled={!!busy} aria-busy={busy === 'rewrite'}>
+          // Nothing edited yet, nothing to use: the button read as a step already done to a tester (17-nov).
+          <button className="safe" onClick={rewrite} disabled={!!busy || (degraded && editUnchanged)} aria-busy={busy === 'rewrite'}>
             {busy
               ? <Busy label={busyLabel} />
               : degraded
-                ? 'Use my edited version'
+                ? editUnchanged
+                  ? 'Edit your post above first'
+                  : 'Use my edited version'
                 : published
                   ? 'Rewrite again on-device'
                   : 'Rewrite on-device with Gemini Nano'}
@@ -597,7 +620,9 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
         {published && claims && <p className="hint">Rewritten in a plain, neutral voice on purpose: your writing style is what gave you away.</p>}
         {stage === 'draft' && !recorded && (
           <div className="draft-tools">
-            <span className="hint">Edit this sample, or paste the post you are about to publish.</span>
+            <span className="hint">
+              {draft === DRAFT ? 'Edit this sample, or paste the post you are about to publish.' : 'Your post stays on this device until you choose to test it.'}
+            </span>
             <button
               className="mini"
               onClick={() => {
@@ -610,8 +635,9 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
           </div>
         )}
         {stage === 'draft' && !recorded && (
-          <details className="own-writing" onToggle={(e) => e.currentTarget.open && setWantPacks(true)}>
-            <summary>Compare with your own public writing{ownWords ? ` · ${ownWords} words` : ' (optional)'}</summary>
+          <details ref={ownRef} className="own-writing" onToggle={(e) => e.currentTarget.open && setWantPacks(true)}>
+            {/* The count against the 150 a fingerprint needs, as you type: a tester stopped at 141 without knowing (17-nov). */}
+            <summary>Compare with your own public writing{ownWords ? ` · ${ownWords}${ownWords < 150 ? ' of 150' : ''} words` : ' (optional)'}</summary>
             <p className="hint">
               Paste things you have already published under your name, 150 words or more: blog posts, LinkedIn posts, comments. The fingerprint
               compares them with your anonymous post on this device. For the attack they go to the cloud as one of the ten writers, so paste only writing that is already public.
@@ -825,13 +851,31 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
             );
           })}
         </div>
+        {/* The ten writers, a line each: in silhouettes, "the same field" was a claim a judge could not see (17-nov). */}
+        <details className="lineup-texts">
+          <summary>Read a line from each writer</summary>
+          <ul>
+            {lineup.map((c) => (
+              <li key={c.id}>
+                <b>{c.letter}</b>{' '}
+                {c.id === SELF_ID && <em>{standIn ? 'sample writer' : ownText ? 'you, your public writing' : 'you, the sample writer’s posts'}: </em>}
+                {firstLine(c.id === SELF_ID ? selfCorpus : (decoys.find((d) => d.id === c.id)?.corpus ?? ''))}
+              </li>
+            ))}
+          </ul>
+        </details>
         <div className={`score ${final && !busy ? (inconclusive || standIn ? 'mute' : exposedNow ? 'bad' : 'good') : ''}`} aria-live="polite">
           {busy === 'attack' || !final ? (
             <>
               <div className="big">{picks.length ? `${hits}/${picks.length}` : '?/10'}</div>
               <div>
                 <strong>{busy === 'attack' ? `Attacking… attempt ${Math.min(picks.length + 1, 10)} of 10` : 'No one has looked yet'}</strong>
-                <p>{busy === 'attack' ? 'Chance level is 1 in 10.' : 'Attack it to see who the cloud picks. Chance level is 1 in 10.'}</p>
+                {/* The count so far in words: "6/6, attempt 7 of 10" puzzled a tester (17-nov). */}
+                <p>
+                  {busy === 'attack'
+                    ? `${picks.length ? `So far it picked ${standIn ? 'the sample writer' : 'you'} ${hits} of ${picks.length} times. ` : ''}Chance level is 1 in 10.`
+                    : 'Attack it to see who the cloud picks. Chance level is 1 in 10.'}
+                </p>
                 {busy === 'attack' && (
                   <span className="ticks" aria-hidden="true">
                     {Array.from({ length: 10 }, (_, i) => (
@@ -867,14 +911,25 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
                   {inconclusive ? ' Too few answers came back from the cloud: wait a minute and attack again.' : ''}
                   {before !== null && stage === 'reattacked' ? ` Before: ${before}/10.` : ''}
                 </p>
+                {standIn && addWriting && !inconclusive && (
+                  <button className="mini add-writing" onClick={addWriting}>
+                    Add my public writing
+                  </button>
+                )}
               </div>
             </>
           )}
         </div>
         {styleGone && !busy && (
           <p className="hint subject-note">
-            Your writing habits no longer stand out (your fingerprint ranks you #{Math.round(rank)} of 10), yet it still picked you: it goes by what
-            you write about, or by details only you would know. Change those next.
+            Your writing habits no longer stand out (your fingerprint ranks you #{Math.round(rank)} of 10), yet it still picked you.{' '}
+            {/* What to change, by name: "Change those next" left a tester guessing (17-nov). */}
+            {contentClues.length
+              ? `These details are still in your post: ${contentClues
+                  .slice(0, 4)
+                  .map((c) => `“${c.phrase}”`)
+                  .join(', ')}. Change them next.`
+              : 'It goes by what you write about: change the specifics of the story (the events, the people), not your words.'}
           </p>
         )}
         {verdict && verdict.reasons.length > 0 && picks.length === verdict.attempts && (
@@ -887,10 +942,16 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
               </p>
             )}
             <ul className="reasons">
-              {shownReasons.map(({ r, notIn, fromPick, fromOther }, i) => (
+              {shownReasons.map(({ r, notIn, fromPick, fromOther, namesYou }, i) => (
                 // A quote that is in none of the texts the attacker was given is the model guessing: say so.
                 <li key={`${r}-${i}`} className="rise" style={at(i + 1)}>
                   {r}
+                  {namesYou && (
+                    <em className="from-pick">
+                      {' '}
+                      · {seatOf(SELF_ID)} is {standIn ? 'the sample writer' : 'you'}
+                    </em>
+                  )}
                   {(fromPick.length > 0 || fromOther) && (
                     <em className="from-pick">
                       {' '}
