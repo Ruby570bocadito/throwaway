@@ -1,6 +1,21 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { clearTaint, CloudModel, isTemporary, Ledger, LocalModel, publicData, release, secret, type ModelBackend } from '../framework';
-import { aboutSubject, authorshipThreat, deterministicGeneralise, hasPhrase, isSpecific, letterIndex, looksBroken, nameDetails, newSpecifics, quotesNotIn, ruleDetails, sample, shuffled } from './authorship';
+import {
+  aboutSubject,
+  authorshipThreat,
+  deterministicGeneralise,
+  generalisableByHand,
+  hasPhrase,
+  isSpecific,
+  letterIndex,
+  looksBroken,
+  nameDetails,
+  newSpecifics,
+  quotesNotIn,
+  ruleDetails,
+  sample,
+  shuffled,
+} from './authorship';
 import { ATTACK_AFTER, ATTACK_BEFORE, CONTENT_DETAILS, DECOYS, DRAFT, MARTA_PUBLIC, NANO_REWRITE_RECORDED, NANO_REWRITE_V3_RECORDED, REWRITE, SELF_ID } from '../demo/scenario';
 import { FIELD_WORDS } from '../demo/decoys';
 
@@ -367,6 +382,18 @@ describe("the attacker's reasons", () => {
     expect(quotesNotIn("Matches Writer C's rhythm and 'so, honestly'", 'So, honestly, it was fine.')).toEqual([]);
     expect(quotesNotIn('Uses “per se” and "inter alia"', 'Nothing Latin here.')).toEqual(['per se', 'inter alia']);
     expect(quotesNotIn('No quotes at all', 'text')).toEqual([]);
+  });
+});
+
+describe('generalising by hand, without a local model', () => {
+  it('leaves bare numbers to the person, and generalises counts with their word and dates', () => {
+    // A test user's edit (17-nov): "11 of them under 21" became "several of them under many".
+    const post =
+      "I've been assistant manager here for nine years and we have 46 on the rota, 11 of them under 21. The rota was sorted in March, then Dean left after 3 weeks of covering two shifts a day.";
+    const r = deterministicGeneralise(post, generalisableByHand(ruleDetails(post).map((d) => d.phrase)));
+    expect(r.text).toContain('we have 46 on the rota, 11 of them under 21');
+    expect(r.text).not.toMatch(/under (?:many|several|a few)/);
+    expect(r.done.map((d) => d.phrase).sort()).toEqual(['3 weeks', 'March', 'nine years', 'two shifts']);
   });
 });
 

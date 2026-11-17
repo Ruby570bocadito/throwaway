@@ -168,6 +168,9 @@ mark.content { background-image: linear-gradient(transparent 12%, var(--peach) 1
 .finding.style code { background: var(--red-soft); color: var(--red); }
 .finding.content code { background: var(--peach); color: #6b3f12; }
 .finding span { color: var(--muted); }
+/* Editing by hand without a local model: what is already gone from the edit is crossed out (17-nov). */
+.finding.gone code { text-decoration: line-through; opacity: 0.55; }
+.finding .gone-tag { color: var(--green); font-style: normal; }
 /* a generalised detail is struck out with a marker, one after another */
 .finding.generalised { display: block; }
 .finding.generalised code { margin-right: 4px; padding: 2px 3px; background: transparent; color: var(--ink); }
@@ -193,6 +196,7 @@ p.good { margin: 0; font-size: 13.5px; }
 .meter { margin-top: 18px; padding-top: 14px; border-top: 1px dashed var(--line); }
 .meter-top { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
 .meter-label { color: var(--muted); font-size: 13px; }
+.meter-read { margin: 8px 0 2px; color: var(--ink); font-size: 13.5px; line-height: 1.45; }
 .meter strong { flex: none; min-width: 5.4ch; font: 600 24px/1 var(--serif); font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
 .meter strong span { color: var(--muted); font-size: 15px; font-weight: 500; }
 .bar { height: 8px; margin: 10px 0 6px; overflow: hidden; border: 1px solid var(--line); border-radius: var(--r-pill); background: var(--paper-2); }

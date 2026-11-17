@@ -259,6 +259,13 @@ export function ruleDetails(text: string): { phrase: string; why: string }[] {
   return found.map(({ phrase, why }) => ({ phrase, why }));
 }
 
+/**
+ * The rule-found details the fixed rules may generalise in a person's own edit, where no model smooths the result: counts
+ * with the word they count, and dates. A bare number carries no meaning the rules can keep ("11 of them under 21" became
+ * "several of them under many" for a tester, 17-nov), so it stays listed for the person to change.
+ */
+export const generalisableByHand = (phrases: string[]) => phrases.filter((p) => /\p{L}/u.test(p));
+
 /** Capitalised words that are not names: roles, departments and everyday abbreviations. */
 const NOT_NAMES = new Set(['OK', 'AI', 'TV', 'PC', 'FYI', 'ASAP', 'CEO', 'CFO', 'CTO', 'COO', 'HR', 'IT', 'PR', 'PS']);
 const DATE_WORD = new RegExp(`^(?:${MONTH}|${WEEKDAY})$`);

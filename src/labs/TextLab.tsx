@@ -4,7 +4,17 @@ import { readsAsEnglish, styleMarkers, type Reliability } from '../engine/stylom
 import { DECOYS, DRAFT, MARTA_PUBLIC, SELF_ID } from '../demo/scenario';
 import { FIELD_IDS, FIELD_LABELS, type DecoyPackId } from '../demo/fields';
 import { keptPassages, PrivacyViolation, release, secret, type Private, type Publishable } from '../framework';
-import { aboutSubject, deterministicGeneralise, hasPhrase, nameDetails, quotesNotIn, ruleDetails, type AuthorshipVerdict, type Clue } from '../threats/authorship';
+import {
+  aboutSubject,
+  deterministicGeneralise,
+  generalisableByHand,
+  hasPhrase,
+  nameDetails,
+  quotesNotIn,
+  ruleDetails,
+  type AuthorshipVerdict,
+  type Clue,
+} from '../threats/authorship';
 import { buildAuthorship, lineupField, loadDecoyPacks, type DecoyPacks } from '../kit';
 import { ErrorNote, friendlyError, Silhouette, type LabProps } from '../ui/shared';
 import { Compare } from '../ui/Compare';
@@ -296,7 +306,12 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
 
   // No local model, no rewrite: the fixed rules still generalise the counts and dates in your edit when you ask, as they do
   // before Gemini Nano rewrites. Names are left to you: the rules would turn "shouted at Kelly" into "shouted somewhere".
-  const ruleCounts = useMemo(() => (degraded ? ruleDetails(draft).map((d) => d.phrase) : []), [degraded, draft]);
+  // Only counts with the word they count, and dates: bare numbers stay listed for the user to change.
+  const ruleCounts = useMemo(() => (degraded ? generalisableByHand(ruleDetails(draft).map((d) => d.phrase)) : []), [degraded, draft]);
+  // While you edit without a local model, what you already removed is crossed out: a tester could not tell what was left (17-nov).
+  const editingByHand = degraded && stage === 'attacked';
+  // The same match as the highlighter: a habit like "so honestly i" is still there in "So, honestly, I".
+  const goneFromEdit = (phrase: string) => editingByHand && !new RegExp(phraseRe(phrase), 'i').test(edited);
   const generaliseForMe = () => {
     const r = deterministicGeneralise(edited, ruleCounts);
     setEdited(r.text);
@@ -443,7 +458,10 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
       {!busy && stage === 'scanned' && standIn && (
         <p className="dock-note warn">No public writing of yours: this attack looks for the sample writer, not you. Start over to add yours: your post stays.</p>
       )}
-      {!busy && stage === 'scanned' && <p className="dock-note">Sends this exact text to a cloud AI, ten times, as if you had posted it.</p>}
+      {/* A judge read the as-is test as at odds with "the draft is the secret" (17-nov): say it is the only such step. */}
+      {!busy && stage === 'scanned' && (
+        <p className="dock-note">Sends this exact text to a cloud AI, ten times, as if you had posted it: the only step that sends your original.</p>
+      )}
       {!busy && stage === 'rewritten' && published && (
         <p className="dock-note">{degraded ? 'Sends only your edited version, never the original.' : 'Sends only the rewritten version, never the original.'}</p>
       )}
@@ -609,8 +627,12 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
                 <p className="good rise">No habits from your public writing.</p>
               ) : (
                 styleClues.map((m, i) => (
-                  <div key={`${m.phrase}-${i}`} className="finding style rise" style={at(i)}>
-                    <code>{m.phrase}</code> <span>{m.why}</span>
+                  <div key={`${m.phrase}-${i}`} className={`finding style rise ${goneFromEdit(m.phrase) ? 'gone' : ''}`} style={at(i)}>
+                    <code>{m.phrase}</code>{' '}
+                    <span>
+                      {m.why}
+                      {goneFromEdit(m.phrase) && <em className="gone-tag"> · gone from your edit</em>}
+                    </span>
                   </div>
                 ))
               )}
@@ -629,8 +651,12 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
                 </p>
               ) : (
                 contentClues.map((m, i) => (
-                  <div key={`${m.phrase}-${i}`} className="finding content rise" style={at(i)}>
-                    <code>{m.phrase}</code> <span>{m.why}</span>
+                  <div key={`${m.phrase}-${i}`} className={`finding content rise ${goneFromEdit(m.phrase) ? 'gone' : ''}`} style={at(i)}>
+                    <code>{m.phrase}</code>{' '}
+                    <span>
+                      {m.why}
+                      {goneFromEdit(m.phrase) && <em className="gone-tag"> · gone from your edit</em>}
+                    </span>
                   </div>
                 ))
               )}
@@ -678,8 +704,9 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
 
         <div className="meter" ref={meterRef}>
           <div className="meter-top">
-            <span className="meter-label">Your rank among ten writers: #1 reads most like you, #10 least</span>
-            <strong className={!stylo || tooShort ? '' : stylo.rank === 1 ? 'bad' : 'good'}>
+            {/* While you edit by hand the rank follows your edit: it moved with no word of why for a tester (17-nov). */}
+            <span className="meter-label">{editingByHand ? 'Your edit’s rank' : 'Your rank'} among ten writers: #1 reads most like you, #10 least</span>
+            <strong className={!stylo || tooShort ? '' : stylo.rank <= 2 ? 'bad' : stylo.rank <= 5 ? 'warn' : 'good'}>
               #{stylo && !tooShort ? Math.round(rank) : '–'} <span>of 10</span>
             </strong>
           </div>
@@ -696,6 +723,16 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
               )}
               {trust.notes.length > 0 && <p className="trust-notes">{trust.notes.join(' ')}</p>}
             </div>
+          )}
+          {/* What the rank means, in words: "#2 of 10" read as good to a tester (17-nov). */}
+          {stylo && !tooShort && (
+            <p className="meter-read">
+              {stylo.rank <= 2
+                ? `It reads a lot like ${standIn ? 'the sample writer’s posts' : 'your public writing'}: easy to link.`
+                : stylo.rank <= 5
+                  ? `It reads somewhat like ${standIn ? 'the sample writer’s posts' : 'your public writing'}.`
+                  : `It reads less like ${standIn ? 'the sample writer' : 'you'} than most of the other writers.`}
+            </p>
           )}
           <small>Local fingerprint: Burrows’ Delta on function words, range from 100 resamples · in your browser · 0 bytes sent</small>
           {draft !== DRAFT && !ownPublic.trim() && !recorded && (
@@ -794,6 +831,8 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
                         : 'You are one of ten'}
                 </strong>
                 <p>
+                  {/* The count in words: a tester could not tell whether "2/10" meant it picked her (17-nov). */}
+                  {standIn ? `It picked the sample writer ${final.hits} of ${final.answered} times. ` : `It picked you ${final.hits} of ${final.answered} times. `}
                   Chance level is 1 in 10.
                   {final.answered < final.attempts ? ` ${final.attempts - final.answered} attempts got no answer (model busy).` : ''}
                   {inconclusive ? ' Too few answers came back from the cloud: wait a minute and attack again.' : ''}
@@ -829,7 +868,8 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
             </ul>
             {foldedReasons > 0 && (
               <button className="mini reasons-more" onClick={() => setShowUngrounded(true)}>
-                {foldedReasons === 1 ? 'One more reason quotes' : `${foldedReasons} more reasons quote`} words that are not in the text: show
+                {/* The action first: "…: show" at the end read as a glitch to a tester (17-nov). */}
+                {foldedReasons === 1 ? 'Show one more reason: it quotes' : `Show ${foldedReasons} more reasons: they quote`} words that are not in the text it attacked
               </button>
             )}
             {bySubject && (

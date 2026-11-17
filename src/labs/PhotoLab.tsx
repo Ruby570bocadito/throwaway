@@ -347,7 +347,9 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak, recorded, 
           {busyNote}
         </p>
       )}
-      {!busy && stage === 'scanned' && <p className="dock-note">Sends this photo, as it is, to a cloud AI, as if you had posted it.</p>}
+      {!busy && stage === 'scanned' && (
+        <p className="dock-note">Sends this photo, as it is, to a cloud AI, as if you had posted it: the only step that sends your original.</p>
+      )}
       {!busy && stage === 'masked' && <p className="dock-note">Sends only the masked photo, never the original.</p>}
       <div className="dock-row">
         {stage === 'photo' && (
@@ -583,6 +585,8 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak, recorded, 
             {verdict.clues.length > 0 && (
               <div className="reasons-box rise" key={`r${history.length}`}>
                 <h3>{safe ? 'What the attacker went by, and still missed' : 'What the attacker used'}</h3>
+                {/* Why masking stops with these cells still visible: a judge read them as a loop that gave up (17-nov). */}
+                {safe && <p className="hint">Not masked: they did not lead it to you, so masking stops here.</p>}
                 <ul className="reasons">
                   {/* A cell can hold several clues: keyed by cell alone, React kept a stale item on screen (live, 16-nov). */}
                   {verdict.clues.map((c, i) => (
