@@ -383,6 +383,7 @@ a.button-link:hover { background: #24613f; color: #fff; transform: translateY(-1
 .outcome { flex: 1 1 260px; margin: 0; color: var(--green); font: 600 16px/1.35 var(--serif); text-align: center; animation: rise 0.45s var(--ease) both; }
 /* what the next attack sends, said before it is sent */
 .dock-note { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.4; text-align: center; animation: rise 0.35s var(--ease) both; }
+.dock-note.busy { color: var(--amber); }
 .outcome.bad { color: var(--red); }
 .outcome.warn { color: var(--amber); }
 

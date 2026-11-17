@@ -11,6 +11,7 @@ import { Compare } from '../ui/Compare';
 import { Stepper, type StepDef } from '../ui/Stepper';
 import { WorkLog, type PlanStep } from '../ui/WorkLog';
 import { useAnimatedNumber } from '../ui/motion';
+import { useCloudBusy } from '../ui/busy';
 
 type Stage = 'draft' | 'scanned' | 'attacked' | 'rewritten' | 'reattacked';
 const LETTERS = 'ABCDEFGHIJ';
@@ -129,17 +130,20 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
   // A lineup that is still loading cannot be scanned against: the scan's style habits are measured against these writers.
   const lineupPending = needPacks && !packs && !packsFailed;
 
+  // While an attack waits on a busy cloud model, the dock says so (a retry, or a switch to a backup model).
+  const [busyNote, clearBusyNote] = useCloudBusy(kit.cloud, busy === 'attack');
   const threat = useMemo(
     () =>
       buildAuthorship(
         (pickId) => {
           setCurrent(pickId);
           setPicks((p) => [...p, pickId]);
+          clearBusyNote();
         },
         ownPublic,
         decoys,
       ),
-    [ownPublic, decoys],
+    [ownPublic, decoys, clearBusyNote],
   );
 
   // The shell's "Try to leak" button: a careless developer concatenates the draft into a cloud prompt.
@@ -250,6 +254,7 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
 
   const attack = (target: Publishable<string>, after: boolean) =>
     run('attack', async () => {
+      clearBusyNote();
       setPicks([]);
       setVerdict(null);
       const v = await threat.attack(target, kit);
@@ -347,6 +352,11 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
           recorded={recorded}
           download={download}
         />
+      )}
+      {busyNote && (
+        <p className="dock-note busy" role="status">
+          {busyNote}
+        </p>
       )}
       {/* What the next attack sends, said before it is sent: the as-is test read as a formality to two testers (16-nov). */}
       {!busy && stage === 'scanned' && <p className="dock-note">Sends this exact text to a cloud AI, ten times, as if you had posted it.</p>}
@@ -667,6 +677,7 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
                 <p>
                   Chance level is 1 in 10.
                   {final.answered < final.attempts ? ` ${final.attempts - final.answered} attempts got no answer (model busy).` : ''}
+                  {inconclusive ? ' Google’s cloud models are overloaded for now: wait a minute and attack again.' : ''}
                   {before !== null && stage === 'reattacked' ? ` Before: ${before}/10.` : ''}
                 </p>
               </div>

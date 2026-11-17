@@ -8,7 +8,8 @@ export function friendlyError(e: unknown): string {
     return e.message;
   }
   const msg = e instanceof Error ? e.message : String(e);
-  if (isTemporary(e)) return 'The cloud model is busy right now. Wait a minute and try again.';
+  // The main model and its backup were both busy for the whole time budget: Google's side, not the user's.
+  if (isTemporary(e)) return 'Google’s cloud models are overloaded right now, the backup one too. Nothing was lost: wait a minute and try again.';
   if (/app ?check|\b40[13]\b|permission_denied/i.test(msg)) return 'This browser could not prove it is the real app (App Check). Reload the page and try again.';
   // Errors the core writes for people (an empty or too long post, nothing to mask) already say what to do.
   if (/^(Nothing to mask|There is nothing to rewrite|This post is too long)/.test(msg)) return msg.replace(/\.?$/, '.');

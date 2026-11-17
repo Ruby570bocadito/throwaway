@@ -7,6 +7,7 @@ import { isReleased, Private, Public, Publishable } from './data';
 import { assertUntainted, PrivacyViolation } from './guard';
 import { byteLength, type Ledger } from './ledger';
 import type { JsonSchema } from './json';
+import type { BusyEvent } from './fallback';
 import { isTemporary, ModelTimeout, triesOf } from './retry';
 
 export type LocalPart = string | Private<string> | Publishable<string> | Public<string> | { image: Private<Uint8Array> | Publishable<Uint8Array>; mime: string };
@@ -20,6 +21,8 @@ export interface GenerateOptions {
   op: string;
   /** Cancels the call (and its retries), e.g. when the user leaves the page. */
   signal?: AbortSignal;
+  /** Told while the call waits on a busy model: a retry, or a move to a backup model. */
+  onBusy?: (e: BusyEvent) => void;
 }
 
 export interface ModelResult {
@@ -28,6 +31,9 @@ export interface ModelResult {
   source: 'on_device' | 'in_cloud' | 'recorded';
   /** How many times the request was sent (retries after busy answers). Every try sends the bytes again. */
   tries?: number;
+  /** Set when a backup model answered because the main one was busy: which one. */
+  model?: string;
+  backup?: boolean;
 }
 
 /** What an adapter receives after the framework has resolved the parts. */
@@ -137,12 +143,20 @@ export class LocalModel {
 export class CloudModel {
   private backend: ModelBackend;
   private ledger: Ledger;
+  private busyListeners = new Set<(e: BusyEvent) => void>();
   constructor(backend: ModelBackend, ledger: Ledger) {
     this.backend = backend;
     this.ledger = ledger;
   }
   get name() {
     return this.backend.name;
+  }
+  /** While a call waits on a busy model, the UI can say so instead of showing a spinner that looks stuck. */
+  onBusy(fn: (e: BusyEvent) => void): () => void {
+    this.busyListeners.add(fn);
+    return () => {
+      this.busyListeners.delete(fn);
+    };
   }
   async generate(parts: CloudPart[], opts: GenerateOptions): Promise<ModelResult> {
     let resolved: ResolvedPart[];
@@ -159,7 +173,13 @@ export class CloudModel {
     const notes = (...more: string[]) => [asIs ? 'original, sent as-is by your choice' : '', ...more].filter(Boolean).join(' · ') || undefined;
     let res: ModelResult;
     try {
-      res = await this.backend.generate(resolved, opts);
+      res = await this.backend.generate(resolved, {
+        ...opts,
+        onBusy: (e) => {
+          opts.onBusy?.(e);
+          this.busyListeners.forEach((fn) => fn(e));
+        },
+      });
     } catch (e) {
       // A failed call may still have sent its bytes (every try did): the ledger counts them.
       const tries = triesOf(e);
@@ -172,7 +192,11 @@ export class CloudModel {
       route: 'cloud',
       ms: Math.round(performance.now() - t0),
       bytesOut: bytes * tries,
-      note: notes(tries > 1 ? `sent ${tries} times (model busy)` : '', res.source === 'recorded' ? 'recorded' : ''),
+      note: notes(
+        res.backup && res.model ? `answered by ${res.model}, the backup model (main model busy)` : '',
+        tries > 1 ? `sent ${tries} times (model busy)` : '',
+        res.source === 'recorded' ? 'recorded' : '',
+      ),
     });
     return res;
   }

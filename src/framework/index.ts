@@ -6,3 +6,4 @@ export { redTeam, type Threat, type Kit, type RedTeamEvent } from './redteam';
 export { recordedBackend } from './recorded';
 export { parseModelJson, parseModelJsonLenient, listAt, ModelJsonError, type JsonSchema } from './json';
 export { isTemporary, ModelTimeout, retryAfterMs, statusOf, withRetry, withTimeout, type RetryOptions } from './retry';
+export { ModelPool, type BusyEvent, type PoolModel, type PoolOptions } from './fallback';

@@ -9,6 +9,7 @@ import { ErrorNote, formatKm, friendlyError, type LabProps } from '../ui/shared'
 import { Stepper, type StepDef } from '../ui/Stepper';
 import { WorkLog, type PlanStep } from '../ui/WorkLog';
 import { useAnimatedNumber, useReducedMotion } from '../ui/motion';
+import { useCloudBusy } from '../ui/busy';
 
 type Stage = 'loading' | 'photo' | 'scanned' | 'attacked' | 'masked' | 'safe';
 const STAGE_STEP: Record<Stage, number> = { loading: 0, photo: 0, scanned: 1, attacked: 2, masked: 3, safe: 4 };
@@ -49,6 +50,8 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak, recorded, 
   // "Attack it as I would post it" sends the photo as it is: the user's choice, and the chip says so.
   const [sentAsIs, setSentAsIs] = useState(false);
   const [busy, setBusy] = useState('');
+  // While the attack waits on a busy cloud model, the dock says so (a retry, or a switch to a backup model).
+  const [busyNote, clearBusyNote] = useCloudBusy(kit.cloud, busy === 'attack');
   const [busySince, setBusySince] = useState<number | null>(null);
   const [download, setDownload] = useState<number | null>(null);
   const [rounds, setRounds] = useState(1);
@@ -259,6 +262,7 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak, recorded, 
 
   const attack = (target: Publishable<Uint8Array>, after: boolean) =>
     run('attack', async () => {
+      clearBusyNote();
       const v = await threat.attack(target, kit);
       setVerdict(v);
       setHistory((h) => [...h, shownKm(v)]);
@@ -331,6 +335,11 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak, recorded, 
     <>
       {working && busySince !== null && (
         <WorkLog ledger={kit.ledger} since={busySince} plan={SCAN_PLAN} title="Scanning your photo on this device" recorded={recorded} download={download} />
+      )}
+      {busyNote && (
+        <p className="dock-note busy" role="status">
+          {busyNote}
+        </p>
       )}
       {!busy && stage === 'scanned' && <p className="dock-note">Sends this photo, as it is, to a cloud AI, as if you had posted it.</p>}
       {!busy && stage === 'masked' && <p className="dock-note">Sends only the masked photo, never the original.</p>}

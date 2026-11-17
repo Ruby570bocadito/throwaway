@@ -6,11 +6,17 @@ import { CustomProvider, initializeAppCheck, ReCaptchaEnterpriseProvider } from 
 import { getAI, getGenerativeModel, GoogleAIBackend, InferenceMode, type GenerateContentRequest, type GenerativeModel, type Part } from 'firebase/ai';
 import type { GenerateOptions, ModelBackend, ModelResult, ResolvedPart } from './models';
 import type { JsonSchema } from './json';
-import { ModelTimeout, withRetry, withTimeout, type RetryOptions } from './retry';
+import { ModelPool, type PoolModel } from './fallback';
+import { ModelTimeout, withTimeout, type RetryOptions } from './retry';
 
 export interface FirebaseHybridConfig {
   firebase: FirebaseOptions;
   cloudModel: string;
+  /**
+   * Cloud models to move on to, in order, while the main one is busy (Gemini answers "high demand" for minutes at a
+   * time). The attacker is then another Gemini model; the ledger says which one answered.
+   */
+  cloudFallbackModels?: string[];
   recaptchaSiteKey?: string;
   debugAppCheck?: boolean;
   /** Per try, for the cloud (default 30 s; Flash-Lite answers in ~1 s). The SDK's own default is 180 s. */
@@ -20,8 +26,9 @@ export interface FirebaseHybridConfig {
 }
 
 /**
- * Cloud: 5 tries at most, within 45 s in all, so a hung or overloaded cloud ends in an error the UI can show instead of a
- * spinner (the SDK would wait 180 s per try, and its timer stops once headers arrive). The device is never retried.
+ * Cloud: within 45 s in all, so a hung or overloaded cloud ends in an error the UI can show instead of a spinner (the SDK
+ * would wait 180 s per try, and its timer stops once headers arrive). A busy model gets two tries, then the call moves on
+ * to the next model, and the last one gets up to five. The device is never retried.
  */
 const CLOUD_RETRY: RetryOptions = { retries: 4, baseMs: 1000, maxDelayMs: 8000, budgetMs: 45_000, maxRetryAfterMs: 20_000 };
 const LOCAL_RETRY: RetryOptions = { retries: 0 };
@@ -37,7 +44,8 @@ const toParts = (parts: ResolvedPart[]): Part[] =>
 
 class AILogicBackend implements ModelBackend {
   readonly name: string;
-  private model: GenerativeModel;
+  /** One model on the device; in the cloud, the main model and its backups, in order. */
+  private pool: ModelPool<GenerativeModel>;
   /** On-device structured output is fixed per model instance (Chrome responseConstraint), so keep one per schema. */
   private makeWithSchema?: (schema: JsonSchema) => GenerativeModel;
   private bySchema = new Map<string, GenerativeModel>();
@@ -46,18 +54,18 @@ class AILogicBackend implements ModelBackend {
   private retry: RetryOptions;
   constructor(
     name: string,
-    model: GenerativeModel,
+    models: PoolModel<GenerativeModel>[],
     o: { where: 'cloud' | 'device'; timeoutMs: number; retry: RetryOptions; makeWithSchema?: (schema: JsonSchema) => GenerativeModel },
   ) {
     this.name = name;
-    this.model = model;
+    this.pool = new ModelPool(models);
     this.where = o.where;
     this.timeoutMs = o.timeoutMs;
     this.retry = o.retry;
     this.makeWithSchema = o.makeWithSchema;
   }
-  private modelFor(opts: GenerateOptions): GenerativeModel {
-    if (!opts.schema || !this.makeWithSchema) return this.model;
+  private modelFor(model: GenerativeModel, opts: GenerateOptions): GenerativeModel {
+    if (!opts.schema || !this.makeWithSchema) return model;
     const key = JSON.stringify(opts.schema);
     let m = this.bySchema.get(key);
     if (!m) {
@@ -67,7 +75,6 @@ class AILogicBackend implements ModelBackend {
     return m;
   }
   async generate(parts: ResolvedPart[], opts: GenerateOptions): Promise<ModelResult> {
-    const model = this.modelFor(opts);
     // In the cloud, structured output goes in generationConfig. On-device, the SDK ignores generationConfig and uses
     // the promptOptions given at creation (see modelFor).
     const generationConfig = opts.schema
@@ -77,20 +84,28 @@ class AILogicBackend implements ModelBackend {
         : undefined;
     const request: GenerateContentRequest = { contents: [{ role: 'user', parts: toParts(parts) }], generationConfig };
     // Free-tier limits are low: retry temporary errors with exponential backoff and jitter, as the hackathon FAQ suggests,
-    // honouring the server's RetryInfo. Measured live (16-nov): Gemini also answers [500] "This model is currently
-    // experiencing high demand". Each try has a deadline; its signal also cancels a response body that stalls.
-    const { value: res, tries } = await withRetry(
-      (_attempt, remaining) => {
+    // honouring the server's RetryInfo, and move on to a backup model while the main one is busy. Measured live
+    // (16-nov): Gemini also answers [500] "This model is currently experiencing high demand". Each try has a deadline;
+    // its signal also cancels a response body that stalls.
+    const { value: res, tries, model } = await this.pool.run(
+      (m, remaining) => {
         const ms = Math.max(1000, Math.min(this.timeoutMs, remaining));
-        return withTimeout((signal) => model.generateContent(request, { signal }), ms, () => new ModelTimeout(this.where, ms), opts.signal);
+        const gm = this.modelFor(m.model, opts);
+        return withTimeout((signal) => gm.generateContent(request, { signal }), ms, () => new ModelTimeout(this.where, ms), opts.signal);
       },
-      { ...this.retry, signal: opts.signal },
+      { ...this.retry, signal: opts.signal, onBusy: opts.onBusy },
     );
-    return { text: res.response.text(), source: res.response.inferenceSource === 'on_device' ? 'on_device' : 'in_cloud', tries };
+    const backup = model !== this.pool.models[0].name;
+    return {
+      text: res.response.text(),
+      source: res.response.inferenceSource === 'on_device' ? 'on_device' : 'in_cloud',
+      tries,
+      ...(backup ? { model, backup } : {}),
+    };
   }
   /** On-device models must be initialised from a user gesture. */
   async prepare(onProgress?: (p: number) => void) {
-    await this.model.initializeDeviceModel(onProgress);
+    await this.pool.models[0].model.initializeDeviceModel(onProgress);
   }
 }
 
@@ -114,7 +129,7 @@ export function firebaseHybrid(cfg: FirebaseHybridConfig) {
   const ai = getAI(app, { backend: new GoogleAIBackend() });
   const local = new AILogicBackend(
     'Gemini Nano (on-device)',
-    getGenerativeModel(ai, { mode: InferenceMode.ONLY_ON_DEVICE, inCloudParams: { model: cfg.cloudModel } }),
+    [{ name: 'gemini-nano', model: getGenerativeModel(ai, { mode: InferenceMode.ONLY_ON_DEVICE, inCloudParams: { model: cfg.cloudModel } }) }],
     {
       where: 'device',
       timeoutMs: cfg.localTimeoutMs ?? 300_000,
@@ -127,9 +142,10 @@ export function firebaseHybrid(cfg: FirebaseHybridConfig) {
         }),
     },
   );
+  const cloudModels = [cfg.cloudModel, ...(cfg.cloudFallbackModels ?? []).filter((m) => m && m !== cfg.cloudModel)];
   const cloud = new AILogicBackend(
     `${cfg.cloudModel} (cloud)`,
-    getGenerativeModel(ai, { mode: InferenceMode.ONLY_IN_CLOUD, inCloudParams: { model: cfg.cloudModel } }),
+    cloudModels.map((name) => ({ name, model: getGenerativeModel(ai, { mode: InferenceMode.ONLY_IN_CLOUD, inCloudParams: { model: name } }) })),
     { where: 'cloud', timeoutMs: cfg.cloudTimeoutMs ?? 30_000, retry: CLOUD_RETRY },
   );
   return { local, cloud };

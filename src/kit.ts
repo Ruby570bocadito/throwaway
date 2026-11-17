@@ -28,6 +28,13 @@ export function buildKit(ledger: Ledger) {
         // Measured 16-nov-2026 on the free tier: gemini-3.5-flash-lite answers in ~1 s and found the author 9/9 times before
         // rewriting; gemini-3.8-flash took 40–60 s per call (too slow for a 10-attempt lineup). Override with VITE_ATTACKER_MODEL.
         cloudModel: env.VITE_ATTACKER_MODEL || 'gemini-3.5-flash-lite',
+        // While the main model is busy ("high demand"), calls move on to these. gemini-3.1-flash-lite: the previous
+        // Flash-Lite, stable with no shutdown date, no billing (Firebase AI Logic model list, 16-nov-2026). Override with
+        // VITE_ATTACKER_FALLBACK_MODELS (comma-separated; "none" turns backups off).
+        cloudFallbackModels: (env.VITE_ATTACKER_FALLBACK_MODELS || 'gemini-3.1-flash-lite')
+          .split(',')
+          .map((m: string) => m.trim())
+          .filter((m: string) => m && m !== 'none'),
         recaptchaSiteKey: env.VITE_RECAPTCHA_SITE_KEY,
         debugAppCheck: env.DEV,
       })
