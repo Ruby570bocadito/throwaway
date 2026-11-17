@@ -25,3 +25,12 @@ describe('error messages for people', () => {
     expect(friendlyError(e)).toMatch(/App Check.*allow reCAPTCHA on this site/);
   });
 });
+
+describe('a message the app wrote for people', () => {
+  it('is shown as it is', () => {
+    const e = Object.assign(new Error('Your edit still keeps this passage of your original: “I loved this company”. Change it a little more, then try again.'), {
+      name: 'UserFacingError',
+    });
+    expect(friendlyError(e)).toBe(e.message);
+  });
+});

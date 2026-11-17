@@ -3,8 +3,8 @@ import { createPortal } from 'react-dom';
 import { styleMarkers, type Reliability } from '../engine/stylometry';
 import { DECOYS, DRAFT, MARTA_PUBLIC, SELF_ID } from '../demo/scenario';
 import { FIELD_IDS, FIELD_LABELS, type DecoyPackId } from '../demo/fields';
-import { PrivacyViolation, release, secret, type Private, type Publishable } from '../framework';
-import { hasPhrase, ruleDetails, type AuthorshipVerdict, type Clue } from '../threats/authorship';
+import { locateEvidence, PrivacyViolation, release, secret, type Private, type Publishable } from '../framework';
+import { hasPhrase, quotesNotIn, ruleDetails, type AuthorshipVerdict, type Clue } from '../threats/authorship';
 import { buildAuthorship, lineupField, loadDecoyPacks, type DecoyPacks } from '../kit';
 import { ErrorNote, friendlyError, Silhouette, type LabProps } from '../ui/shared';
 import { Compare } from '../ui/Compare';
@@ -82,6 +82,8 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
   const [published, setPublished] = useState<Publishable<string> | null>(null);
   const [clues, setClues] = useState<Clue[]>([]);
   const [verdict, setVerdict] = useState<AuthorshipVerdict | null>(null);
+  // The text the last attack sent: what the attacker's reasons are checked against.
+  const [attackedText, setAttackedText] = useState('');
   const [before, setBefore] = useState<number | null>(null);
   const [picks, setPicks] = useState<string[]>([]);
   const [current, setCurrent] = useState<string | null>(null);
@@ -257,6 +259,7 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
   const attack = (target: Publishable<string>, after: boolean) =>
     run('attack', async () => {
       clearBusyNote();
+      setAttackedText(target.value);
       setPicks([]);
       setVerdict(null);
       const v = await threat.attack(target, kit);
@@ -281,8 +284,17 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
   const rewrite = () =>
     run('rewrite', async () => {
       if (degraded) {
-        // release() refuses the edit if it still contains 8+ word spans of the private draft.
-        setPublished(release(edited, 'edited by the user'));
+        // release() refuses an edit that still carries about 7 words of the private draft: say which passage (Sam, 17-nov).
+        try {
+          setPublished(release(edited, 'edited by the user'));
+        } catch (e) {
+          const kept = e instanceof PrivacyViolation ? locateEvidence(edited, e.evidence) : null;
+          if (!kept) throw e;
+          const shown = kept.length > 160 ? `${kept.slice(0, 160)}…` : kept;
+          throw Object.assign(new Error(`Your edit still keeps this passage of your original: “${shown}”. Change it a little more, then try again.`), {
+            name: 'UserFacingError',
+          });
+        }
       } else {
         await prepare();
         setPublished(await threat.sanitize(privateDraft.current!, clues, verdict, kit));
@@ -313,6 +325,9 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
     { label: 'Attack again', where: 'in the cloud' },
   ];
   const outcome = stage === 'reattacked' ? (contentClues.length ? 'warn' : 'good') : null;
+  // A post of the user's own with no public writing of theirs: the lineup then looks for the sample writer, not for them,
+  // and the verdict says nothing about them. Said before scanning, before attacking and in the verdict (judge, 17-nov).
+  const standIn = !recorded && !ownText && draft.trim() !== '' && draft !== DRAFT;
 
   // The line under the lineup: whose field the nine writers share, and what follows from it.
   const canPickField = stage === 'draft' && !!ownText && !!packs;
@@ -361,6 +376,12 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
         </p>
       )}
       {/* What the next attack sends, said before it is sent: the as-is test read as a formality to two testers (16-nov). */}
+      {!busy && stage === 'draft' && standIn && (
+        <p className="dock-note warn">Without your own public writing, the attack will look for the sample writer, not you. Add yours under the post first.</p>
+      )}
+      {!busy && stage === 'scanned' && standIn && (
+        <p className="dock-note warn">No public writing of yours: this attack looks for the sample writer, not you. Start over to add yours.</p>
+      )}
       {!busy && stage === 'scanned' && <p className="dock-note">Sends this exact text to a cloud AI, ten times, as if you had posted it.</p>}
       {!busy && stage === 'rewritten' && published && (
         <p className="dock-note">{degraded ? 'Sends only your edited version, never the original.' : 'Sends only the rewritten version, never the original.'}</p>
@@ -400,7 +421,11 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
           ) : (
             <>
               <p className="outcome" role="status">
-                {final ? `The attacker picked you ${final.hits} of ${final.answered} times, no better than chance` : 'The attacker did not find you'}
+                {standIn
+                  ? `The attacker picked the sample writer ${final?.hits ?? 0} of ${final?.answered ?? 10} times. Without your own public writing, this test could not look for you`
+                  : final
+                    ? `The attacker picked you ${final.hits} of ${final.answered} times: it cannot tell you apart from the other nine writers`
+                    : 'The attacker did not find you'}
                 {degraded ? ', and no counts or dates are left. Names, places and companies were not checked.' : ', and no identifying details are left.'}
               </p>
               <button className="safe" onClick={copySafe}>
@@ -551,14 +576,14 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
 
         {published && claims?.meaningCheck === 'failed' && (
           <div className="claims failed rise">
-            <h3>Meaning check · no answer</h3>
+            <h3>Same meaning? No answer</h3>
             <p>Gemini Nano gave no readable answer, so nothing checked that the rewrite still says what you meant. Read it before you post.</p>
           </div>
         )}
         {published && claims && claims.claims.length > 0 && (
           <div className="claims rise">
             <h3>
-              Meaning check · {claims.claims.filter((c) => c.kept).length}/{claims.claims.length} claims kept · checked on your device
+              Same meaning? {claims.claims.filter((c) => c.kept).length} of {claims.claims.length} claims kept · checked on your device
             </h3>
             <ul>
               {claims.claims.map((c, i) => (
@@ -679,7 +704,8 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
                 <p>
                   Chance level is 1 in 10.
                   {final.answered < final.attempts ? ` ${final.attempts - final.answered} attempts got no answer (model busy).` : ''}
-                  {inconclusive ? ' Google’s cloud models are overloaded for now: wait a minute and attack again.' : ''}
+                  {inconclusive ? ' Too few answers came back from the cloud: wait a minute and attack again.' : ''}
+                  {standIn ? ' This test looked for the sample writer, not you: add your own public writing for a real one.' : ''}
                   {before !== null && stage === 'reattacked' ? ` Before: ${before}/10.` : ''}
                 </p>
               </div>
@@ -690,11 +716,21 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
           <div className="reasons-box rise">
             <h3>The attacker’s reasons</h3>
             <ul className="reasons">
-              {verdict.reasons.map((r, i) => (
-                <li key={`${r}-${i}`} className="rise" style={at(i + 1)}>
-                  {r}
-                </li>
-              ))}
+              {verdict.reasons.map((r, i) => {
+                // A quote that is not in the attacked text is the model citing another writer, or guessing: say so.
+                const notIn = quotesNotIn(r, attackedText);
+                return (
+                  <li key={`${r}-${i}`} className="rise" style={at(i + 1)}>
+                    {r}
+                    {notIn.length > 0 && (
+                      <em className="ungrounded">
+                        {' '}
+                        · {notIn.map((q) => `“${q}”`).join(', ')} {notIn.length > 1 ? 'are' : 'is'} not in the text it attacked
+                      </em>
+                    )}
+                  </li>
+                );
+              })}
             </ul>
           </div>
         )}

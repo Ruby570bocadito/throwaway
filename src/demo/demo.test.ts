@@ -1,6 +1,6 @@
 // Pins the recorded run (`?demo`) end to end. The video and the README quote these outcomes, so any change to the
 // framework, the rules or the stylometry must leave them exactly as they are: text 10/10 → 0/10, fingerprint #1 → #10,
-// photo Palma 0.5 km → "Rome, Italy" after masking cells 1, 3, 7, 8, 12.
+// photo Palma 215 m off (it claimed 0.5 km) → "Rome, Italy" after masking cells 1, 3, 7, 8, 12.
 
 import { beforeEach, describe, expect, it } from 'vitest';
 import { clearTaint, CloudModel, Ledger, LocalModel, publicData, redTeam, release, secret, type RedTeamEvent } from '../framework';
@@ -115,7 +115,7 @@ describe('recorded photo run (15/16-nov)', () => {
   };
   const PHOTO = new Uint8Array(Array.from({ length: 64 }, (_, i) => (i * 37) % 251));
 
-  it('replays Palma 0.5 km, then "Rome, Italy" after masking cells 1, 3, 7, 8, 12', async () => {
+  it('replays Palma 215 m off (claiming 0.5 km), then "Rome, Italy" after masking cells 1, 3, 7, 8, 12', async () => {
     const kit = kitFor();
     const threat = locationThreat({ ops: fakeOps, truth: secret(DEMO_TRUTH, 'real location') });
     const events: RedTeamEvent<Uint8Array, PhotoClue, LocationVerdict>[] = [];

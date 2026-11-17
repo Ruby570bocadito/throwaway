@@ -405,6 +405,26 @@ const attackSchema = (letters: string[]): JsonSchema => ({
   required: ['pick', 'confidence', 'reasons'],
 });
 import { exposure, styleMarkers, type Candidate, type Marker } from '../engine/stylometry';
+import { canonicalLetters } from '../framework/guard';
+
+/**
+ * The phrases an attacker's reason quotes that are not in the text it attacked. It sometimes cites a decoy's words or
+ * invents them ('organisation' for a text that says "organization", in the recorded run). Compared on the letters only:
+ * case, accents and punctuation aside. Apostrophes inside words ("Writer C's") are not quotes.
+ */
+export function quotesNotIn(reason: string, text: string): string[] {
+  const quoted = [
+    ...reason.matchAll(/[“"‘]([^”"’]{2,80})[”"’]/g),
+    ...reason.matchAll(/(?:^|[\s([{,;:])'([^']{2,80})'(?=[\s.,;:!?)\]}]|$)/g),
+  ]
+    .map((m) => m[1].trim())
+    .filter(Boolean);
+  const haystack = canonicalLetters(text);
+  return [...new Set(quoted)].filter((q) => {
+    const needle = canonicalLetters(q);
+    return needle.length > 0 && !haystack.includes(needle);
+  });
+}
 
 export interface Clue {
   phrase: string;

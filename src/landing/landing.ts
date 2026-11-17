@@ -56,7 +56,7 @@ function revealOnScroll() {
 }
 
 /**
- * A measured number replays its own measurement as it comes into view: 10/10 counts down to 0/10, 0.5 km grows to 869 km.
+ * A measured number replays its own measurement as it comes into view: 10/10 counts down to 0/10, 215 m grows to 869 km.
  * The HTML already holds the final value (it reads without JavaScript); the span keeps that width while it counts.
  */
 function countTo(el: HTMLElement) {
@@ -66,7 +66,7 @@ function countTo(el: HTMLElement) {
   const km = final.match(/^(~?)([\d.,]+) km$/);
   if (!Number.isFinite(from) || (!frac && !km)) return;
   const to = frac ? Number(frac[1]) : Number(km![2].replace(/,/g, ''));
-  const show = (v: number) => (frac ? `${Math.round(v)}/${frac[2]}` : `${v < 1 ? v.toFixed(1) : Math.round(v)} km`);
+  const show = (v: number) => (frac ? `${Math.round(v)}/${frac[2]}` : v < 1 ? `${Math.round(v * 1000)} m` : `${Math.round(v)} km`);
   // Distances span orders of magnitude: count them on a log scale.
   const f = km ? Math.log10 : (x: number) => x;
   const g = km ? (y: number) => 10 ** y : (y: number) => y;
@@ -292,7 +292,7 @@ async function photoDemo(card: HTMLElement) {
     for (const b of buttons) b.setAttribute('aria-pressed', String(b.dataset.show === which));
     const place = document.createElement('strong');
     place.textContent = which === 'asis' ? '“Carrer de la Llum, 23, Palma”' : '“Rome, Italy”';
-    guess.replaceChildren('Cloud’s guess: ', place, which === 'asis' ? ' · 0.5 km from the spot' : ' · 869 km off');
+    guess.replaceChildren('Cloud’s guess: ', place, which === 'asis' ? ' · 215 m from the spot' : ' · 869 km off');
   };
   for (const b of buttons) {
     b.disabled = false;

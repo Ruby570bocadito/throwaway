@@ -71,6 +71,37 @@ export function canonicalLetters(s: string): string {
     .normalize('NFC');
 }
 
+/**
+ * Where a window the guard matched sits in `text`, as written: the stretch of `text`, widened to whole words, whose
+ * canonical letters hold `evidence`. It lets the user see which passage of their own edit still matches their original
+ * (on their screen only; the message of the error never carries it). Plain text only: escapes and base64 are not mapped
+ * back. Null when it cannot be placed.
+ */
+export function locateEvidence(text: string, evidence: string): string | null {
+  const want = Array.from(evidence);
+  if (!want.length) return null;
+  const chars = Array.from(text);
+  const stream: string[] = [];
+  const owner: number[] = [];
+  chars.forEach((c, i) => {
+    for (const l of Array.from(canonicalLetters(c))) {
+      stream.push(l);
+      owner.push(i);
+    }
+  });
+  for (let s = 0; s + want.length <= stream.length; s++) {
+    let k = 0;
+    while (k < want.length && stream[s + k] === want[k]) k++;
+    if (k < want.length) continue;
+    let a = owner[s];
+    let b = owner[s + want.length - 1];
+    while (a > 0 && /\S/u.test(chars[a - 1])) a--;
+    while (b < chars.length - 1 && /\S/u.test(chars[b + 1])) b++;
+    return chars.slice(a, b + 1).join('').trim();
+  }
+  return null;
+}
+
 /** How many Latin letters a character is worth: a Chinese character carries about a word, a kana or Hangul syllable less. */
 function weightOf(c: number): number {
   if ((c >= 0x4e00 && c <= 0x9fff) || (c >= 0x3400 && c <= 0x4dbf) || (c >= 0xf900 && c <= 0xfaff) || (c >= 0x20000 && c <= 0x3134f)) return 3;

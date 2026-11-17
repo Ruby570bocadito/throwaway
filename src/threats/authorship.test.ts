@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { clearTaint, CloudModel, isTemporary, Ledger, LocalModel, publicData, release, secret, type ModelBackend } from '../framework';
-import { authorshipThreat, deterministicGeneralise, hasPhrase, isSpecific, letterIndex, looksBroken, newSpecifics, ruleDetails, sample, shuffled } from './authorship';
-import { CONTENT_DETAILS, DECOYS, DRAFT, MARTA_PUBLIC, NANO_REWRITE_RECORDED, NANO_REWRITE_V3_RECORDED, REWRITE, SELF_ID } from '../demo/scenario';
+import { authorshipThreat, deterministicGeneralise, hasPhrase, isSpecific, letterIndex, looksBroken, newSpecifics, quotesNotIn, ruleDetails, sample, shuffled } from './authorship';
+import { ATTACK_AFTER, ATTACK_BEFORE, CONTENT_DETAILS, DECOYS, DRAFT, MARTA_PUBLIC, NANO_REWRITE_RECORDED, NANO_REWRITE_V3_RECORDED, REWRITE, SELF_ID } from '../demo/scenario';
 
 beforeEach(() => clearTaint());
 
@@ -351,5 +351,20 @@ describe('the lineup', () => {
     expect(sample(MARTA_PUBLIC, 900).length).toBeLessThanOrEqual(900);
     expect(MARTA_PUBLIC.startsWith(sample(MARTA_PUBLIC, 900))).toBe(true);
     expect(sample(MARTA_PUBLIC, 900)).toMatch(/\w$|[.)]$/);
+  });
+});
+
+describe("the attacker's reasons", () => {
+  it('flag quotes that are not in the attacked text, and leave the grounded ones alone (recorded run)', () => {
+    // Before: every quoted habit is in the draft.
+    for (const r of ATTACK_BEFORE.reasons) expect(quotesNotIn(r, DRAFT), r).toEqual([]);
+    // After: the rewrite says "organization" and never "review"; the attacker quoted another writer's words.
+    expect(quotesNotIn(ATTACK_AFTER.reasons[2], REWRITE)).toEqual(['organisation', 'review']);
+  });
+
+  it('read straight, curly and double quotes, but not apostrophes inside words', () => {
+    expect(quotesNotIn("Matches Writer C's rhythm and 'so, honestly'", 'So, honestly, it was fine.')).toEqual([]);
+    expect(quotesNotIn('Uses “per se” and "inter alia"', 'Nothing Latin here.')).toEqual(['per se', 'inter alia']);
+    expect(quotesNotIn('No quotes at all', 'text')).toEqual([]);
   });
 });

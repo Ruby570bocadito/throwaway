@@ -137,7 +137,7 @@ export default function App() {
               }}
             />
             <span className="switch-track" aria-hidden="true" />
-            Device without Nano
+            Try it without Gemini Nano
           </label>
         </div>
       </div>
@@ -214,8 +214,8 @@ export default function App() {
         <section className="card ledger" aria-labelledby="ledger-title">
           <div className="card-head">
             <div>
-              <p className="kicker">Receipt</p>
-              <h2 id="ledger-title">Route ledger</h2>
+              <p className="kicker">Receipt · route ledger</p>
+              <h2 id="ledger-title">What left your device</h2>
             </div>
             <span className={`chip ${blocked ? 'blocked' : sentAsIs ? 'asis' : 'private'}`}>
               {blocked ? `${blocked} leak attempt${blocked > 1 ? 's' : ''} blocked` : sentAsIs ? 'original sent only for your as-is test' : 'original never left the device'}

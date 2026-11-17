@@ -8,6 +8,8 @@ const short = (s: string, n = 140) => (s.length > n ? `${s.slice(0, n).trimEnd()
  * error, a blocked request, a spent quota) sent a user looking in the wrong place (17-nov).
  */
 export function friendlyError(e: unknown): string {
+  // Messages the app wrote for people, with what to do in them.
+  if (e instanceof Error && e.name === 'UserFacingError') return e.message;
   if (e instanceof PrivacyViolation) {
     // Without a local model the user edits by hand; release() refuses an edit that keeps a long run of the original.
     if (e.where.includes('edited by the user')) return 'Your edit still keeps a long passage of your original (about 7 words or more). Change it a little more, then try again.';

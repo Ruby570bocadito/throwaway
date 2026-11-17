@@ -2,7 +2,7 @@
 // Every case was a real bypass on 16-nov, found with probes before the canonical letter stream.
 
 import { beforeEach, describe, expect, it } from 'vitest';
-import { clearTaint, CloudModel, isTainted, Ledger, LocalModel, PrivacyViolation, Publishable, publicData, recordedBackend, release, secret } from './index';
+import { clearTaint, CloudModel, isTainted, Ledger, LocalModel, locateEvidence, PrivacyViolation, Publishable, publicData, recordedBackend, release, secret } from './index';
 import { canonicalLetters, decodeEscapes } from './guard';
 import { isReleased } from './data';
 import { DECOYS, DRAFT, MARTA_PUBLIC, NANO_REWRITE_RECORDED, NANO_REWRITE_V3_RECORDED, REWRITE } from '../demo/scenario';
@@ -192,5 +192,24 @@ describe('no false positives on legitimate text', () => {
     const t0 = performance.now();
     expect(isTainted(big)).toBe(false);
     expect(performance.now() - t0).toBeLessThan(2000);
+  });
+});
+
+describe('the passage an edit still keeps', () => {
+  it('is found in the edit as written, widened to whole words, so the user can see what to change', () => {
+    secret('So, honestly, I loved this company for three years, but the last six months have been kind of a mess.', 'draft');
+    const edit = 'Frankly, I loved this company for three years, but things went downhill lately.';
+    let evidence = '';
+    try {
+      release(edit, 'edited by the user');
+    } catch (e) {
+      expect(e).toBeInstanceOf(PrivacyViolation);
+      evidence = (e as PrivacyViolation).evidence;
+    }
+    expect(evidence).not.toBe('');
+    const kept = locateEvidence(edit, evidence)!;
+    expect(edit).toContain(kept);
+    expect(kept).toMatch(/loved this company for three years/);
+    expect(locateEvidence('A different text altogether.', evidence)).toBeNull();
   });
 });

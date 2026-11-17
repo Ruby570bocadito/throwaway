@@ -171,8 +171,10 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak, recorded, 
   const city = tier === 'city';
   const level = safe ? 'good' : city ? 'warn' : 'bad';
   const reason = verdict ? threat.exposureReason(verdict) : null;
-  // What the radar plots: how precisely it can place you when it read an identifier, otherwise how far off it landed.
-  const shownKm = (v: LocationVerdict) => (threat.exposureReason(v) === 'readable' ? v.radiusKm : (v.errorKm ?? v.radiusKm));
+  // What the radar plots: how far off the guess landed, measured on the device; its own precision claim only when there is
+  // no real location to measure from. Showing the claim (500 m) next to the measured miss (215 m) read as a contradiction
+  // to two testers (17-nov).
+  const shownKm = (v: LocationVerdict) => v.errorKm ?? v.radiusKm;
   const km = verdict ? shownKm(verdict) : null;
   const kmShown = useAnimatedNumber(km ?? 0.001, { duration: 1100, log: true });
   const verdictTitle = !verdict

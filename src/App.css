@@ -249,6 +249,7 @@ p.good { margin: 0; font-size: 13.5px; }
 .ticks i.miss { background: var(--slate); }
 .reasons-box { margin-top: 14px; }
 .reasons { margin: 0; padding-left: 18px; color: var(--text); font-size: 13.5px; line-height: 1.6; }
+.reasons .ungrounded { color: var(--amber); font-size: 12.5px; font-style: normal; }
 
 /* ── the photo: a print with a white border; the border keeps the DOM grid aligned with the grid the models see ── */
 .photo { position: relative; overflow: hidden; border: 8px solid #fff; border-radius: 3px; background: #fff; box-shadow: 0 1px 2px rgba(43, 47, 58, 0.14), 0 10px 24px rgba(43, 47, 58, 0.1); }
@@ -383,7 +384,7 @@ a.button-link:hover { background: #24613f; color: #fff; transform: translateY(-1
 .outcome { flex: 1 1 260px; margin: 0; color: var(--green); font: 600 16px/1.35 var(--serif); text-align: center; animation: rise 0.45s var(--ease) both; }
 /* what the next attack sends, said before it is sent */
 .dock-note { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.4; text-align: center; animation: rise 0.35s var(--ease) both; }
-.dock-note.busy { color: var(--amber); }
+.dock-note.busy, .dock-note.warn { color: var(--amber); }
 .outcome.bad { color: var(--red); }
 .outcome.warn { color: var(--amber); }
 

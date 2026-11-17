@@ -96,7 +96,7 @@ interface Threat<Input, Clue, Verdict> {
 - Every call lands in a ledger: where it ran, how long, how many bytes left the device.
 - No third-party requests besides Firebase and its App Check: fonts are bundled, so opening Throwaway tells no font CDN who you are. The recorded demo (`?demo`) does not even load the Firebase SDK.
 
-For a photo: Nano marks the grid cells that reveal where you are (street plaque, house number, shop sign, vegetation), the device pixelates them, and a cloud geolocation attacker estimates where the **masked** photo was taken. If it still narrows you down, it says which cells helped, and the loop masks those too. In the recorded run: a readable address 0.5 km away → "Rome, Italy", 869 km off.
+For a photo: Nano marks the grid cells that reveal where you are (street plaque, house number, shop sign, vegetation), the device pixelates them, and a cloud geolocation attacker estimates where the **masked** photo was taken. If it still narrows you down, it says which cells helped, and the loop masks those too. In the recorded run: a readable address 215 m from the spot → "Rome, Italy", 869 km off.
 
 Code: [`src/framework/`](src/framework) · threats: [`authorship.ts`](src/threats/authorship.ts), [`location.ts`](src/threats/location.ts) · tests: `npm test`
 
@@ -131,7 +131,7 @@ Live runs through Firebase AI Logic on 15 and 16-nov-2026 (cloud attacker: `gemi
 | Text, rewritten **by Gemini Nano on the device** (Chrome) | **0/10**: the attacker now picks the "formal, academic" writer |
 | Text, full on-device pipeline in Chrome (16-nov, v4: Nano rewrites, then generalises the details sentence by sentence) | **10/10 → 0/10**, no specific detail left, fingerprint #10 of 10, meaning check 5/5. But Nano wrote our prompt's examples into the text (see below), so the pipeline changed |
 | Text, full on-device pipeline in Chrome (16-nov, v5: fixed rules generalise the details first, then Nano rewrites the style) | **10/10 → 0/10** (9 picks of one decoy, 1 of another). Five details generalised in 3 ms (today's fixed rules also catch "six months", so the demo shows six), nothing added by the rewrite, meaning check 6/6, fingerprint #10 of 10. The rewrite stage took ~25 s on a laptop (v4: ~60 s). This is the run the demo replays |
-| Photo, as-is | "Carrer de la Llum, 23, Palma", 0.5 km, high confidence: it read the plaque, the house number and the Catalan bakery sign |
+| Photo, as-is | "Carrer de la Llum, 23, Palma", 215 m from the spot (it claimed 0.5 km precision), high confidence: it read the plaque, the house number and the Catalan bakery sign |
 | Photo, clues found by Gemini Nano **on the device** | Cells 3 (street plaque), 7 (house number), 8 (bakery sign), 12 (orange tree) and 1 (a poster it read as a "Japanese flag") |
 | Photo, those 5 cells pixelated on the device | "Rome, Italy", low confidence: 869 km off |
 | Photo test set (16-nov): four AI-generated phone photos (Muse Image), real attacker, cells masked by hand | |
