@@ -47,6 +47,27 @@
     <main id="main">
       <section class="hero">
         <div class="wrap">
+          <!-- The case file around the headline: what the attacker read in the recorded run. Decoration only. -->
+          <div class="evidence" aria-hidden="true">
+            <div class="ev ev-note">
+              <p><span class="ev-circled">So, honestly,</span> I loved this company…</p>
+              <svg class="ev-ring" viewBox="0 0 200 60" preserveAspectRatio="none"><path pathLength="1" d="M14 34 C 16 10, 176 4, 190 26 C 198 44, 60 58, 22 46 C 6 40, 12 18, 60 12" /></svg>
+              <small>habit · 53× more often than other writers</small>
+            </div>
+            <div class="ev ev-pol">
+              <span class="ev-shot"><svg viewBox="0 0 64 64"><use href="#sil" /></svg></span>
+              <span class="ev-stamp">10/10</span>
+              <small>C · the real author</small>
+            </div>
+            <div class="ev ev-redact">
+              <p>our design team in <span class="ev-bar">the Lisbon office</span></p>
+              <small>detail · found on your device</small>
+            </div>
+            <div class="ev ev-map">
+              <p><s>0.5 km</s> <span class="ev-arrow">→</span> <strong>869 km</strong></p>
+              <small>the photo, after masking five cells</small>
+            </div>
+          </div>
           <div class="hero-copy">
             <p class="eyebrow">Hybrid AI · Firebase AI Logic · Gemini Nano</p>
             <h1>Before you post anonymously, let an AI try to <span class="marker">unmask you</span>.</h1>
@@ -104,6 +125,9 @@
         </div>
       </section>
 
+      <!-- The measured numbers on a dark band, torn out of the page like a sheet from a case file. -->
+      <div class="band">
+      <svg class="tear tear-top" viewBox="0 0 1200 18" preserveAspectRatio="none" aria-hidden="true"><path d="M0 18 L0 9 L24 12 L46 6 L71 10 L95 4 L122 9 L148 7 L170 12 L197 5 L221 8 L246 3 L272 10 L298 6 L323 11 L349 5 L374 8 L398 3 L425 9 L450 6 L476 12 L501 7 L527 4 L552 10 L578 6 L603 11 L629 5 L654 9 L680 3 L705 8 L731 12 L756 6 L782 9 L807 4 L833 10 L858 7 L884 12 L909 5 L935 8 L960 3 L986 10 L1011 6 L1037 11 L1062 4 L1088 9 L1113 7 L1139 12 L1164 5 L1200 9 L1200 18 Z" /></svg>
       <section class="stack" aria-label="Built on">
         <div class="wrap">
           <span class="stack-label">Built on</span>
@@ -120,6 +144,7 @@
 
       <section class="stats" aria-label="Measured in live runs">
         <div class="wrap">
+          <p class="kicker stats-kicker">Measured in live runs, not claimed</p>
           <div class="stat-row">
             <div class="stat reveal">
               <strong><span class="bad">10/10</span> → <span class="good" data-from="10">0/10</span></strong>
@@ -144,15 +169,17 @@
           </p>
         </div>
       </section>
+      <svg class="tear tear-bottom" viewBox="0 0 1200 18" preserveAspectRatio="none" aria-hidden="true"><path d="M0 0 L0 9 L27 6 L52 11 L78 4 L103 8 L129 12 L154 5 L180 9 L205 3 L231 10 L256 7 L282 12 L307 4 L333 8 L358 11 L384 5 L409 9 L435 3 L460 10 L486 6 L511 12 L537 7 L562 4 L588 9 L613 5 L639 11 L664 6 L690 10 L715 3 L741 8 L766 12 L792 5 L817 9 L843 6 L868 11 L894 4 L919 8 L945 12 L970 6 L996 9 L1021 3 L1047 10 L1072 7 L1098 11 L1123 5 L1149 9 L1174 6 L1200 10 L1200 0 Z" /></svg>
+      </div>
 
       <section id="threats" class="section">
         <div class="wrap">
           <div class="section-head">
             <p class="kicker reveal">The threat</p>
-            <h2 class="reveal">Two ways an anonymous post gives you away</h2>
+            <h2 class="reveal">Two ways an anonymous post <span class="scrawl circle">gives you away<svg viewBox="0 0 200 60" preserveAspectRatio="none" aria-hidden="true"><path pathLength="1" d="M14 34 C 16 10, 176 4, 190 26 C 198 44, 60 58, 22 46 C 6 40, 12 18, 60 12" /></svg></span></h2>
           </div>
           <div class="threats">
-            <article class="threat reveal">
+            <article class="threat taped reveal">
               <img class="threat-icon" src="/brand/huella-256.webp" width="76" height="76" alt="" />
               <h3 class="q">Who wrote this?</h3>
               <p>
@@ -173,7 +200,7 @@
               </p>
             </article>
 
-            <article class="threat reveal" data-photo data-show="asis">
+            <article class="threat taped reveal" data-photo data-show="asis">
               <img class="threat-icon" src="/brand/pin-256.webp" width="76" height="76" alt="" />
               <h3 class="q">Where was this taken?</h3>
               <p>
@@ -226,18 +253,18 @@
         <div class="wrap">
           <div class="section-head">
             <p class="kicker reveal">What people do today</p>
-            <h2 class="reveal">The usual fixes make it worse</h2>
+            <h2 class="reveal">The usual fixes make it <span class="scrawl under">worse<svg viewBox="0 0 200 20" preserveAspectRatio="none" aria-hidden="true"><path pathLength="1" d="M4 12 C 40 4, 70 18, 104 10 S 168 4, 196 12" /></svg></span></h2>
           </div>
           <div class="cards three">
-            <div class="card reveal">
+            <div class="card note taped reveal">
               <h3><span class="struck">Write “weird” on purpose</span></h3>
               <p>Hard to keep up, and sometimes easier to spot than your normal voice.</p>
             </div>
-            <div class="card reveal">
+            <div class="card note taped reveal">
               <h3><span class="struck">Translate it there and back</span></h3>
               <p>It mangles the text, and nothing tells you whether you are still recognisable.</p>
             </div>
-            <div class="card reveal">
+            <div class="card note taped reveal">
               <h3><span class="struck">Ask a chatbot to rewrite it</span></h3>
               <p>It hands your original to a third party: the one thing you were trying not to do.</p>
             </div>
@@ -250,7 +277,7 @@
         <div class="wrap">
           <div class="section-head">
             <p class="kicker reveal">How it works</p>
-            <h2 class="reveal">A local defender and a cloud attacker</h2>
+            <h2 class="reveal">A local defender and a <span class="scrawl circle">cloud attacker<svg viewBox="0 0 200 60" preserveAspectRatio="none" aria-hidden="true"><path pathLength="1" d="M14 34 C 16 10, 176 4, 190 26 C 198 44, 60 58, 22 46 C 6 40, 12 18, 60 12" /></svg></span></h2>
             <p class="sub reveal">
               Firebase AI Logic runs Gemini in two places, on purpose. Gemini Nano, on your device, reads your original. Gemini in the cloud only sees what
               you would post.
@@ -338,7 +365,7 @@
             <img class="privacy-mark reveal" src="/brand/mascara-256.webp" width="128" height="128" alt="" />
             <div class="section-head">
               <p class="kicker reveal">Privacy</p>
-              <h2 class="reveal">No account. Nothing stored. Nothing to breach.</h2>
+              <h2 class="reveal">No account. Nothing stored. <span class="scrawl under ok">Nothing to breach.<svg viewBox="0 0 200 20" preserveAspectRatio="none" aria-hidden="true"><path pathLength="1" d="M4 12 C 40 4, 70 18, 104 10 S 168 4, 196 12" /></svg></span></h2>
             </div>
           </div>
           <div class="cards three">
@@ -396,7 +423,7 @@
             <p class="kicker reveal">Honest limits</p>
             <h2 class="reveal">What it cannot promise</h2>
           </div>
-          <ul class="limits reveal">
+          <ul class="limits taped reveal">
             <li>Stylometry on short texts is noisy. The local score is a signal, not proof.</li>
             <li>The meaning check runs on a small local model and is lenient. Read the final text before you post it.</li>
             <li>Names and places are caught only when Gemini Nano flags them. Counts and dates are always generalised.</li>
@@ -420,7 +447,7 @@
               alt=""
             />
             <div class="final-copy">
-              <h2 class="reveal">Attack your post before anyone else does.</h2>
+              <h2 class="reveal">Attack your post before <span class="scrawl circle">anyone else<svg viewBox="0 0 200 60" preserveAspectRatio="none" aria-hidden="true"><path pathLength="1" d="M14 34 C 16 10, 176 4, 190 26 C 198 44, 60 58, 22 46 C 6 40, 12 18, 60 12" /></svg></span> does.</h2>
               <div class="ctas reveal">
                 <a class="btn primary" href="/app/" data-cta="live">Try it live <span class="arrow" aria-hidden="true">→</span></a>
                 <a class="btn ghost" href="/app/?demo" data-cta="demo">Watch a recorded run</a>
@@ -434,14 +461,23 @@
 
     <footer class="foot">
       <div class="wrap">
-        <a class="brand" href="/" aria-label="Throwaway, home">
-          <img class="logo-small" src="/brand/bola-128.webp" width="28" height="28" alt="" />
-          <span class="wordmark">throwaway</span>
-        </a>
-        <span>Built for #BuildHybridAI 2026</span>
-        <a href="https://github.com/Ruby570bocadito/throwaway-Firebase-Hackaton">Source on GitHub</a>
-        <span>Apache-2.0</span>
-        <a href="#privacy">Privacy</a>
+        <div class="foot-brand">
+          <img class="foot-bin" src="/illus/papelera-200.webp" width="88" height="88" alt="" loading="lazy" />
+          <div>
+            <a class="brand" href="/" aria-label="Throwaway, home">
+              <img class="logo-small" src="/brand/bola-128.webp" width="28" height="28" alt="" />
+              <span class="wordmark">throwaway</span>
+            </a>
+            <p class="foot-tag">Write it. Check it. Throw the draft away.</p>
+          </div>
+        </div>
+        <nav class="foot-links" aria-label="Footer">
+          <a href="/app/">Open the app</a>
+          <a href="/app/?demo">Recorded run</a>
+          <a href="https://github.com/Ruby570bocadito/throwaway-Firebase-Hackaton">Source on GitHub</a>
+          <a href="#privacy">Privacy</a>
+        </nav>
+        <p class="foot-fine">Built for #BuildHybridAI 2026 · Apache-2.0 · No cookies of ours</p>
       </div>
     </footer>
 
