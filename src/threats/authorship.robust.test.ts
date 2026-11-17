@@ -131,8 +131,8 @@ describe('Gemini Nano answering badly', () => {
 
     const never = kitWith(() => 'I could not find anything.');
     const rulesOnly = await threatFor().findClues(secret(POST, 'draft'), never.kit);
-    expect(rulesOnly.filter((c) => c.kind === 'content').map((c) => c.phrase)).toEqual(['March', '6 people', '2']);
-    expect(never.kit.ledger.all[0].note).toBe("no model · Nano's answer was unreadable, the rules found 3");
+    expect(rulesOnly.filter((c) => c.kind === 'content').map((c) => c.phrase)).toEqual(['March', '6 people to 2']);
+    expect(never.kit.ledger.all[0].note).toBe("no model · Nano's answer was unreadable, the rules found 2");
   });
 
   it('a rewrite that is unreadable, a refusal or a loop gets one more try', async () => {

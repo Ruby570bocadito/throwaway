@@ -9,6 +9,7 @@ import {
   isSpecific,
   letterIndex,
   looksBroken,
+  modifierNames,
   nameDetails,
   newSpecifics,
   quotesNotIn,
@@ -99,7 +100,7 @@ describe('deterministic helpers', () => {
     expect(newSpecifics('decreased from six individuals to only two. The past six months were hard.', 'the last six months')).toEqual(['six individuals', 'two']);
   });
   it('ruleDetails finds every count and date in the real draft, without a model', () => {
-    expect(ruleDetails(DRAFT).map((d) => d.phrase)).toEqual(['March', 'three years', 'six months', '6 people', '2']);
+    expect(ruleDetails(DRAFT).map((d) => d.phrase)).toEqual(['March', '6 people to 2', 'three years', 'six months']);
     expect(ruleDetails('One of us left after one year.').map((d) => d.phrase)).toEqual(['one year']);
     expect(ruleDetails('A 24/7 rota under COVID-19 rules.')).toEqual([]);
   });
@@ -396,6 +397,29 @@ describe('generalising by hand, without a local model', () => {
     expect(r.text).toContain('from fourteen to nine');
     expect(r.text).not.toMatch(/under (?:many|several|a few)|from several to/);
     expect(r.done.map((d) => d.phrase).sort()).toEqual(['3 weeks', 'March 2025', 'nine years', 'two shifts']);
+  });
+});
+
+describe('a range with the word it counts', () => {
+  it('is one detail, so a hand edit gets "several people to a few" and not a bare "2"', () => {
+    // A judge's hand edit of the sample post (17-nov) kept "went from several people to 2".
+    expect(ruleDetails(DRAFT).map((d) => d.phrase)).toContain('6 people to 2');
+    expect(ruleDetails('They cut us from 6 to 2 people in March.').map((d) => d.phrase)).toContain('6 to 2 people');
+    // Bare ranges stay in parts, and stay with the person.
+    const bare = ruleDetails('They cut our team from fourteen to nine in one week.').map((d) => d.phrase);
+    expect(bare).toEqual(expect.arrayContaining(['fourteen', 'nine', 'one week']));
+    const r = deterministicGeneralise(DRAFT, generalisableByHand(ruleDetails(DRAFT).map((d) => d.phrase)));
+    expect(r.text).toContain('went from several people to a few');
+  });
+
+  it('names before a noun are generalised by hand too, names on their own are not', () => {
+    expect(modifierNames(DRAFT, nameDetails(DRAFT).map((n) => n.phrase))).toEqual(['Lisbon', 'Figma']);
+    const post = 'Our regional manager, Dave, cut cover at our Brindley Road store and shouted at Kelly from the bakery.';
+    expect(modifierNames(post, nameDetails(post).map((n) => n.phrase))).toEqual(['Brindley Road']);
+    const r = deterministicGeneralise(post, ['Brindley Road']);
+    expect(r.text).toContain('at our store');
+    expect(r.text).toContain('Dave');
+    expect(r.text).toContain('at Kelly');
   });
 });
 

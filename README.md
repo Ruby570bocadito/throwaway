@@ -20,7 +20,7 @@ For a text (a Glassdoor review, a tip to a journalist, a post from an alt accoun
 
 1. **Fingerprint, in your browser.** Burrows' Delta over function words and your habit phrases, compared with writing you have already made public. 0 bytes sent.
 2. **Attack, in the cloud.** The first attack measures the text as you would post it, and it only leaves the device once you confirm that. Gemini, through Firebase AI Logic (`ONLY_IN_CLOUD`), gets the text plus a lineup of ten public writers and tries to pick the author. It is never told which candidate is you.
-3. **Rewrite, on your device.** Fixed rules generalise the identifying details ("three years" → "several years"). Then Gemini Nano, through Firebase AI Logic (`ONLY_ON_DEVICE`), rewrites the draft without your habits. **Only a version you chose to post ever reaches the cloud.** With no local model, Throwaway does not fall back to the cloud: fixed rules flag counts, dates and capitalised names (and generalise the counts and dates if you ask), you edit, and it attacks.
+3. **Rewrite, on your device.** Fixed rules generalise the identifying details ("three years" → "several years"). Then Gemini Nano, through Firebase AI Logic (`ONLY_ON_DEVICE`), rewrites the draft without your habits. **Only a version you chose to post ever reaches the cloud.** With no local model, Throwaway does not fall back to the cloud: fixed rules flag counts, dates and capitalised names (and, if you ask, generalise counts with the word they count, dates and names before a noun), you rewrite the rest, and it attacks.
 4. **Attack again** until you are at chance level, one in ten.
 5. **Take it with you.** Copy the version you checked, or compare it word by word with your original. For a photo, download the masked version.
 
@@ -58,7 +58,7 @@ flowchart TB
 | Rewrite the style, then the meaning check | `ONLY_ON_DEVICE` (Gemini Nano) | nothing |
 | Check the final text for added numbers, dates or names | none (plain JavaScript) | nothing |
 | Find the location clues in a photo | `ONLY_ON_DEVICE` (Gemini Nano, image input) | nothing |
-| Attack | `ONLY_IN_CLOUD` (`gemini-3.5-flash-lite`) | the text or photo you are about to publish, plus public writing |
+| Attack | `ONLY_IN_CLOUD` (`gemini-3.5-flash-lite`; `gemini-3.1-flash-lite` as a backup while it is busy, and the receipt says so) | the text or photo you are about to publish, plus public writing |
 
 ```ts
 // src/framework/firebase.ts, simplified
@@ -181,7 +181,7 @@ The demo mode (`?demo`) replays the full v5 run recorded in Chrome on 16-nov: th
 
 - A cloud provider that sees many attempts could intersect lineups (you are the one constant). Throwaway limits attempts; decoy lineups are on the roadmap.
 - Stylometry on short texts is noisy. Under 50 words the app shows no rank ("too short to tell"); above that it shows how far the rank moves when the text's words are resampled 100 times (the demo post's #1 is only "low" confidence: likely #1 to #7). The rank is a signal, not proof: the cloud attack is the real test.
-- Names and places depend on the local model: the fixed rules generalise those only when Gemini Nano flags them. Counts, dates, links, email addresses, @usernames and phone numbers are always generalised. The rules and the fingerprint are tuned for English. The rules' wording is plain, not elegant. Codes such as "24/7" are left as they are and stay reported.
+- Names and places depend on the local model: the fixed rules generalise those only when Gemini Nano flags them. With Gemini Nano, counts, dates, links, email addresses, @usernames and phone numbers are always generalised. Without it, you rewrite by hand: the button generalises counts with the word they count, dates and names before a noun, and leaves a bare number ("under 21") or a name on its own to you. The rules and the fingerprint are tuned for English. The rules' wording is plain, not elegant. Codes such as "24/7" are left as they are and stay reported.
 - The meaning check runs on the small local model and is lenient (live, it passed a garbled sentence). Read the final text before you post it.
 - Pixelation hides what a model can read today; it is not a guarantee against every future technique. Cropping is safer.
 - The image guard recognises the private photo's bytes, also as base64, a `data:` URL or a binary string; a decoded and re-encoded copy (different bytes) would get past it. Private text under about 32 letters (a name on its own) is not tracked, a draft split across several calls in pieces of under about 7 words is not caught, and coordinates are tracked from 3 decimals (about 100 m). The types still forbid passing a `Private` value.

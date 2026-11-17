@@ -349,7 +349,9 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak, recorded, 
         </p>
       )}
       {!busy && stage === 'scanned' && (
-        <p className="dock-note warn">Sends this photo, as it is, to a cloud AI, as if you had posted it: the only step that sends your original.</p>
+        <p className="dock-note warn">
+          Sends this photo, as it is, to a cloud AI (again if the model is busy), as if you had posted it: the only step that sends your original.
+        </p>
       )}
       {!busy && stage === 'masked' && <p className="dock-note">Sends only the masked photo, never the original.</p>}
       <div className="dock-row">

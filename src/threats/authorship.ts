@@ -222,6 +222,8 @@ function generalisePhrase(span: string, after: string, text: string): { g: strin
 
 /** A count with the word it counts: "six individuals", "6 people", or the number alone ("to 2"). One is skipped. */
 const COUNT = new RegExp(`(?<![\\w\\-/.])(${NUM})(?![\\w\\-/])(?:\\s+([a-z][a-z-]*))?`, 'gi');
+/** A range: "6 people to 2", "6 to 2 people", "fourteen to nine" (the words checked by the caller). */
+const RANGE = new RegExp(`(?<![\\w\\-/.])(${NUM})(?:\\s+([a-z][a-z-]*))?\\s+to\\s+(${NUM})(?![\\w\\-/])(?:\\s+([a-z][a-z-]*))?`, 'gi');
 function countPhrase(m: RegExpMatchArray): string | null {
   if (numberValue(m[1]) === 1 || isVersion(m[1])) return null;
   return m[2] && !FUNCTION_WORDS.has(m[2].toLowerCase()) ? `${m[1]} ${m[2]}` : m[1];
@@ -252,6 +254,16 @@ export function ruleDetails(text: string): { phrase: string; why: string }[] {
   }
   for (const m of text.matchAll(new RegExp(`\\b(?:${TIME})\\b`, 'gi'))) push(m, m[0], 'A date: fixed rule, no AI.');
   for (const m of text.matchAll(/\bone\s+(?:year|month|week|day|hour|decade)\b/gi)) push(m, m[0], 'A count: fixed rule, no AI.');
+  // A range with the word it counts is one detail: "6 people to 2" generalises to "several people to a few", while in two
+  // parts the bare "2" is left (a judge, 17-nov). A range of bare numbers ("fourteen to nine") stays in parts.
+  for (const m of text.matchAll(RANGE)) {
+    const [whole, n1, w1, n2, w2] = m;
+    if (numberValue(n1) === 1 || numberValue(n2) === 1) continue;
+    const noun = (w?: string) => !!w && !FUNCTION_WORDS.has(w.toLowerCase());
+    if (w1 && !noun(w1)) continue;
+    if (!noun(w1) && !noun(w2)) continue;
+    push(m, noun(w2) ? whole : whole.slice(0, whole.length - (w2 ? w2.length : 0)).trimEnd(), 'A count: fixed rule, no AI.');
+  }
   for (const m of text.matchAll(COUNT)) {
     const phrase = countPhrase(m);
     if (phrase) push(m, phrase, 'A count: fixed rule, no AI.');
@@ -269,6 +281,18 @@ export const generalisableByHand = (phrases: string[]) => phrases.filter((p) => 
 // not a year, which is a date.
 const BARE_NUMBER = new RegExp(`^(?:${NUM})$`, 'i');
 const A_DATE = new RegExp(`^(?:${TIME})$`, 'i');
+
+/**
+ * Names used before a noun ("the Lisbon office", "a Figma migration", "our Brindley Road store"): the fixed rules drop them
+ * cleanly ("the office", "a migration"), so a person's own edit can have them generalised too. A name on its own ("Dave",
+ * "at Kelly") stays with the person: "shouted at Kelly" would become "shouted somewhere". Every use must be before a noun.
+ */
+export function modifierNames(text: string, names: string[]): string[] {
+  return names.filter((n) => {
+    const uses = [...text.matchAll(new RegExp(`(?<![\\p{L}\\p{M}\\p{N}_])${escapeRe(n)}(?![\\p{L}\\p{M}\\p{N}_'’-])`, 'gu'))];
+    return uses.length > 0 && uses.every((m) => isContentWord(nextWord(text.slice((m.index ?? 0) + m[0].length))));
+  });
+}
 
 /** Capitalised words that are not names: roles, departments and everyday abbreviations. */
 const NOT_NAMES = new Set(['OK', 'AI', 'TV', 'PC', 'FYI', 'ASAP', 'CEO', 'CFO', 'CTO', 'COO', 'HR', 'IT', 'PR', 'PS']);

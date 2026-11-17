@@ -9,6 +9,7 @@ import {
   deterministicGeneralise,
   generalisableByHand,
   hasPhrase,
+  modifierNames,
   nameDetails,
   quotesNotIn,
   ruleDetails,
@@ -307,7 +308,14 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
   // No local model, no rewrite: the fixed rules still generalise the counts and dates in your edit when you ask, as they do
   // before Gemini Nano rewrites. Names are left to you: the rules would turn "shouted at Kelly" into "shouted somewhere".
   // Only counts with the word they count, and dates: bare numbers stay listed for the user to change.
-  const ruleCounts = useMemo(() => (degraded ? generalisableByHand(ruleDetails(draft).map((d) => d.phrase)) : []), [degraded, draft]);
+  // Names before a noun too ("the Lisbon office" → "the office"): a judge's hand edit of the sample kept them (17-nov).
+  const ruleCounts = useMemo(
+    () =>
+      degraded
+        ? [...generalisableByHand(ruleDetails(draft).map((d) => d.phrase)), ...modifierNames(draft, nameDetails(draft).map((n) => n.phrase))]
+        : [],
+    [degraded, draft],
+  );
   // While you edit without a local model, what you already removed is crossed out: a tester could not tell what was left (17-nov).
   const editingByHand = degraded && stage === 'attacked';
   // The same match as the highlighter: a habit like "so honestly i" is still there in "So, honestly, I".
@@ -319,8 +327,8 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
     const shown = r.done.slice(0, 3).map((d) => `“${d.phrase}” → “${d.generic || 'removed'}”`);
     setGenNote(
       n
-        ? `Generalised ${n} detail${n > 1 ? 's' : ''} with fixed rules, no AI: ${shown.join(', ')}${n > 3 ? ` and ${n - 3} more` : ''}. Names and your habits are still yours to change.`
-        : 'No counts or dates left to generalise in your edit.',
+        ? `Generalised ${n} detail${n > 1 ? 's' : ''} with fixed rules, no AI: ${shown.join(', ')}${n > 3 ? ` and ${n - 3} more` : ''}. Names on their own and your habits are still yours to change.`
+        : 'Nothing left that the rules can generalise in your edit.',
     );
   };
 
@@ -336,6 +344,8 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
         // release() refuses an edit that still carries about 7 words of the private draft: say which passage (Sam, 17-nov).
         try {
           setPublished(release(edited, 'edited by the user'));
+          // A step of its own in the receipt: without it, the two attacks' twenty attempts merged into one row (17-nov).
+          kit.ledger.add({ op: 'Check your edit for passages of the original', route: 'local-js', ms: 1, bytesOut: 0, note: 'none left · released' });
         } catch (e) {
           // Every passage that still matches, at once: one at a time, a test user's edit was refused four times (17-nov).
           const kept = e instanceof PrivacyViolation ? keptPassages(edited, 4) : [];
@@ -343,8 +353,8 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
           const quote = (p: string) => `“${p.length > 140 ? `${p.slice(0, 140)}…` : p}”`;
           const message =
             kept.length === 1
-              ? `Your edit still keeps this passage of your original: ${quote(kept[0])}. Change it a little more, then try again.`
-              : `Your edit still keeps ${kept.length >= 4 ? 'at least 4' : kept.length} passages of your original: ${kept.map(quote).join(', ')}. Change each of them a little more, then try again.`;
+              ? `Your edit still keeps this passage of your original: ${quote(kept[0])}. Put it in other words (about 7 words in a row from your original are refused), then try again.`
+              : `Your edit still keeps ${kept.length >= 4 ? 'at least 4' : kept.length} passages of your original: ${kept.map(quote).join(', ')}. Put each in other words (about 7 words in a row from your original are refused), then try again.`;
           throw Object.assign(new Error(message), { name: 'UserFacingError' });
         }
       } else {
@@ -409,6 +419,10 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
   const foldedReasons = showUngrounded ? 0 : reasonItems.length - shownReasons.length;
   // Found by what the post is about, not by how it is written: the decoys may be from another field.
   const bySubject = !!final && exposedNow && !standIn && !inconclusive && reasonItems.some((x) => aboutSubject(x.r, packs?.FIELD_WORDS, attackedText));
+  // The fingerprint says your habits no longer stand out, yet the attacker still picks you: a tester read the two as
+  // contradicting each other (17-nov). It goes by your subject or your details, and the note says so.
+  const rankShown = !!stylo && !tooShort && !standIn;
+  const styleGone = !!final && exposedNow && !inconclusive && rankShown && !!stylo && stylo.rank >= 6;
 
   // The line under the lineup: whose field the nine writers share, and what follows from it.
   const canPickField = stage === 'draft' && !!ownText && !!packs;
@@ -471,7 +485,9 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
       )}
       {/* A judge read the as-is test as at odds with "the draft is the secret" (17-nov): say it is the only such step. */}
       {!busy && stage === 'scanned' && (
-        <p className="dock-note warn">Sends this exact text to a cloud AI, ten times, as if you had posted it: the only step that sends your original.</p>
+        <p className="dock-note warn">
+          Sends this exact text to a cloud AI, ten times (more if the model is busy), as if you had posted it: the only step that sends your original.
+        </p>
       )}
       {!busy && stage === 'rewritten' && published && (
         <p className="dock-note">{degraded ? 'Sends only your edited version, never the original.' : 'Sends only the rewritten version, never the original.'}</p>
@@ -563,12 +579,12 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
           <div className="draft-tools">
             <span className="hint">
               {/* Steps, not a goal: a tester without Gemini Nano did not know what to change (17-nov). */}
-              Your turn to rewrite (no local model here): replace names with a role (“the regional manager”), drop or swap the words listed under
-              your habits, and let the button generalise counts and dates. What you change is crossed out below. Then use your edited version.
+              Your turn to rewrite (no local model here). Press the button for counts, dates and some names. Then change the rest yourself: a name
+              becomes a role (“the regional manager”), and the words under your habits go. What you change is crossed out below.
             </span>
             {ruleCounts.length > 0 && (
               <button className="mini" onClick={generaliseForMe}>
-                Generalise counts and dates for me
+                Generalise details for me
               </button>
             )}
           </div>
@@ -718,20 +734,15 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
         <div className="meter" ref={meterRef}>
           <div className="meter-top">
             {/* While you edit by hand the rank follows your edit: it moved with no word of why for a tester (17-nov). */}
-            {/* Without your own writing the rank is the sample writer's: "your rank" misled a judge (17-nov). */}
-            <span className="meter-label">
-              {standIn
-                ? 'The sample writer’s rank among ten writers: #1 reads most like your post, #10 least'
-                : `${editingByHand ? 'Your edit’s rank' : 'Your rank'} among ten writers: #1 reads most like you, #10 least`}
-            </span>
-            <strong className={!stylo || tooShort ? '' : stylo.rank <= 2 ? 'bad' : stylo.rank <= 5 ? 'warn' : 'good'}>
-              #{stylo && !tooShort ? Math.round(rank) : '–'} <span>of 10</span>
+            <span className="meter-label">{editingByHand ? 'Your edit’s rank' : 'Your rank'} among ten writers: #1 reads most like you, #10 least</span>
+            <strong className={!rankShown || !stylo ? '' : stylo.rank <= 2 ? 'bad' : stylo.rank <= 5 ? 'warn' : 'good'}>
+              #{rankShown ? Math.round(rank) : '–'} <span>of 10</span>
             </strong>
           </div>
           <div className="bar">
-            <i style={{ transform: `scaleX(${stylo && !tooShort ? stylo.score : 0})` }} className={(stylo?.score ?? 0) > 0.6 ? 'bad' : 'good'} />
+            <i style={{ transform: `scaleX(${rankShown && stylo ? stylo.score : 0})` }} className={(stylo?.score ?? 0) > 0.6 ? 'bad' : 'good'} />
           </div>
-          {trust && (
+          {trust && !standIn && (
             <div className={`trust ${trust.level}`}>
               <span className="conf">{CONFIDENCE[trust.level]}</span>
               {!tooShort && (
@@ -743,19 +754,18 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
             </div>
           )}
           {/* What the rank means, in words: "#2 of 10" read as good to a tester (17-nov). */}
-          {stylo && !tooShort && (
+          {rankShown && stylo && (
             <p className="meter-read">
               {stylo.rank <= 2
-                ? `It reads a lot like ${standIn ? 'the sample writer’s posts' : 'your public writing'}: easy to link.`
+                ? 'It reads a lot like your public writing: easy to link.'
                 : stylo.rank <= 5
-                  ? `It reads somewhat like ${standIn ? 'the sample writer’s posts' : 'your public writing'}.`
-                  : `It reads less like ${standIn ? 'the sample writer' : 'you'} than most of the other writers.`}
+                  ? 'It reads somewhat like your public writing.'
+                  : 'It reads less like you than most of the other writers.'}
             </p>
           )}
           <small>Local fingerprint: Burrows’ Delta on function words, range from 100 resamples · in your browser · 0 bytes sent</small>
-          {draft !== DRAFT && !ownPublic.trim() && !recorded && (
-            <p className="hint">Compared with the sample writer’s public posts. Add your own public writing above for a fingerprint of you.</p>
-          )}
+          {/* Without your writing there is no rank of you: the sample writer's rank confused a tester (17-nov). */}
+          {standIn && <p className="hint">Add your own public writing above to see how much your post reads like you.</p>}
         </div>
       </section>
 
@@ -805,7 +815,7 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
                 </div>
                 <span className="letter">{c.letter}</span>
                 {/* Without your own writing this seat holds the sample writer: "you" on it misled a judge (17-nov). */}
-                {isMe && <span className="you">{standIn ? 'stand-in for you' : 'you · local only'}</span>}
+                {isMe && <span className="you">{standIn ? 'sample writer, not you' : 'you · local only'}</span>}
                 {n > 0 && (
                   <span className="count" key={n}>
                     {n}
@@ -842,26 +852,31 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
                   {inconclusive
                     ? 'Inconclusive: too few answers'
                     : standIn
-                      ? exposedNow
-                        ? 'It found the sample writer'
-                        : 'It did not find the sample writer'
+                      ? // Not a score of you at all: "picked the sample writer 0 of 10 times" read as "safe" to a tester, three rounds running (17-nov).
+                        'Not a test of you yet'
                       : exposedNow
                         ? 'The attacker found you'
                         : 'You are one of ten'}
                 </strong>
                 <p>
                   {/* The count in words: a tester could not tell whether "2/10" meant it picked her (17-nov). */}
-                  {standIn ? `It picked the sample writer ${final.hits} of ${final.answered} times. ` : `It picked you ${final.hits} of ${final.answered} times. `}
-                  Chance level is 1 in 10.
+                  {standIn
+                    ? `Without your own public writing, the attacker looked for the sample writer (it picked her ${final.hits} of ${final.answered} times). Start over, add a few posts you published under your name, and attack again.`
+                    : `It picked you ${final.hits} of ${final.answered} times. Chance level is 1 in 10.`}
                   {final.answered < final.attempts ? ` ${final.attempts - final.answered} attempts got no answer (model busy).` : ''}
                   {inconclusive ? ' Too few answers came back from the cloud: wait a minute and attack again.' : ''}
-                  {standIn ? ' This test is about the sample writer, not you: add your own public writing to test yourself.' : ''}
                   {before !== null && stage === 'reattacked' ? ` Before: ${before}/10.` : ''}
                 </p>
               </div>
             </>
           )}
         </div>
+        {styleGone && !busy && (
+          <p className="hint subject-note">
+            Your writing habits no longer stand out (your fingerprint ranks you #{Math.round(rank)} of 10), yet it still picked you: it goes by what
+            you write about, or by details only you would know. Change those next.
+          </p>
+        )}
         {verdict && verdict.reasons.length > 0 && picks.length === verdict.attempts && (
           <div className="reasons-box rise">
             <h3>The attacker’s reasons</h3>

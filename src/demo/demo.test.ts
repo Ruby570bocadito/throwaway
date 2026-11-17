@@ -115,7 +115,8 @@ describe('recorded text run (v5, 16-nov)', () => {
     expect(styleMarkers(PUBLISHED, MARTA_PUBLIC, DECOYS.map((d) => d.corpus))).toEqual([
       { phrase: 'of', kind: 'style', why: 'You use “of” 4× more than other writers' },
     ]);
-    expect(ruleDetails(DRAFT).map((d) => d.phrase)).toEqual(['March', 'three years', 'six months', '6 people', '2']);
+    // The range is one detail since 17-nov: "6 people to 2" generalises to "several people to a few".
+    expect(ruleDetails(DRAFT).map((d) => d.phrase)).toEqual(['March', '6 people to 2', 'three years', 'six months']);
   });
 });
 

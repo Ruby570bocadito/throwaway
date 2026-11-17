@@ -12,7 +12,7 @@ export function friendlyError(e: unknown): string {
   if (e instanceof Error && e.name === 'UserFacingError') return e.message;
   if (e instanceof PrivacyViolation) {
     // Without a local model the user edits by hand; release() refuses an edit that keeps a long run of the original.
-    if (e.where.includes('edited by the user')) return 'Your edit still keeps a long passage of your original (about 7 words or more). Change it a little more, then try again.';
+    if (e.where.includes('edited by the user')) return 'Your edit still keeps a long passage of your original (about 7 words in a row). Put it in other words, then try again.';
     return e.message;
   }
   const msg = e instanceof Error ? e.message : String(e);
