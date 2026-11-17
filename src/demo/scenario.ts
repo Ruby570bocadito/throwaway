@@ -128,9 +128,13 @@ export const ATTACK_BEFORE: AttackRun = {
   ],
 };
 
-/** After the rewrite: 9 picks of d1 (shown as F) and 1 of d8 (shown as G), 0 of the author. Attempt order not recorded. */
+/**
+ * After the rewrite: 9 picks of d1 (shown as F) and 1 of d8 (shown as G), 0 of the author. Attempt order not recorded. The
+ * reasons quote d1's text ("organisation", "review", "staffing"), so d1 goes last: the screen shows the last pick's reasons,
+ * and with d8 last they read as made up (a judge, 17-nov).
+ */
 export const ATTACK_AFTER: AttackRun = {
-  picks: ['d1', 'd1', 'd1', 'd1', 'd1', 'd1', 'd1', 'd1', 'd1', 'd8'],
+  picks: ['d8', 'd1', 'd1', 'd1', 'd1', 'd1', 'd1', 'd1', 'd1', 'd1'],
   reasons: [
     'Formal, institutional vocabulary and objective tone',
     'Complex syntactic structures and passive voice',

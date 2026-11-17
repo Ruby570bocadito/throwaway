@@ -307,6 +307,7 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak, recorded, 
   // Cells are chosen once the attacker has seen the photo as it is: chosen before, they were ignored by that first attack,
   // and a tester could not tell which step came first (17-nov).
   const canPick = degraded && stage === 'attacked';
+  const staleVerdict = stage === 'masked' && !busy && !!verdict;
   // The budget is spent and the attacker only points at cells that are not identifiers: another round would add nothing.
   const budgetFull =
     !degraded &&
@@ -348,7 +349,7 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak, recorded, 
         </p>
       )}
       {!busy && stage === 'scanned' && (
-        <p className="dock-note">Sends this photo, as it is, to a cloud AI, as if you had posted it: the only step that sends your original.</p>
+        <p className="dock-note warn">Sends this photo, as it is, to a cloud AI, as if you had posted it: the only step that sends your original.</p>
       )}
       {!busy && stage === 'masked' && <p className="dock-note">Sends only the masked photo, never the original.</p>}
       <div className="dock-row">
@@ -560,6 +561,9 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak, recorded, 
           <span className="chip public">what the cloud sees</span>
         </div>
         <p className="context">A cloud geolocation AI sees only the version you would post, and guesses where you are. Your device scores the guess.</p>
+        {/* Masked but not attacked yet: the last guess is about the photo before masking, and looked current to a judge (17-nov). */}
+        {staleVerdict && <p className="hint stale-note">Before masking. Attack again to see where it guesses with the masked photo.</p>}
+        <div className={staleVerdict ? 'stale' : undefined}>
         <Radar km={km} title={verdictTitle} subtitle={verdict ? `Guess: ${verdict.place}` : ''} level={level} history={history} scanning={busy === 'attack'} />
         <p className="sr-only" aria-live="polite">
           {busy === 'attack'
@@ -586,7 +590,7 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak, recorded, 
               <div className="reasons-box rise" key={`r${history.length}`}>
                 <h3>{safe ? 'What the attacker went by, and still missed' : 'What the attacker used'}</h3>
                 {/* Why masking stops with these cells still visible: a judge read them as a loop that gave up (17-nov). */}
-                {safe && <p className="hint">Not masked: they did not lead it to you, so masking stops here.</p>}
+                {safe && <p className="hint">Not masked, because they did not help it find you. Masking stops here.</p>}
                 <ul className="reasons">
                   {/* A cell can hold several clues: keyed by cell alone, React kept a stale item on screen (live, 16-nov). */}
                   {verdict.clues.map((c, i) => (
@@ -599,6 +603,7 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak, recorded, 
             )}
           </>
         )}
+        </div>
       </section>
 
       {dock && createPortal(actions, dock)}

@@ -388,12 +388,14 @@ describe("the attacker's reasons", () => {
 describe('generalising by hand, without a local model', () => {
   it('leaves bare numbers to the person, and generalises counts with their word and dates', () => {
     // A test user's edit (17-nov): "11 of them under 21" became "several of them under many".
+    // And the next round's (17-nov): "cut our team from fourteen to nine" became "from several to several".
     const post =
-      "I've been assistant manager here for nine years and we have 46 on the rota, 11 of them under 21. The rota was sorted in March, then Dean left after 3 weeks of covering two shifts a day.";
+      "I've been assistant manager here for nine years and we have 46 on the rota, 11 of them under 21. The rota was sorted in March 2025, then they cut our team from fourteen to nine, and Dean left after 3 weeks of covering two shifts a day.";
     const r = deterministicGeneralise(post, generalisableByHand(ruleDetails(post).map((d) => d.phrase)));
     expect(r.text).toContain('we have 46 on the rota, 11 of them under 21');
-    expect(r.text).not.toMatch(/under (?:many|several|a few)/);
-    expect(r.done.map((d) => d.phrase).sort()).toEqual(['3 weeks', 'March', 'nine years', 'two shifts']);
+    expect(r.text).toContain('from fourteen to nine');
+    expect(r.text).not.toMatch(/under (?:many|several|a few)|from several to/);
+    expect(r.done.map((d) => d.phrase).sort()).toEqual(['3 weeks', 'March 2025', 'nine years', 'two shifts']);
   });
 });
 

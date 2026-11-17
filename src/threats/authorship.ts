@@ -264,7 +264,11 @@ export function ruleDetails(text: string): { phrase: string; why: string }[] {
  * with the word they count, and dates. A bare number carries no meaning the rules can keep ("11 of them under 21" became
  * "several of them under many" for a tester, 17-nov), so it stays listed for the person to change.
  */
-export const generalisableByHand = (phrases: string[]) => phrases.filter((p) => /\p{L}/u.test(p));
+export const generalisableByHand = (phrases: string[]) => phrases.filter((p) => !BARE_NUMBER.test(p.trim()) || A_DATE.test(p.trim()));
+// A number on its own, in digits or words ("46", "fourteen": "from fourteen to nine" became "from several to several"), but
+// not a year, which is a date.
+const BARE_NUMBER = new RegExp(`^(?:${NUM})$`, 'i');
+const A_DATE = new RegExp(`^(?:${TIME})$`, 'i');
 
 /** Capitalised words that are not names: roles, departments and everyday abbreviations. */
 const NOT_NAMES = new Set(['OK', 'AI', 'TV', 'PC', 'FYI', 'ASAP', 'CEO', 'CFO', 'CTO', 'COO', 'HR', 'IT', 'PR', 'PS']);

@@ -4,7 +4,7 @@
 
 import { beforeEach, describe, expect, it } from 'vitest';
 import { clearTaint, CloudModel, Ledger, LocalModel, publicData, redTeam, release, secret, type RedTeamEvent } from '../framework';
-import { authorshipThreat, ruleDetails, type AuthorshipVerdict, type Clue } from '../threats/authorship';
+import { authorshipThreat, quotesNotIn, ruleDetails, type AuthorshipVerdict, type Clue } from '../threats/authorship';
 import { locationThreat, type ImageOps, type LocationVerdict, type PhotoClue } from '../threats/location';
 import { styleMarkers } from '../engine/stylometry';
 import { buildAuthorship } from '../kit';
@@ -65,8 +65,11 @@ describe('recorded text run (v5, 16-nov)', () => {
     expect(asIs.reasonsPick).toBe(SELF_ID);
     const letter = 'ABCDEFGHIJ'[asIs.reasonsOrder!.indexOf(SELF_ID)];
     expect(asIs.reasons[2]).toBe(`Strong conversational stylometry matching Writer ${letter}'s specific syntactic rhythm.`);
-    expect(rewritten.reasonsPick).toBe('d8');
+    // The reasons quote d1's own text ("organisation", "review", "staffing"): they are d1's, the writer picked 9 times.
+    expect(rewritten.reasonsPick).toBe('d1');
     expect(rewritten.reasonsOrder).toHaveLength(10);
+    const d1 = DECOYS.find((d) => d.id === 'd1')!.corpus;
+    expect(quotesNotIn(rewritten.reasons[2], `${PUBLISHED}\n${d1}`)).toEqual([]);
 
     const published = (events[2] as { published: { value: string } }).published.value;
     expect(published).toBe(PUBLISHED);

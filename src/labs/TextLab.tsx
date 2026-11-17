@@ -391,7 +391,18 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
       return seat ? `${w} ${seat}` : m;
     });
   };
-  const reasonItems = verdict ? verdict.reasons.map(relabel).map((r) => ({ r, notIn: quotesNotIn(r, attackedText) })) : [];
+  // A quote from the writer the reasons are about is grounded too: it is that writer's text, not a guess. Folded as made up,
+  // it made all three testers doubt the reasons (17-nov).
+  const pickCorpus = verdict?.reasonsPick === SELF_ID ? selfCorpus : (decoys.find((d) => d.id === verdict?.reasonsPick)?.corpus ?? '');
+  const reasonItems = verdict
+    ? verdict.reasons.map(relabel).map((r) => {
+        const notInPost = quotesNotIn(r, attackedText);
+        // Made up only if it is in none of the texts the attacker was given: the post and the ten writers.
+        const notIn = notInPost.length ? quotesNotIn(r, [attackedText, selfCorpus, ...decoys.map((d) => d.corpus)].join('\n')) : [];
+        const fromPick = pickCorpus ? notInPost.filter((q) => quotesNotIn(`“${q}”`, pickCorpus).length === 0) : [];
+        return { r, notIn, fromPick, fromOther: !fromPick.length && notInPost.length > notIn.length };
+      })
+    : [];
   // Reasons for a pick that is not you are about another writer's text: a tester read "refund policies" as about him (17-nov).
   const reasonsSeat = verdict?.reasonsPick && verdict.reasonsPick !== SELF_ID ? seatOf(verdict.reasonsPick) : undefined;
   const shownReasons = reasonItems.filter((x) => x.notIn.length === 0 || showUngrounded);
@@ -460,7 +471,7 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
       )}
       {/* A judge read the as-is test as at odds with "the draft is the secret" (17-nov): say it is the only such step. */}
       {!busy && stage === 'scanned' && (
-        <p className="dock-note">Sends this exact text to a cloud AI, ten times, as if you had posted it: the only step that sends your original.</p>
+        <p className="dock-note warn">Sends this exact text to a cloud AI, ten times, as if you had posted it: the only step that sends your original.</p>
       )}
       {!busy && stage === 'rewritten' && published && (
         <p className="dock-note">{degraded ? 'Sends only your edited version, never the original.' : 'Sends only the rewritten version, never the original.'}</p>
@@ -551,7 +562,9 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
         {degraded && stage === 'attacked' && (
           <div className="draft-tools">
             <span className="hint">
-              Your turn to rewrite (no local model here): edit the text above, drop the habits and details listed below, then use your edited version.
+              {/* Steps, not a goal: a tester without Gemini Nano did not know what to change (17-nov). */}
+              Your turn to rewrite (no local model here): replace names with a role (“the regional manager”), drop or swap the words listed under
+              your habits, and let the button generalise counts and dates. What you change is crossed out below. Then use your edited version.
             </span>
             {ruleCounts.length > 0 && (
               <button className="mini" onClick={generaliseForMe}>
@@ -576,7 +589,7 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
                 textareaRef.current?.focus();
               }}
             >
-              Clear and paste mine
+              Paste my own post instead
             </button>
           </div>
         )}
@@ -705,7 +718,12 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
         <div className="meter" ref={meterRef}>
           <div className="meter-top">
             {/* While you edit by hand the rank follows your edit: it moved with no word of why for a tester (17-nov). */}
-            <span className="meter-label">{editingByHand ? 'Your edit’s rank' : 'Your rank'} among ten writers: #1 reads most like you, #10 least</span>
+            {/* Without your own writing the rank is the sample writer's: "your rank" misled a judge (17-nov). */}
+            <span className="meter-label">
+              {standIn
+                ? 'The sample writer’s rank among ten writers: #1 reads most like your post, #10 least'
+                : `${editingByHand ? 'Your edit’s rank' : 'Your rank'} among ten writers: #1 reads most like you, #10 least`}
+            </span>
             <strong className={!stylo || tooShort ? '' : stylo.rank <= 2 ? 'bad' : stylo.rank <= 5 ? 'warn' : 'good'}>
               #{stylo && !tooShort ? Math.round(rank) : '–'} <span>of 10</span>
             </strong>
@@ -815,8 +833,9 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
             </>
           ) : (
             <>
+              {/* Without your own writing the number is the sample writer's: a big "0/10" read as "safe" to a tester (17-nov). */}
               <div key={attacks} className={`big stamp ${inconclusive || standIn ? '' : exposedNow ? 'bad' : 'good'}`}>
-                {final.hits}/{final.answered}
+                {standIn ? '–' : `${final.hits}/${final.answered}`}
               </div>
               <div>
                 <strong>
@@ -853,14 +872,27 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
               </p>
             )}
             <ul className="reasons">
-              {shownReasons.map(({ r, notIn }, i) => (
-                // A quote that is not in the attacked text is the model citing another writer, or guessing: say so.
+              {shownReasons.map(({ r, notIn, fromPick, fromOther }, i) => (
+                // A quote that is in none of the texts the attacker was given is the model guessing: say so.
                 <li key={`${r}-${i}`} className="rise" style={at(i + 1)}>
                   {r}
+                  {(fromPick.length > 0 || fromOther) && (
+                    <em className="from-pick">
+                      {' '}
+                      · quotes{' '}
+                      {fromOther
+                        ? 'another writer’s text'
+                        : verdict?.reasonsPick === SELF_ID
+                          ? standIn
+                            ? 'the sample writer’s posts'
+                            : 'your public writing'
+                          : `Writer ${reasonsSeat}’s writing`}
+                    </em>
+                  )}
                   {notIn.length > 0 && (
                     <em className="ungrounded">
                       {' '}
-                      · {notIn.map((q) => `“${q}”`).join(', ')} {notIn.length > 1 ? 'are' : 'is'} not in the text it attacked
+                      · {notIn.map((q) => `“${q}”`).join(', ')} {notIn.length > 1 ? 'are' : 'is'} in none of the texts it was given
                     </em>
                   )}
                 </li>
@@ -869,7 +901,7 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
             {foldedReasons > 0 && (
               <button className="mini reasons-more" onClick={() => setShowUngrounded(true)}>
                 {/* The action first: "…: show" at the end read as a glitch to a tester (17-nov). */}
-                {foldedReasons === 1 ? 'Show one more reason: it quotes' : `Show ${foldedReasons} more reasons: they quote`} words that are not in the text it attacked
+                {foldedReasons === 1 ? 'Show one more reason: it quotes' : `Show ${foldedReasons} more reasons: they quote`} words that are in none of the texts it was given
               </button>
             )}
             {bySubject && (
