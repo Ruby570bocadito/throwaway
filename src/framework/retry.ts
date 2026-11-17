@@ -31,8 +31,23 @@ export function statusOf(e: unknown): number | null {
   return m ? Number(m[1] ?? m[2]) : null;
 }
 
+/**
+ * Errors thrown by the on-device model (Gemini Nano), tagged where they pass the LocalModel. They are never "the cloud is
+ * busy", whatever their message says: a Nano failure was shown as a cloud overload (17-nov).
+ */
+const fromDevice = new WeakSet<object>();
+export function markDeviceError<E>(e: E): E {
+  if (e && typeof e === 'object') fromDevice.add(e);
+  return e;
+}
+export const isDeviceError = (e: unknown): boolean =>
+  (e instanceof ModelTimeout && e.where === 'device') || (!!e && typeof e === 'object' && fromDevice.has(e));
+
+/** App Check could not vouch for this browser (a blocked reCAPTCHA, a throttled or rejected token): retrying does not help. */
+const isAppCheck = (e: unknown) => /app ?check|appCheck\//i.test(messageOf(e)) || String((e as { code?: unknown } | null)?.code ?? '').startsWith('appCheck/');
+
 export function isTemporary(e: unknown): boolean {
-  if (!e || e instanceof PrivacyViolation) return false;
+  if (!e || e instanceof PrivacyViolation || isDeviceError(e) || isAppCheck(e)) return false;
   if (e instanceof ModelTimeout) return e.where === 'cloud';
   const status = statusOf(e);
   if (status !== null) return TEMPORARY_STATUS.has(status);
@@ -45,6 +60,32 @@ export function isTemporary(e: unknown): boolean {
       msg,
     )
   );
+}
+
+/**
+ * Why the cloud gave no answer, for a message a person can act on: Google's servers overloaded, the free tier's request
+ * quota spent, the network (or a blocker) stopping the request, or no answer in time. Null when it is something else.
+ */
+export type CloudTrouble = 'overloaded' | 'quota' | 'network' | 'timeout';
+export function cloudTrouble(e: unknown): CloudTrouble | null {
+  if (!isTemporary(e)) return null;
+  if (e instanceof ModelTimeout) return 'timeout';
+  const status = statusOf(e);
+  const msg = messageOf(e);
+  if (status === 429 || /RESOURCE_EXHAUSTED|quota|rate limit|too many requests/i.test(msg)) return 'quota';
+  if (/failed to fetch|networkerror|network error|load failed|err_network|err_internet_disconnected|connection (?:reset|closed)|econnreset|socket hang up/i.test(msg)) return 'network';
+  if (status === 408 || /DEADLINE_EXCEEDED|timed? ?out|expired/i.test(msg)) return 'timeout';
+  return 'overloaded';
+}
+
+/** A short code to quote next to a message, so a report says which failure it was: "503", "429", "TimeoutError". */
+export function errorCode(e: unknown): string {
+  const status = statusOf(e);
+  if (status !== null) return String(status);
+  const code = (e as { code?: unknown })?.code;
+  if (typeof code === 'string' && code) return code;
+  const name = (e as Error)?.name;
+  return name && name !== 'Error' ? name : '';
 }
 
 const durationMs = (v: unknown): number | null => {

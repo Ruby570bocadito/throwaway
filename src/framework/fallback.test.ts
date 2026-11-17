@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CloudModel, Ledger, publicData, type BusyEvent, type LedgerEntry, type ModelBackend } from '.';
+import { CloudModel, isDeviceError, isTemporary, Ledger, LocalModel, ModelTimeout, publicData, type BusyEvent, type LedgerEntry, type ModelBackend } from '.';
 import { ModelPool } from './fallback';
 
 // Gemini's own answers when it is busy (measured live, 16-nov) and when the request itself is wrong.
@@ -121,6 +121,36 @@ describe('a pool of cloud models', () => {
     expect(tries).toBe(1);
   });
 
+  it('leaves the backup its time when the main model is slow rather than failing', async () => {
+    // Overloaded, Gemini often answers late instead of fast with an error: two slow tries spent the budget (17-nov).
+    const c = clock();
+    const pool = new ModelPool(
+      [
+        { name: 'main', model: 'main' },
+        { name: 'backup', model: 'backup' },
+      ],
+      { now: c.now },
+    );
+    const seen: { model: string; ms: number }[] = [];
+    const r = await pool.run(
+      async (m, remainingMs) => {
+        seen.push({ model: m.model, ms: Math.round(remainingMs) });
+        if (m.model === 'main') {
+          c.advance(remainingMs); // hangs until its deadline
+          throw new ModelTimeout('cloud', remainingMs);
+        }
+        return 'ok';
+      },
+      { ...fast, budgetMs: 45_000, now: c.now },
+    );
+    expect(r.model).toBe('backup');
+    expect(seen).toEqual([
+      { model: 'main', ms: 20_000 }, // one try is capped at 20 s
+      { model: 'main', ms: 10_000 }, // the second only gets what is left of its 30 s
+      { model: 'backup', ms: 15_000 }, // the backup keeps its reserve
+    ]);
+  });
+
   it('stops when the caller cancels', async () => {
     const pool = new ModelPool([
       { name: 'main', model: 'main' },
@@ -139,6 +169,20 @@ describe('a pool of cloud models', () => {
       ),
     ).rejects.toThrow();
     expect(calls).toEqual(['main']);
+  });
+});
+
+describe('a Gemini Nano failure', () => {
+  it('is the device’s, never "the cloud is busy", whatever its message says', async () => {
+    const backend: ModelBackend = {
+      name: 'nano',
+      generate: async () => {
+        throw new Error('Network error while loading the on-device model.');
+      },
+    };
+    const err = await new LocalModel(backend, new Ledger()).generate(['Find details'], { op: 'Find identifying details' }).catch((e) => e);
+    expect(isDeviceError(err)).toBe(true);
+    expect(isTemporary(err)).toBe(false);
   });
 });
 

@@ -1,6 +1,12 @@
-import { isTemporary, PrivacyViolation, type Kit } from '../framework';
+import { cloudTrouble, errorCode, isDeviceError, ModelTimeout, PrivacyViolation, type Kit } from '../framework';
 
-/** What happened and what to do, in plain words. A raw exception string is never shown alone. */
+const short = (s: string, n = 140) => (s.length > n ? `${s.slice(0, n).trimEnd()}…` : s).replace(/\.$/, '');
+
+/**
+ * What happened and what to do, in plain words, with a short error code a report can quote. A raw exception string is
+ * never shown alone. Each cause has its own sentence: one "the cloud is overloaded" for every failure (a Gemini Nano
+ * error, a blocked request, a spent quota) sent a user looking in the wrong place (17-nov).
+ */
 export function friendlyError(e: unknown): string {
   if (e instanceof PrivacyViolation) {
     // Without a local model the user edits by hand; release() refuses an edit that keeps a long run of the original.
@@ -8,9 +14,24 @@ export function friendlyError(e: unknown): string {
     return e.message;
   }
   const msg = e instanceof Error ? e.message : String(e);
-  // The main model and its backup were both busy for the whole time budget: Google's side, not the user's.
-  if (isTemporary(e)) return 'Google’s cloud models are overloaded right now, the backup one too. Nothing was lost: wait a minute and try again.';
-  if (/app ?check|\b40[13]\b|permission_denied/i.test(msg)) return 'This browser could not prove it is the real app (App Check). Reload the page and try again.';
+  const code = errorCode(e);
+  const tail = code ? ` (Error ${code}.)` : '';
+  // Gemini Nano, on this device: never "the cloud".
+  if (e instanceof ModelTimeout && e.where === 'device') return `${e.message} Try again; if it keeps happening, restart Chrome.`;
+  if (isDeviceError(e)) return `Gemini Nano could not finish this step on your device: ${short(msg)}. Try again; if it keeps happening, restart Chrome.${tail}`;
+  if (/app ?check|\b40[13]\b|permission_denied/i.test(msg))
+    return `This browser could not prove it is the real app (App Check). If you use an ad or tracker blocker, allow reCAPTCHA on this site, then reload the page.${tail}`;
+  switch (cloudTrouble(e)) {
+    case 'quota':
+      return `The free tier’s limit on requests to Google’s AI is reached for now, for the backup model too. Wait a minute and try again; if it keeps happening, today’s limit is spent.${tail}`;
+    case 'network':
+      return `This browser could not reach Google’s AI servers. Check your connection, or allow this site in your ad or tracker blocker, then try again.${tail}`;
+    case 'timeout':
+      return `Google’s AI took too long to answer, and so did the backup model. Nothing was lost: wait a minute and try again.${tail}`;
+    case 'overloaded':
+      // The main model and its backup were both busy for the whole time budget: Google's side, not the user's.
+      return `Google’s AI is overloaded right now, the backup model too. Nothing was lost: wait a minute and try again.${tail}`;
+  }
   // Errors the core writes for people (an empty or too long post, nothing to mask) already say what to do.
   if (/^(Nothing to mask|There is nothing to rewrite|This post is too long)/.test(msg)) return msg.replace(/\.?$/, '.');
   return `That didn't work: ${msg.replace(/\.$/, '')}. Try again.`;

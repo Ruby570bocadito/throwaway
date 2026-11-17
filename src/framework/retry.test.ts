@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { PrivacyViolation } from './guard';
-import { isTemporary, ModelTimeout, retryAfterMs, statusOf, withRetry, withTimeout } from './retry';
+import { cloudTrouble, errorCode, isDeviceError, isTemporary, markDeviceError, ModelTimeout, retryAfterMs, statusOf, withRetry, withTimeout } from './retry';
 
 /** What Firebase AI Logic throws for an HTTP error (AIError with customErrorData). */
 const aiError = (status: number, message: string, errorDetails?: unknown[]) =>
@@ -156,5 +156,33 @@ describe('withTimeout', () => {
     const err = await run.catch((e) => e);
     expect((err as Error).name).toBe('AbortError');
     expect(isTemporary(err)).toBe(false);
+  });
+});
+
+describe('why the cloud gave no answer', () => {
+  const withStatus = (message: string, status: number) => Object.assign(new Error(message), { status });
+
+  it('tells overload, a spent quota, the network and slowness apart, with a code to quote', () => {
+    expect(cloudTrouble(withStatus('[503 ] The model is overloaded.', 503))).toBe('overloaded');
+    expect(cloudTrouble(withStatus('[500] This model is currently experiencing high demand.', 500))).toBe('overloaded');
+    expect(cloudTrouble(withStatus('[429] Resource has been exhausted (e.g. check quota).', 429))).toBe('quota');
+    expect(cloudTrouble(new TypeError('Failed to fetch'))).toBe('network');
+    expect(cloudTrouble(new ModelTimeout('cloud', 30_000))).toBe('timeout');
+    expect(cloudTrouble(withStatus('[400] Request contains an invalid argument.', 400))).toBeNull();
+    expect(errorCode(withStatus('x', 503))).toBe('503');
+    expect(errorCode(new ModelTimeout('cloud', 1000))).toBe('TimeoutError');
+    expect(errorCode(new Error('plain'))).toBe('');
+  });
+
+  it('never calls a Gemini Nano failure or an App Check refusal "busy": waiting would not help', () => {
+    const nano = markDeviceError(new Error('An internal error occurred. Network error while loading the model.'));
+    expect(isDeviceError(nano)).toBe(true);
+    expect(isTemporary(nano)).toBe(false);
+    expect(cloudTrouble(nano)).toBeNull();
+    expect(isDeviceError(new ModelTimeout('device', 300_000))).toBe(true);
+    const blocked = Object.assign(new Error('AppCheck: Fetch network request failed. Original error: Failed to fetch. (appCheck/fetch-network-error).'), {
+      code: 'appCheck/fetch-network-error',
+    });
+    expect(isTemporary(blocked)).toBe(false);
   });
 });

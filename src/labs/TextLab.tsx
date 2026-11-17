@@ -221,6 +221,8 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
     try {
       await fn();
     } catch (e) {
+      // The full error stays in the console for a bug report; the page shows the plain-words version with its code.
+      console.warn('Throwaway: this step failed', e);
       setError(friendlyError(e));
     } finally {
       setBusy('');

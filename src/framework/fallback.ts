@@ -15,6 +15,13 @@ export type BusyEvent = { kind: 'retry'; model: string; delayMs: number } | { ki
 export interface PoolOptions extends RetryOptions {
   /** Tries on a model before moving on, when there is another one to move on to (default 2). */
   triesPerModel?: number;
+  /**
+   * Time kept for each model further down the list (default 15 s), and the longest a single try may take on a model
+   * that has a backup (default 20 s). An overloaded model often answers slowly instead of failing fast: without these,
+   * two slow tries on the main model spent the whole budget and the backup was never asked (17-nov).
+   */
+  reserveMs?: number;
+  tryCapMs?: number;
   onBusy?: (e: BusyEvent) => void;
 }
 
@@ -62,11 +69,15 @@ export class ModelPool<M> {
       const last = i === list.length - 1;
       const remaining = budget - (now() - t0);
       if (remaining <= 0) break;
+      // A model with backups after it leaves them their share of the budget, and no single try of it may run long.
+      const mine = last ? remaining : remaining - (list.length - 1 - i) * (o.reserveMs ?? 15_000);
+      if (mine <= 0) continue;
+      const cap = last ? Infinity : (o.tryCapMs ?? 20_000);
       try {
-        const r = await withRetry((_attempt, rem) => call(m, rem), {
+        const r = await withRetry((_attempt, rem) => call(m, Math.min(rem, cap)), {
           ...o,
           retries: last ? (o.retries ?? 4) : Math.max(0, (o.triesPerModel ?? 2) - 1),
-          budgetMs: remaining,
+          budgetMs: mine,
           onRetry: (info) => {
             o.onRetry?.(info);
             o.onBusy?.({ kind: 'retry', model: m.name, delayMs: info.delayMs });

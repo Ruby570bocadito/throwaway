@@ -8,7 +8,7 @@ import { assertUntainted, PrivacyViolation } from './guard';
 import { byteLength, type Ledger } from './ledger';
 import type { JsonSchema } from './json';
 import type { BusyEvent } from './fallback';
-import { isTemporary, ModelTimeout, triesOf } from './retry';
+import { isTemporary, markDeviceError, ModelTimeout, triesOf } from './retry';
 
 export type LocalPart = string | Private<string> | Publishable<string> | Public<string> | { image: Private<Uint8Array> | Publishable<Uint8Array>; mime: string };
 export type CloudPart = string | Publishable<string> | Public<string> | { image: Publishable<Uint8Array>; mime: string };
@@ -127,6 +127,8 @@ export class LocalModel {
     try {
       res = await this.backend.generate(resolved, opts);
     } catch (e) {
+      // Tagged as the device's: the UI must never blame the cloud for a Gemini Nano failure.
+      markDeviceError(e);
       this.ledger.add({ op: opts.op, route: 'on-device', ms: Math.round(performance.now() - t0), bytesOut: 0, note: failureNote(e) });
       throw e;
     }
