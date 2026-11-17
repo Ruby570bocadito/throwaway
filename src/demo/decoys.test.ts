@@ -18,6 +18,9 @@ const DRAFTS = {
     'Our engineering team ships every week but on-call is brutal: the pager goes off at night, the legacy codebase has no tests, and the CTO wants microservices for a product with twelve developers.',
   finance:
     'Month-end close at this firm means fourteen-hour days. The audit found the same reconciliation errors two years running, the CFO blames the analysts, and the budget forecast is fiction.',
+  // A store review a test user wrote went to healthcare ("shift", "staffing"), and the attacker found him by subject (17-nov).
+  retail:
+    'Our regional manager humiliates staff in meetings. I have run this store for four years. We are short-staffed every weekend, customers wait at the tills, and shift cover is a nightmare. Head office ignores every complaint about staffing.',
 };
 
 describe('decoy packs', () => {
@@ -74,6 +77,10 @@ describe('decoy packs', () => {
 describe('choosing the pack that matches the draft', () => {
   it.each(Object.entries(DRAFTS))('%s', (field, draft) => {
     expect(choosePack(draft).id).toBe(field);
+  });
+
+  it('puts a restaurant kitchen in retail and hospitality', () => {
+    expect(choosePack('The kitchen is chaos every Friday. Our head chef shouts at the waiters, tips are split unfairly and the owner cuts shifts without notice.').id).toBe('retail');
   });
 
   it('keeps the recorded demo, and anything without a clear field, on design', () => {

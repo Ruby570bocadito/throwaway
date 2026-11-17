@@ -2,7 +2,7 @@
 // picked the author by subject, not style (live run, 15-nov). The design pack is the recorded demo's (scenario.ts).
 // Every writer here is fictional; the texts were written for Throwaway, nine different voices per field.
 
-import { tokenize, FUNCTION_WORDS, type Candidate } from '../engine/stylometry';
+import { singular, tokenize, FUNCTION_WORDS, type Candidate } from '../engine/stylometry';
 import { FIELD_LABELS, type DecoyPackId } from './fields';
 import { DECOYS } from './scenario';
 
@@ -89,6 +89,22 @@ Half term in three weeks. Counting.`),
   writer('e9', `today a year 7 asked me if i was alive when the internet was invented and when i said yes he looked at me like i was a museum exhibit lol. then he asked if we had phones and i said yes, attached to the wall, and the whole class gasped. felt like a time traveller. the lesson was meant to be about the industrial revolution but somehow we spent ten minutes on whether dinosaurs and the romans overlapped (they did not, i checked, twice). one girl wrote "the industrial revolution was when machines got jobs" and tbh that is better than half the textbooks. the fire drill went off during the plenary so we never found out if anyone learned anything. marking their exit tickets tonight. one of them just says "good lesson miss" with a drawing of a steam engine. ten out of ten. no notes. the steam engine drawing is going on the fridge. i love this job. i also need a nap.`),
 ];
 
+// Retail and hospitality: the people who post most anonymous employer reviews. Added after a test user's store review was
+// matched to healthcare ("shift", "staffing") and the attacker found him by subject, 8/10 even after his rewrite (17-nov).
+const RETAIL: Candidate[] = [
+  writer('r1', `The regional operations team has completed its review of trading across the stores in the northern region for the third quarter. Like-for-like sales grew by two per cent against the same period last year, which is slightly below the plan agreed with the commercial directors in the spring. The shortfall is largely attributable to reduced footfall on weekday afternoons, although basket size and loyalty card sign-ups both improved for the second consecutive quarter. Staff turnover on the shop floor remains the most significant operational risk, with an average of four leavers per store per month and a corresponding increase in agency hours during peak trading. In response, the leadership team will introduce a revised scheduling policy that publishes the rota three weeks in advance and limits split shifts to one per colleague per week. Stockroom accuracy improved following the introduction of handheld scanners, and shrinkage fell to its lowest level in two years. Customer satisfaction scores were stable, although complaints about checkout queues increased during the half-term holiday. A detailed breakdown of results by store, together with the actions assigned to each store manager, is available on the internal portal and will be reviewed at the next quarterly meeting.`),
+  writer('r2', `Saturday. Opened at seven. Till three frozen again. Rebooted it twice. Queue past the shoe aisle by nine. Two people called in sick. Covered the fitting rooms myself. Lunch at three. Ate it standing up. Delivery came early. Nobody to unload it. Stockroom full of boxes now. Customer shouted about a refund. Followed the policy. She left a review anyway. Manager on holiday. Area manager not answering. Closed at ten. Cashed up. Till three short. Counted again. Still short. Wrote it in the book. Home by eleven.
+Sunday. Late shift. Floor a mess from yesterday. Folded jeans for an hour. Two new starters. Nobody trained them. Showed them the tills between customers. Price labels wrong on the whole sale rail. Fixed them. Fire door alarm twice. False alarm both times. Closed at six. Counted the float. Right this time. Small win.
+Monday. Day off. Checked the rota anyway. Back on earlies all week. Of course.`),
+  writer('r3', `Our little café just had its busiest Saturday ever and I am still buzzing!!! We served over three hundred coffees before lunch, the new oat flapjacks sold out by eleven, and not a single order went wrong at the counter! The team was incredible! Our youngest barista handled the morning rush like a pro, and our chef somehow kept the kitchen calm while the queue went out of the door! One regular brought her whole book club and they stayed for three hours (we did not mind one bit)! A tourist left a note on a napkin saying it was the best cinnamon bun in the country, and it is now taped to the till! If you run a small cafe, please hear this: look after your staff, learn your regulars' names, and never skimp on the coffee! Tired feet, happy hearts! Huge thanks to everyone who came in, and to the delivery driver who brought extra milk at eight in the morning! Same again next weekend!`),
+  writer('r4', `The customer remembers the wait, not the apology; serve first, explain later. A full stockroom is not the same as a full shelf; walk the floor before you order. Staff who are never thanked stop noticing what needs doing; say it out loud. A rota published late is a promise broken early. The busiest hour shows you the shop you actually run; the quiet hour shows you the shop you meant to run. Never argue about a refund in front of a queue; take it to the side and let the till keep moving. Train the new starter on the hardest customer, not the easiest; the easy ones teach nothing. A clean entrance sells more than a clever window. Count the float twice; trust it once. Every complaint is a free consultation; most of them are right about something. A manager who never works a shift on the shop floor is managing a rumour. Close the store as if you will open it yourself tomorrow morning.`),
+  writer('r5', `In this guide we will set up a simple closing checklist for a small shop, so that nothing is forgotten at the end of a long day and the morning team starts with a clean slate. You will need a clipboard or a shared tablet, a list of the jobs your team already does, and about thirty minutes. First, walk the shop floor at closing time and write down every task in the order it happens: tidying the fitting rooms, facing up the shelves, cashing up the tills, checking the stockroom door and setting the alarm. Next, group the tasks by area, so that two people can split them without getting in each other's way. Then mark the three jobs that cost money if they are missed, such as locking the safe or switching off the coffee machine, and put them at the top. After that, ask your team to try the checklist for one week and note anything that is missing or in the wrong order. Finally, laminate the final version and keep it next to the checkout. In the next part we will look at an opening checklist, and at how to hand over between shifts without losing anything.`),
+  writer('r6', `I worked behind the bar of the same seaside hotel for twenty-six years, most of them on the late shift, when the guests who could not sleep came down to talk. When I started, we wrote orders on paper pads, the till was a brass machine that rang like a church bell, and the head waiter wore white gloves to serve breakfast. I learned to mix a decent martini from a man who had served admirals, or so he said. I watched couples arrive on their honeymoon and come back for their silver wedding. I carried the chef's birthday cake across the dining room more times than I can count. Some summers we were so short of staff that I made the beds before I opened the bar. When the hotel changed owners, the new menu had pictures on it and the gloves disappeared. On my last night, a guest I had served for twenty years left a tip under his glass with a note that said only: thank you for listening. I still have it, in the drawer with my old name badge.`),
+  writer('r7', `Unpopular opinion: tipping culture in restaurants is broken, and everyone pretends it is fine. The waiter who works the busy Friday terrace takes home three times what the kitchen porter earns for the same hours, and the porter is the one who stays until two in the morning scrubbing pans. Owners love it, because tips let them keep the base pay low and call it a "service industry". Customers love it, because they get to feel generous. The staff who never face the guests get nothing. Then we wonder why nobody wants to work in a kitchen. Pay people properly. Put the real price on the menu. Share the tips across the whole team if you must have them, and publish how you do it. I have worked front and back of house for eleven years, and I have never once seen a tip jar make a restaurant fairer. I will keep saying it until somebody who owns one listens.`),
+  writer('r8', `This study examined the relationship between scheduling practices and staff turnover in mid-sized retail chains. Data were collected from forty-two stores over eighteen months, combining payroll records with an anonymous survey of shop-floor employees and store managers. Stores that published the rota at least two weeks in advance reported lower turnover among part-time staff, and the effect was strongest among employees with responsibilities outside work. Split shifts and last-minute changes to working hours were the most frequently cited reasons for leaving, ahead of pay and workload. Customer satisfaction scores were modestly higher in stores with lower turnover, although the direction of causality could not be established. Managers reported that predictable scheduling required more planning effort at first but reduced the time spent finding cover for absences. These findings are consistent with previous research on schedule instability in service work. Further research is needed to examine whether the benefits extend to hospitality settings, where demand is less predictable and shifts are shorter.`),
+  writer('r9', `today a customer asked if we had the jumper in a size that has never existed in the history of clothing lol. then she asked to speak to the manager and the manager was me. i was also the person on the till, the person doing refunds and the person who had to go and find the spare bags in the stockroom. a kid knocked over the whole sock display and his dad just stepped over it. honestly i have stopped being surprised. the radio has played the same six songs all week and i know every word now, even the ones i hate. my feet hurt. my lunch was a cereal bar from the staff room. but one old man came in to buy a scarf for his wife and told me about their first date for ten minutes and it made my whole week. retail is weird. i love it a bit. i also need a nap and new shoes before my next shift.`),
+];
+
 export const DECOY_PACKS: Record<DecoyPackId, DecoyPack> = {
   design: {
     id: 'design',
@@ -115,9 +131,9 @@ export const DECOY_PACKS: Record<DecoyPackId, DecoyPack> = {
     id: 'healthcare',
     label: FIELD_LABELS.healthcare,
     keywords: [
-      'nurse', 'nursing', 'patient', 'ward', 'hospital', 'clinic', 'doctor', 'physician', 'shift', 'icu', 'emergency', 'care', 'carer',
-      'charting', 'medication', 'meds', 'triage', 'staffing', 'ratio', 'handover', 'consultant', 'surgeon', 'surgery', 'pharmacy', 'gp',
-      'health', 'healthcare', 'clinical', 'bed', 'discharge', 'admission', 'scrubs', 'rota', 'theatre', 'midwife', 'paramedic',
+      'nurse', 'nursing', 'patient', 'ward', 'hospital', 'clinic', 'doctor', 'physician', 'icu', 'emergency', 'carer',
+      'charting', 'medication', 'meds', 'triage', 'ratio', 'handover', 'consultant', 'surgeon', 'surgery', 'pharmacy', 'gp',
+      'health', 'healthcare', 'clinical', 'bed', 'discharge', 'admission', 'scrubs', 'theatre', 'midwife', 'paramedic',
     ],
     decoys: HEALTHCARE,
   },
@@ -142,13 +158,25 @@ export const DECOY_PACKS: Record<DecoyPackId, DecoyPack> = {
     ],
     decoys: EDUCATION,
   },
+  retail: {
+    id: 'retail',
+    label: FIELD_LABELS.retail,
+    keywords: [
+      'retail', 'store', 'shop', 'shopping', 'shopfloor', 'customer', 'till', 'checkout', 'cashier', 'stockroom', 'shelf', 'shelves',
+      'aisle', 'sales', 'footfall', 'merchandise', 'supermarket', 'franchise', 'refund', 'loyalty', 'rota', 'shift', 'warehouse',
+      'restaurant', 'kitchen', 'chef', 'waiter', 'waitress', 'tips', 'tipping', 'hotel', 'guest', 'barista', 'cafe', 'café', 'bar', 'pub',
+      'bartender', 'menu', 'delivery', 'hospitality', 'diner', 'takeaway',
+    ],
+    decoys: RETAIL,
+  },
 };
 
 export const DECOY_PACK_IDS = Object.keys(DECOY_PACKS) as DecoyPackId[];
 
-/** "patients" → "patient", "nurses" → "nurse", "classes" → "class", "studies" → "study": enough to match a field's words. */
-const stem = (w: string) =>
-  w.endsWith('ies') && w.length > 4 ? `${w.slice(0, -3)}y` : w.endsWith('sses') ? w.slice(0, -2) : w.endsWith('ss') || w.length <= 3 ? w : w.replace(/s$/, '');
+const stem = singular;
+
+/** Every field's own words, singular: a reason of the attacker that names one of them may be about the subject (`aboutSubject`). */
+export const FIELD_WORDS: ReadonlySet<string> = new Set(DECOY_PACK_IDS.flatMap((id) => DECOY_PACKS[id].keywords.map(stem)));
 
 const STOP = new Set([
   ...FUNCTION_WORDS, 'than', 'into', 'over', 'only', 'after', 'before', 'every', 'each', 'other', 'them', 'their', 'your', 'his', 'her',

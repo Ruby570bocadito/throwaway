@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { burrowsDelta, exposure, MIN_WORDS, styleMarkers, tokenize, type Candidate } from './stylometry';
+import { burrowsDelta, exposure, MIN_WORDS, readsAsEnglish, styleMarkers, tokenize, type Candidate } from './stylometry';
 import { DECOYS, DRAFT, LINEUP, MARTA_PUBLIC, REWRITE } from '../demo/scenario';
 
 const PUBLISHED = REWRITE.replace('six months', 'several months');
@@ -85,5 +85,15 @@ describe('habit markers with the user’s own public writing', () => {
 
   it('a short public text keeps the old rule: one occurrence is enough (the demo’s "so honestly i")', () => {
     expect(styleMarkers(DRAFT, MARTA_PUBLIC, DECOYS.map((d) => d.corpus)).map((m) => m.phrase)).toContain('so honestly i');
+  });
+});
+
+describe('whether a post reads as English', () => {
+  it('tells English from Spanish, and says nothing about a few words', () => {
+    expect(readsAsEnglish(DRAFT)).toBe(true);
+    expect(
+      readsAsEnglish('Llevo tres años en este colegio y la nueva directora grita al conserje delante de los alumnos cada lunes por la mañana sin motivo.'),
+    ).toBe(false);
+    expect(readsAsEnglish('Too short to tell.')).toBeNull();
   });
 });

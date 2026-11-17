@@ -14,6 +14,17 @@ export const FUNCTION_WORDS = [
 const UNIQUE_FW = Array.from(new Set(FUNCTION_WORDS));
 
 /** Words, lower-cased. Letters of any script count ("café" is one word, not "caf"); digits and punctuation do not. */
+/**
+ * Whether a text reads as English, from the share of English function words among its words; null under 12 words. The
+ * fixed rules and the fingerprint are tuned for English: a test user wrote in Spanish and nothing told her (17-nov).
+ */
+export function readsAsEnglish(text: string): boolean | null {
+  const toks = tokenize(text);
+  if (toks.length < 12) return null;
+  const fw = new Set(UNIQUE_FW);
+  return toks.filter((t) => fw.has(t)).length / toks.length >= 0.15;
+}
+
 export function tokenize(text: string): string[] {
   return text
     .normalize('NFKC')
@@ -22,6 +33,10 @@ export function tokenize(text: string): string[] {
     .split(/[^\p{L}\p{M}']+/u)
     .filter((w) => w && w !== "'");
 }
+
+/** "patients" → "patient", "nurses" → "nurse", "classes" → "class", "studies" → "study": enough to match a field's words. */
+export const singular = (w: string) =>
+  w.endsWith('ies') && w.length > 4 ? `${w.slice(0, -3)}y` : w.endsWith('sses') ? w.slice(0, -2) : w.endsWith('ss') || w.length <= 3 ? w : w.replace(/s$/, '');
 
 export function sentences(text: string): string[] {
   return text.split(/(?<=[.!?])\s+/).map((s) => s.trim()).filter(Boolean);

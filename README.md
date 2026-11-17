@@ -13,7 +13,7 @@ Your words give away **who** you are. Your photos give away **where** you are. T
 
 | Threat | The attacker asks | On your device | In the cloud |
 |---|---|---|---|
-| Text | Who wrote this? | Stylometric fingerprint, identifying details, rewrite (Gemini Nano) | A lineup attack: ten public writers, shuffled, you are never labeled |
+| Text | Who wrote this? | Stylometric fingerprint (plain JavaScript); identifying details and rewrite (Gemini Nano) | A lineup attack: ten public writers, shuffled, you are never labeled |
 | Photo | Where was this taken? | Location clues on a 4×4 grid (Gemini Nano), pixelation | A geolocation attack on the version you would post |
 
 For a text (a Glassdoor review, a tip to a journalist, a post from an alt account):
@@ -142,7 +142,7 @@ Live runs through Firebase AI Logic on 15 and 16-nov-2026 (cloud attacker: `gemi
 
 What the live runs taught us (and changed):
 
-- **Decoys must share your topic.** With off-topic decoys, the rewritten review was still attributed to its author 3/9 times, by subject ("the only one writing about design teams"). The nine other writers now come from your own field: design, software, healthcare, finance or teaching, matched on your device to the public writing you add (you can pick another). The field follows your writing, not the post: with your writing about design and nine finance writers next to it, a finance post would point the attacker away from you by subject, and the attack would look safe. Until you add your writing, the sample writer and her designers stand in for you. The other fields' texts load only when you open that section.
+- **Decoys must share your topic.** With off-topic decoys, the rewritten review was still attributed to its author 3/9 times, by subject ("the only one writing about design teams"). The nine other writers now come from your own field: design, software, healthcare, finance, teaching, or retail and hospitality, matched on your device to the public writing you add (you can pick another). The field follows your writing, not the post: with your writing about design and nine finance writers next to it, a finance post would point the attacker away from you by subject, and the attack would look safe. Until you add your writing, the sample writer and her designers stand in for you. The other fields' texts load only when you open that section.
 - **An attacker's confidence is not your exposure.** A confident wrong guess ("Venice, 5 km") looked like a leak. The photo threat now scores the guess against your real location, on your device, and the location never leaves it.
 - **Hiding your style is not hiding your story.** Gemini Nano's rewrite beat the lineup (0/10) but kept "Lisbon office", "three years" and "Figma migration": your manager would still know it was you. Five live iterations taught us to **let the small model decide what identifies you, and let deterministic code make sure it is gone**:
   - Pasted replacements broke the grammar ("the most recent a period") and chased generic words Nano over-flagged ("team", "transition").

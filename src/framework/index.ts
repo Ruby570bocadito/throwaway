@@ -1,5 +1,5 @@
 export { Private, Publishable, Public, secret, publicData, release, isReleased } from './data';
-export { PrivacyViolation, clearTaint, isTainted, locateEvidence } from './guard';
+export { PrivacyViolation, clearTaint, isTainted, keptPassages, locateEvidence } from './guard';
 export { Ledger, type LedgerEntry, type Route } from './ledger';
 export { LocalModel, CloudModel, type LocalPart, type CloudPart, type ModelBackend, type GenerateOptions, type ModelResult } from './models';
 export { redTeam, type Threat, type Kit, type RedTeamEvent } from './redteam';

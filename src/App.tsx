@@ -80,6 +80,10 @@ export default function App() {
   const blocked = entries.filter((e) => e.route === 'blocked' && e.op.startsWith('Leak')).length;
   const sentAsIs = entries.some((e) => e.note?.includes('sent as-is by your choice'));
   const sentOut = entries.reduce((a, e) => a + e.bytesOut, 0);
+  // Split by version: two testers read "your original" in the total as if it had left again after their edit (17-nov).
+  const asIsBytes = entries.filter((e) => e.note?.includes('sent as-is by your choice')).reduce((a, e) => a + e.bytesOut, 0);
+  const releasedBytes = sentOut - asIsBytes;
+  const fmt = (n: number) => n.toLocaleString('en-US');
   const labProps: LabProps = {
     kit,
     localBackend: backends.local as LabProps['localBackend'],
@@ -248,7 +252,9 @@ export default function App() {
           <p className="total">
             Sent to the cloud: {sentOut.toLocaleString('en-US')} bytes —{' '}
             {sentAsIs
-              ? 'your original, because you chose to test it as is, plus what you released for publication and public data. Without that choice, private originals cannot reach a cloud model: the types forbid it and a run-time guard blocks it.'
+              ? `${fmt(asIsBytes)} for the as-is test of your original that you chose${releasedBytes > 0 ? `, and ${fmt(releasedBytes)} for the version you released` : ''}.${
+                  tab === 'text' ? ' Each attack also sends the public texts of the other writers.' : ''
+                } Without that choice, private originals cannot reach a cloud model: the types forbid it and a run-time guard blocks it.`
               : 'only what you released for publication, plus public data. Private originals cannot reach a cloud model: the types forbid it and a run-time guard blocks it.'}
           </p>
         </section>

@@ -250,6 +250,8 @@ p.good { margin: 0; font-size: 13.5px; }
 .reasons-box { margin-top: 14px; }
 .reasons { margin: 0; padding-left: 18px; color: var(--text); font-size: 13.5px; line-height: 1.6; }
 .reasons .ungrounded { color: var(--amber); font-size: 12.5px; font-style: normal; }
+.reasons-more { margin-top: 10px; }
+.subject-note { color: var(--amber); }
 
 /* ── the photo: a print with a white border; the border keeps the DOM grid aligned with the grid the models see ── */
 .photo { position: relative; overflow: hidden; border: 8px solid #fff; border-radius: 3px; background: #fff; box-shadow: 0 1px 2px rgba(43, 47, 58, 0.14), 0 10px 24px rgba(43, 47, 58, 0.1); }

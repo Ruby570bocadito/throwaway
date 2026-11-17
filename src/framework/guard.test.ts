@@ -2,7 +2,7 @@
 // Every case was a real bypass on 16-nov, found with probes before the canonical letter stream.
 
 import { beforeEach, describe, expect, it } from 'vitest';
-import { clearTaint, CloudModel, isTainted, Ledger, LocalModel, locateEvidence, PrivacyViolation, Publishable, publicData, recordedBackend, release, secret } from './index';
+import { clearTaint, CloudModel, isTainted, keptPassages, Ledger, LocalModel, locateEvidence, PrivacyViolation, Publishable, publicData, recordedBackend, release, secret } from './index';
 import { canonicalLetters, decodeEscapes } from './guard';
 import { isReleased } from './data';
 import { DECOYS, DRAFT, MARTA_PUBLIC, NANO_REWRITE_RECORDED, NANO_REWRITE_V3_RECORDED, REWRITE } from '../demo/scenario';
@@ -211,5 +211,29 @@ describe('the passage an edit still keeps', () => {
     expect(edit).toContain(kept);
     expect(kept).toMatch(/loved this company for three years/);
     expect(locateEvidence('A different text altogether.', evidence)).toBeNull();
+  });
+});
+
+describe('every passage an edit still keeps', () => {
+  it('comes back at once, as written, so the edit can be fixed in one go', () => {
+    secret(
+      'So, honestly, I loved this company for three years, but the last six months have been kind of a mess. Basically we were asked to ship the migration with half the people and the same deadline.',
+      'draft',
+    );
+    const edit = 'Frankly, I loved this company for three years. Things changed. We were asked to ship the migration with half the people and the same deadline, sadly.';
+    const kept = keptPassages(edit);
+    expect(kept).toHaveLength(2);
+    expect(kept[0]).toMatch(/loved this company for three years/);
+    expect(kept[1]).toMatch(/ship the migration with half the people/);
+    for (const k of kept) expect(edit).toContain(k);
+    expect(keptPassages('Nothing of the original is left here at all, not a single long run.')).toEqual([]);
+  });
+
+  it('leaves out a word of the edit that only shares a letter with the original at the edge of the match', () => {
+    // "sharply" ends in the same "y" as "why": the old quote began with "sharply.", a word the user had just written.
+    secret('Nobody told us why. Basically we were asked to ship the migration with half the people and the same deadline. Honestly, nobody listens.', 'draft');
+    const edit = 'The reorg cut our team sharply. Basically we were asked to ship the migration with half the people and the same deadline. Hopefully that changes.';
+    expect(keptPassages(edit)).toEqual(['Basically we were asked to ship the migration with half the people and the same deadline.']);
+    expect(locateEvidence(edit, 'ybasicallywewereaskedtoshipthemi')).toBe('Basically we were asked to ship the');
   });
 });

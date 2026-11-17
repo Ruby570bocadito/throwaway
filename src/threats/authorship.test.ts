@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { clearTaint, CloudModel, isTemporary, Ledger, LocalModel, publicData, release, secret, type ModelBackend } from '../framework';
-import { authorshipThreat, deterministicGeneralise, hasPhrase, isSpecific, letterIndex, looksBroken, newSpecifics, quotesNotIn, ruleDetails, sample, shuffled } from './authorship';
+import { aboutSubject, authorshipThreat, deterministicGeneralise, hasPhrase, isSpecific, letterIndex, looksBroken, newSpecifics, quotesNotIn, ruleDetails, sample, shuffled } from './authorship';
 import { ATTACK_AFTER, ATTACK_BEFORE, CONTENT_DETAILS, DECOYS, DRAFT, MARTA_PUBLIC, NANO_REWRITE_RECORDED, NANO_REWRITE_V3_RECORDED, REWRITE, SELF_ID } from '../demo/scenario';
+import { FIELD_WORDS } from '../demo/decoys';
 
 beforeEach(() => clearTaint());
 
@@ -366,5 +367,29 @@ describe("the attacker's reasons", () => {
     expect(quotesNotIn("Matches Writer C's rhythm and 'so, honestly'", 'So, honestly, it was fine.')).toEqual([]);
     expect(quotesNotIn('Uses “per se” and "inter alia"', 'Nothing Latin here.')).toEqual(['per se', 'inter alia']);
     expect(quotesNotIn('No quotes at all', 'text')).toEqual([]);
+  });
+});
+
+describe('a reason about the subject, not the style', () => {
+  it('is told apart, so the user hears that the decoys may be from another field', () => {
+    // A test user's live run (17-nov): found by what he wrote about.
+    expect(aboutSubject('The vocabulary focuses on retail management and store operations.')).toBe(true);
+    expect(aboutSubject('Mentions retail/store management context and shift/rota challenges.')).toBe(true);
+    // The recorded run's reasons are about style.
+    for (const r of [...ATTACK_BEFORE.reasons, ...ATTACK_AFTER.reasons]) expect(aboutSubject(r), r).toBe(false);
+  });
+
+  it('also when it names a word of a field that the attacked text uses, but not a word that names a habit of style', () => {
+    const post = 'Honestly, the new rota at our cafe is a joke. Three of us cover the whole weekend, and the owner only reads the online reviews.';
+    // A live run (17-nov): a café worker among finance writers, found 10/10 by what she wrote about, and no note.
+    expect(aboutSubject('shares the exact same cafe/rota narrative details', FIELD_WORDS, post)).toBe(true);
+    expect(aboutSubject('Both describe weekend rotas in a café', FIELD_WORDS, post)).toBe(true);
+    // A field word the post does not use, or none at all.
+    expect(aboutSubject('writes like a barista', FIELD_WORDS, post)).toBe(false);
+    expect(aboutSubject('similar sentence structure and vocabulary choices', FIELD_WORDS, post)).toBe(false);
+    // Field words that also name habits of style, even when the post uses them.
+    expect(aboutSubject('A close match in sentence flow and a clinical, detached tone', FIELD_WORDS, 'Patient flow is a mess and clinical staff are close to quitting.')).toBe(false);
+    // The recorded run stays on style.
+    for (const r of [...ATTACK_BEFORE.reasons, ...ATTACK_AFTER.reasons]) expect(aboutSubject(r, FIELD_WORDS, DRAFT), r).toBe(false);
   });
 });

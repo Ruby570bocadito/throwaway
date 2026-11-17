@@ -404,7 +404,7 @@ const attackSchema = (letters: string[]): JsonSchema => ({
   },
   required: ['pick', 'confidence', 'reasons'],
 });
-import { exposure, styleMarkers, type Candidate, type Marker } from '../engine/stylometry';
+import { exposure, singular, styleMarkers, tokenize, type Candidate, type Marker } from '../engine/stylometry';
 import { canonicalLetters } from '../framework/guard';
 
 /**
@@ -424,6 +424,25 @@ export function quotesNotIn(reason: string, text: string): string[] {
     const needle = canonicalLetters(q);
     return needle.length > 0 && !haystack.includes(needle);
   });
+}
+
+/** Field words that also name habits of style ("a close match", "sentence flow", "a clinical tone", "type-token ratio"…). */
+const STYLE_SENSES = new Set(['flow', 'visual', 'creative', 'layout', 'persona', 'ratio', 'token', 'clinical', 'close', 'term', 'delivery', 'risk', 'agency']);
+
+/**
+ * Whether a reason is about what the text says rather than how it is written ("Mentions retail/store management
+ * context", "Focus on employee morale"), or names a word of a field (`fieldWords`, singular) that the attacked text uses:
+ * "shares the exact same cafe/rota narrative details" found a café worker 10/10 among finance writers, and the phrases
+ * alone missed it (17-nov). When the attacker finds the user by subject, the decoys may be from another field, and no
+ * rewrite of the style can fix that (a test user went from 7/10 to 8/10 after rewriting, 17-nov).
+ */
+export function aboutSubject(reason: string, fieldWords?: ReadonlySet<string>, attacked = ''): boolean {
+  if (/\b(topics?|subject(?: matter)?|themes?|industry|sector|domain|context|focus(?:es|ed)? on|mentions?|discuss(?:es|ing)?|talks? about|writes? about)\b/i.test(reason)) return true;
+  if (!fieldWords || !attacked) return false;
+  const inText = new Set(tokenize(attacked).map(singular));
+  return tokenize(reason)
+    .map(singular)
+    .some((w) => fieldWords.has(w) && !STYLE_SENSES.has(w) && inText.has(w));
 }
 
 export interface Clue {

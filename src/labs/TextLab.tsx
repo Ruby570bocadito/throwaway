@@ -1,10 +1,10 @@
 import { useDeferredValue, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
-import { styleMarkers, type Reliability } from '../engine/stylometry';
+import { readsAsEnglish, styleMarkers, type Reliability } from '../engine/stylometry';
 import { DECOYS, DRAFT, MARTA_PUBLIC, SELF_ID } from '../demo/scenario';
 import { FIELD_IDS, FIELD_LABELS, type DecoyPackId } from '../demo/fields';
-import { locateEvidence, PrivacyViolation, release, secret, type Private, type Publishable } from '../framework';
-import { hasPhrase, quotesNotIn, ruleDetails, type AuthorshipVerdict, type Clue } from '../threats/authorship';
+import { keptPassages, PrivacyViolation, release, secret, type Private, type Publishable } from '../framework';
+import { aboutSubject, hasPhrase, quotesNotIn, ruleDetails, type AuthorshipVerdict, type Clue } from '../threats/authorship';
 import { buildAuthorship, lineupField, loadDecoyPacks, type DecoyPacks } from '../kit';
 import { ErrorNote, friendlyError, Silhouette, type LabProps } from '../ui/shared';
 import { Compare } from '../ui/Compare';
@@ -84,6 +84,8 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
   const [verdict, setVerdict] = useState<AuthorshipVerdict | null>(null);
   // The text the last attack sent: what the attacker's reasons are checked against.
   const [attackedText, setAttackedText] = useState('');
+  // Reasons that quote words the attacked text does not contain stay folded away until asked for (judge, 17-nov).
+  const [showUngrounded, setShowUngrounded] = useState(false);
   const [before, setBefore] = useState<number | null>(null);
   const [picks, setPicks] = useState<string[]>([]);
   const [current, setCurrent] = useState<string | null>(null);
@@ -260,6 +262,7 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
     run('attack', async () => {
       clearBusyNote();
       setAttackedText(target.value);
+      setShowUngrounded(false);
       setPicks([]);
       setVerdict(null);
       const v = await threat.attack(target, kit);
@@ -288,12 +291,15 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
         try {
           setPublished(release(edited, 'edited by the user'));
         } catch (e) {
-          const kept = e instanceof PrivacyViolation ? locateEvidence(edited, e.evidence) : null;
-          if (!kept) throw e;
-          const shown = kept.length > 160 ? `${kept.slice(0, 160)}…` : kept;
-          throw Object.assign(new Error(`Your edit still keeps this passage of your original: “${shown}”. Change it a little more, then try again.`), {
-            name: 'UserFacingError',
-          });
+          // Every passage that still matches, at once: one at a time, a test user's edit was refused four times (17-nov).
+          const kept = e instanceof PrivacyViolation ? keptPassages(edited, 4) : [];
+          if (!kept.length) throw e;
+          const quote = (p: string) => `“${p.length > 140 ? `${p.slice(0, 140)}…` : p}”`;
+          const message =
+            kept.length === 1
+              ? `Your edit still keeps this passage of your original: ${quote(kept[0])}. Change it a little more, then try again.`
+              : `Your edit still keeps ${kept.length >= 4 ? 'at least 4' : kept.length} passages of your original: ${kept.map(quote).join(', ')}. Change each of them a little more, then try again.`;
+          throw Object.assign(new Error(message), { name: 'UserFacingError' });
         }
       } else {
         await prepare();
@@ -328,6 +334,11 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
   // A post of the user's own with no public writing of theirs: the lineup then looks for the sample writer, not for them,
   // and the verdict says nothing about them. Said before scanning, before attacking and in the verdict (judge, 17-nov).
   const standIn = !recorded && !ownText && draft.trim() !== '' && draft !== DRAFT;
+  const reasonItems = verdict ? verdict.reasons.map((r) => ({ r, notIn: quotesNotIn(r, attackedText) })) : [];
+  const shownReasons = reasonItems.filter((x) => x.notIn.length === 0 || showUngrounded);
+  const foldedReasons = showUngrounded ? 0 : reasonItems.length - shownReasons.length;
+  // Found by what the post is about, not by how it is written: the decoys may be from another field.
+  const bySubject = !!final && exposedNow && !standIn && !inconclusive && reasonItems.some((x) => aboutSubject(x.r, packs?.FIELD_WORDS, attackedText));
 
   // The line under the lineup: whose field the nine writers share, and what follows from it.
   const canPickField = stage === 'draft' && !!ownText && !!packs;
@@ -376,6 +387,12 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
         </p>
       )}
       {/* What the next attack sends, said before it is sent: the as-is test read as a formality to two testers (16-nov). */}
+      {!busy && (stage === 'draft' || stage === 'scanned') && !recorded && readsAsEnglish(draft) === false && (
+        <p className="dock-note warn">
+          This post does not read as English. Throwaway’s fixed rules and fingerprint are tuned for English, so counts, dates and habits in other
+          languages are mostly not caught.
+        </p>
+      )}
       {!busy && stage === 'draft' && standIn && (
         <p className="dock-note warn">Without your own public writing, the attack will look for the sample writer, not you. Add yours under the post first.</p>
       )}
@@ -678,7 +695,7 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
             );
           })}
         </div>
-        <div className={`score ${final && !busy ? (inconclusive ? 'mute' : exposedNow ? 'bad' : 'good') : ''}`} aria-live="polite">
+        <div className={`score ${final && !busy ? (inconclusive || standIn ? 'mute' : exposedNow ? 'bad' : 'good') : ''}`} aria-live="polite">
           {busy === 'attack' || !final ? (
             <>
               <div className="big">{picks.length ? `${hits}/${picks.length}` : '?/10'}</div>
@@ -696,11 +713,21 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
             </>
           ) : (
             <>
-              <div key={attacks} className={`big stamp ${inconclusive ? '' : exposedNow ? 'bad' : 'good'}`}>
+              <div key={attacks} className={`big stamp ${inconclusive || standIn ? '' : exposedNow ? 'bad' : 'good'}`}>
                 {final.hits}/{final.answered}
               </div>
               <div>
-                <strong>{inconclusive ? 'Inconclusive: the cloud model was too busy' : exposedNow ? 'The attacker found you' : 'You are one of ten'}</strong>
+                <strong>
+                  {inconclusive
+                    ? 'Inconclusive: too few answers'
+                    : standIn
+                      ? exposedNow
+                        ? 'It picked the sample writer, not you'
+                        : 'It did not pick the sample writer'
+                      : exposedNow
+                        ? 'The attacker found you'
+                        : 'You are one of ten'}
+                </strong>
                 <p>
                   Chance level is 1 in 10.
                   {final.answered < final.attempts ? ` ${final.attempts - final.answered} attempts got no answer (model busy).` : ''}
@@ -716,22 +743,30 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
           <div className="reasons-box rise">
             <h3>The attacker’s reasons</h3>
             <ul className="reasons">
-              {verdict.reasons.map((r, i) => {
+              {shownReasons.map(({ r, notIn }, i) => (
                 // A quote that is not in the attacked text is the model citing another writer, or guessing: say so.
-                const notIn = quotesNotIn(r, attackedText);
-                return (
-                  <li key={`${r}-${i}`} className="rise" style={at(i + 1)}>
-                    {r}
-                    {notIn.length > 0 && (
-                      <em className="ungrounded">
-                        {' '}
-                        · {notIn.map((q) => `“${q}”`).join(', ')} {notIn.length > 1 ? 'are' : 'is'} not in the text it attacked
-                      </em>
-                    )}
-                  </li>
-                );
-              })}
+                <li key={`${r}-${i}`} className="rise" style={at(i + 1)}>
+                  {r}
+                  {notIn.length > 0 && (
+                    <em className="ungrounded">
+                      {' '}
+                      · {notIn.map((q) => `“${q}”`).join(', ')} {notIn.length > 1 ? 'are' : 'is'} not in the text it attacked
+                    </em>
+                  )}
+                </li>
+              ))}
             </ul>
+            {foldedReasons > 0 && (
+              <button className="mini reasons-more" onClick={() => setShowUngrounded(true)}>
+                {foldedReasons === 1 ? 'One more reason quotes' : `${foldedReasons} more reasons quote`} words that are not in the text: show
+              </button>
+            )}
+            {bySubject && (
+              <p className="hint subject-note">
+                Some of its reasons are about what you write about, not how you write. If the other nine writers are not from your field, start over and
+                pick a closer one; if they are, your subject alone gives you away.
+              </p>
+            )}
           </div>
         )}
       </section>

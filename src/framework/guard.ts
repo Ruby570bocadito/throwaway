@@ -93,13 +93,71 @@ export function locateEvidence(text: string, evidence: string): string | null {
     let k = 0;
     while (k < want.length && stream[s + k] === want[k]) k++;
     if (k < want.length) continue;
-    let a = owner[s];
-    let b = owner[s + want.length - 1];
-    while (a > 0 && /\S/u.test(chars[a - 1])) a--;
-    while (b < chars.length - 1 && /\S/u.test(chars[b + 1])) b++;
-    return chars.slice(a, b + 1).join('').trim();
+    return asWritten(chars, owner[s], owner[s + want.length - 1]);
   }
   return null;
+}
+
+const isLetter = (c: string) => canonicalLetters(c) !== '';
+/** A letter that joins its neighbours into a word (Latin, Greek, Cyrillic…); a Chinese character or a kana stands alone. */
+const joins = (c: string) => isLetter(c) && weightOf(c.codePointAt(0) ?? 0) === 1;
+const OPENING = /[\p{Ps}\p{Pi}"'¿¡]/u;
+const CLOSING = /[\p{Pe}\p{Pf}\p{Po}"']/u;
+
+/**
+ * Characters `a`..`b` of the text, as the user wrote them, in whole words. A word the match only clips at either end is
+ * left out: a letter of the edit can equal one of the original by chance ("sharply. Basically…" against "why. Basically…"),
+ * and quoting "sharply" told a tester to change a word they had just written (17-nov). The punctuation around the words
+ * stays. If no whole word is left, the match widened to whole words.
+ */
+function asWritten(chars: string[], a: number, b: number): string {
+  let s = a;
+  let e = b;
+  if (s > 0 && joins(chars[s - 1]) && joins(chars[s])) while (s <= e && joins(chars[s])) s++;
+  while (s <= e && !isLetter(chars[s])) s++;
+  if (e < chars.length - 1 && joins(chars[e + 1]) && joins(chars[e])) while (e >= s && joins(chars[e])) e--;
+  while (e >= s && !isLetter(chars[e])) e--;
+  if (s > e) {
+    s = a;
+    e = b;
+    while (s > 0 && /\S/u.test(chars[s - 1])) s--;
+    while (e < chars.length - 1 && /\S/u.test(chars[e + 1])) e++;
+    return chars.slice(s, e + 1).join('').trim();
+  }
+  while (s > 0 && OPENING.test(chars[s - 1])) s--;
+  while (e < chars.length - 1 && CLOSING.test(chars[e + 1])) e++;
+  return chars.slice(s, e + 1).join('').trim();
+}
+
+/**
+ * Every passage of `text` that still matches a private text, as written and widened to whole words, overlapping ones
+ * merged: all of them at once, so a person can fix an edit in one go. A test user's edit was refused four times in a row,
+ * one passage at a time (17-nov). Plain text only, like `locateEvidence`; on the user's screen only.
+ */
+export function keptPassages(text: string, max = 4): string[] {
+  const chars = Array.from(text);
+  const stream: string[] = [];
+  const owner: number[] = [];
+  chars.forEach((c, i) => {
+    for (const l of Array.from(canonicalLetters(c))) {
+      stream.push(l);
+      owner.push(i);
+    }
+  });
+  const ranges: [number, number][] = [];
+  for (const win of windows(stream.join(''))) {
+    if (!textWindows.has(win.key)) continue;
+    const last = ranges[ranges.length - 1];
+    if (last && win.start <= last[1]) last[1] = Math.max(last[1], win.end);
+    else ranges.push([win.start, win.end]);
+  }
+  const out: string[] = [];
+  for (const [s, e] of ranges) {
+    const passage = asWritten(chars, owner[s], owner[e - 1]);
+    if (passage && !out.includes(passage)) out.push(passage);
+    if (out.length >= max) break;
+  }
+  return out;
 }
 
 /** How many Latin letters a character is worth: a Chinese character carries about a word, a kana or Hangul syllable less. */
@@ -113,7 +171,7 @@ function weightOf(c: number): number {
  * Every window of `WINDOW` letters (weighted) in the canonical stream, as a 53-bit rolling hash (two polynomial hashes
  * mod 2^32). O(n), so a long prompt is cheap. Returns the hash and the window, lazily, for evidence.
  */
-function* windows(s: string): Generator<{ key: number; text: () => string }> {
+function* windows(s: string): Generator<{ key: number; start: number; end: number; text: () => string }> {
   const chars = Array.from(canonicalLetters(s));
   const code = chars.map((c) => c.codePointAt(0) ?? 0);
   const w = code.map(weightOf);
@@ -138,7 +196,7 @@ function* windows(s: string): Generator<{ key: number; text: () => string }> {
     if (weight < WINDOW) return;
     const start = i;
     const end = j;
-    yield { key: h1 + (h2 & 0x1fffff) * 4294967296, text: () => chars.slice(start, end).join('') };
+    yield { key: h1 + (h2 & 0x1fffff) * 4294967296, start, end, text: () => chars.slice(start, end).join('') };
     const len = j - i;
     h1 = (h1 - Math.imul(code[i], p1[len - 1])) >>> 0;
     h2 = (h2 - Math.imul(code[i], p2[len - 1])) >>> 0;
