@@ -46,6 +46,15 @@ export const isDeviceError = (e: unknown): boolean =>
 /** App Check could not vouch for this browser (a blocked reCAPTCHA, a throttled or rejected token): retrying does not help. */
 const isAppCheck = (e: unknown) => /app ?check|appCheck\//i.test(messageOf(e)) || String((e as { code?: unknown } | null)?.code ?? '').startsWith('appCheck/');
 
+/**
+ * A cloud answer withheld by the model's safety filters ("Candidate was blocked due to SAFETY", "Response was blocked").
+ * Asking the same model again does not help; a backup model, with filters of its own, may answer.
+ */
+export function isBlocked(e: unknown): boolean {
+  if (!e || isDeviceError(e)) return false;
+  return (e as { code?: unknown })?.code === 'response-error' && /\bblocked\b/i.test(messageOf(e));
+}
+
 export function isTemporary(e: unknown): boolean {
   if (!e || e instanceof PrivacyViolation || isDeviceError(e) || isAppCheck(e)) return false;
   if (e instanceof ModelTimeout) return e.where === 'cloud';

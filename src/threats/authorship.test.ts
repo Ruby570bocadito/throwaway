@@ -12,9 +12,11 @@ import {
   modifierNames,
   nameDetails,
   newSpecifics,
+  rewriteParts,
   quotesNotIn,
   ruleDetails,
   sample,
+  sentenceAround,
   shuffled,
 } from './authorship';
 import { ATTACK_AFTER, ATTACK_BEFORE, CONTENT_DETAILS, DECOYS, DRAFT, MARTA_PUBLIC, NANO_REWRITE_RECORDED, NANO_REWRITE_V3_RECORDED, REWRITE, SELF_ID } from '../demo/scenario';
@@ -108,6 +110,39 @@ describe('deterministic helpers', () => {
     const live = 'The tenure spanned what you wrote instead. A reorganization occurred in what you wrote instead. It went from what you wrote instead to two.';
     expect(looksBroken(live, NANO_REWRITE_RECORDED)).toBe(true);
     expect(looksBroken('I worked there for a few years. The team shrank a lot.', NANO_REWRITE_RECORDED)).toBe(false);
+  });
+  it('looksBroken: a long post may say “I do not” three times; a loop or a sentence said three times is broken (21-nov review)', () => {
+    const long = DECOYS.map((d) => d.corpus).join(' ');
+    expect(long.split(/\s+/).length).toBeGreaterThan(400);
+    expect(looksBroken(`${long} I do not agree. I do not mind. I do not care.`, '')).toBe(false);
+    expect(looksBroken(`${long} It shrank. The team the team the team was cut.`, '')).toBe(true);
+    const said = 'We were never told why it happened.';
+    const [first, ...rest] = long.split('. ');
+    expect(looksBroken(`${said} ${first}. ${said} ${rest.join('. ')} ${said}`, '')).toBe(true);
+    expect(looksBroken('La reestructuración fue dura. La reestructuración fue dura. La reestructuración fue dura.', '')).toBe(true);
+  });
+  it('sentenceAround finds the whole sentence a copied passage sits in', () => {
+    const text = 'First one. Honestly, management means well, but they do not listen — they announce. Last one.';
+    expect(sentenceAround(text, 'management means well, but they do not listen')).toEqual({ start: 11, end: 83, text: 'Honestly, management means well, but they do not listen — they announce.' });
+    expect(sentenceAround('No end here and then some', 'end here')?.text).toBe('No end here and then some');
+    expect(sentenceAround(text, 'not in the text')).toBeNull();
+    // A passage that ends its sentence does not take the next one with it.
+    const two = 'We shipped it with half the people and the same deadline. Honestly, they announce. Designers should think twice.';
+    expect(sentenceAround(two, 'people and the same deadline. Honestly, they announce.')?.text).toBe('We shipped it with half the people and the same deadline. Honestly, they announce.');
+  });
+  it('rewriteParts cuts a long post into its paragraphs, and a long paragraph between sentences, losing nothing', () => {
+    expect(rewriteParts(DRAFT)).toEqual([{ text: DRAFT, after: '' }]); // the sample is one part
+    expect(rewriteParts('One here.\n\nTwo there.')).toEqual([
+      { text: 'One here.', after: '\n\n' },
+      { text: 'Two there.', after: '' },
+    ]);
+    const sentence = (i: number) => `Sentence ${i} says something about the team and the deadline, at some length.`; // 13 words
+    const long = Array.from({ length: 30 }, (_, i) => sentence(i)).join(' ') + '\n\nA short closing paragraph.';
+    const parts = rewriteParts(long);
+    expect(parts.map((p) => p.text + p.after).join('')).toBe(long);
+    expect(parts.length).toBe(4); // 390 words in parts of 140 at most, then the closing paragraph
+    for (const p of parts) expect(p.text.split(/\s+/).length).toBeLessThanOrEqual(140);
+    expect(parts[parts.length - 1]).toEqual({ text: 'A short closing paragraph.', after: '' });
   });
 });
 
@@ -233,6 +268,76 @@ describe('rewrite: fixed rules first, then the style', () => {
   it('rejects a rewrite that repeats a new phrase (the live placeholder failure, “what you wrote instead”)', async () => {
     const broken = 'The tenure spanned what you wrote instead. A reorganization occurred in what you wrote instead. It went from what you wrote instead to two.';
     await expect(runWith(() => broken)).rejects.toThrow(/same phrase over and over/);
+  });
+
+  // A sentence of the draft that Gemini Nano may copy whole (it carries no detail, so the rules leave it as it is).
+  const COPIED = 'Honestly, management means well, but they do not listen — they announce.';
+  const AROUND = (middle: string) =>
+    'The organisation was a good place for years, but recent months were hard. After a restructuring the design team in the office shrank, ' +
+    `without explanation. We had to deliver the migration with fewer hands, on the original timeline. ${middle} Designers should think carefully.`;
+  const rewordScript = (reword: string, prompts: string[], claims: object[] = []) =>
+    nanoScript((prompt) => {
+      prompts.push(prompt);
+      if (prompt.startsWith('Rewrite the DRAFT')) return { rewrite: AROUND(COPIED) };
+      if (prompt.startsWith('Say this again')) return { rewrite: reword };
+      if (prompt.startsWith('Compare the ORIGINAL')) return { claims };
+      return {};
+    });
+  const sanitizeWith = (nano: ModelBackend) => {
+    const ledger = new Ledger();
+    const kit = { local: new LocalModel(nano, ledger), cloud: new CloudModel(nano, ledger), ledger };
+    const threat = threatFor();
+    const clues = CONTENT_DETAILS.map((d) => ({ ...d, kind: 'content' as const }));
+    return { ledger, threat, run: () => threat.sanitize(secret(DRAFT, 'draft'), clues, null, kit) };
+  };
+
+  it('rewords a sentence Gemini Nano copied word for word, instead of failing at release() (21-nov review)', async () => {
+    const prompts: string[] = [];
+    const { ledger, run } = sanitizeWith(rewordScript('Leaders mean well, yet they tell people things rather than ask them.', prompts));
+    const published = await run();
+    expect(published.value).toBe(AROUND('Leaders mean well, yet they tell people things rather than ask them.'));
+    const asked = prompts.filter((p) => p.startsWith('Say this again'));
+    expect(asked).toHaveLength(1);
+    expect(asked[0]).toContain(COPIED);
+    expect(ledger.all.map((e) => e.op)).toContain('Reword a copied sentence');
+    expect(ledger.bytesOut).toBe(0);
+  });
+
+  it('names the passage when Gemini Nano copies it again, instead of a bare “Blocked”', async () => {
+    const prompts: string[] = [];
+    const { run } = sanitizeWith(rewordScript(COPIED, prompts));
+    await expect(run()).rejects.toMatchObject({ name: 'UserFacingError', message: expect.stringMatching(/kept a passage of your post almost word for word.*management means well/) });
+    expect(prompts.filter((p) => p.startsWith('Say this again'))).toHaveLength(2);
+    expect(prompts.some((p) => p.startsWith('Compare the ORIGINAL'))).toBe(false); // no meaning check for a text that cannot be released
+  });
+
+  it('rewrites a long post part by part, keeping its paragraphs (?diag, 21-nov: in one go Nano dropped 60% of it)', async () => {
+    // Three paragraphs of 15 sentences of 16 words (240 words each): each is cut once, between sentences, so six parts.
+    const para = (topic: string) =>
+      Array.from({ length: 15 }, (_, i) => `About ${topic}, point ${'ABCDEFGHIJKLMNO'[i]} is a plain statement of what happened there in the end.`).join(' ');
+    const long = `${para('the team')}\n\n${para('the deadline')}\n\n${para('the managers')}`;
+    // "Nano" answers each part with as many words of its own (no word of the part, none twice).
+    const word = (n: number) => String.fromCharCode(97 + (n % 26)) + String.fromCharCode(97 + (Math.floor(n / 26) % 26)) + 'x';
+    const seen: string[] = [];
+    const nano = nanoScript((prompt) => {
+      if (prompt.startsWith('Rewrite the DRAFT')) {
+        const part = (prompt.split('DRAFT:\n')[1] ?? '').trim();
+        seen.push(part);
+        const n = part.split(/\s+/).length;
+        return { rewrite: Array.from({ length: n }, (_, k) => word(seen.length * 200 + k)).join(' ') + '.' };
+      }
+      return { claims: [] };
+    });
+    const ledger = new Ledger();
+    const kit = { local: new LocalModel(nano, ledger), cloud: new CloudModel(nano, ledger), ledger };
+    const published = await threatFor().sanitize(secret(long, 'draft'), [], null, kit);
+    expect(seen.length).toBe(6);
+    for (const s of seen) expect(s.split(/\s+/).length).toBeLessThanOrEqual(140);
+    const ops = ledger.all.map((e) => e.op).filter((o) => o.startsWith('Rewrite'));
+    expect(ops.slice().reverse()).toEqual([1, 2, 3, 4, 5, 6].map((i) => `Rewrite part ${i} of 6 on-device`));
+    // Nothing dropped, and the paragraph breaks are where they were.
+    expect(published.value.split(/\s+/).length).toBe(long.split(/\s+/).length);
+    expect(published.value.split('\n\n')).toHaveLength(3);
   });
 
   const ROTA = 'I was on a 24/7 on-call rota for most of my time there. It was exhausting and nobody listened to us.';

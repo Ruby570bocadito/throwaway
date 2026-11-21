@@ -29,16 +29,53 @@ export default function App() {
     };
   }, [ledger]);
 
+  // While Gemini Nano works, nothing may start a second call: Start over, the tabs and the switch wait (21-nov review).
+  const [deviceBusy, setDeviceBusy] = useState(false);
+  useEffect(() => kit.local.onActivity((busy) => setDeviceBusy(busy)), [kit]);
+
+  // Chrome is asked again on Start over, when you come back to this tab, and after a first step that failed: one slow
+  // answer at load (it was 10 s) left a whole visit without Gemini Nano (21-nov review). Never in the middle of a run.
   const [device, setDevice] = useState<Device>(firstDeviceGuess);
+  const labStarted = useRef(false);
+  const checkSeq = useRef(0);
+  const checkDevice = useCallback((timeoutMs?: number) => {
+    if (!('LanguageModel' in globalThis)) return;
+    const seq = ++checkSeq.current;
+    void deviceModelStatus(timeoutMs).then((s) => {
+      if (seq !== checkSeq.current) return; // a newer look answers instead
+      // A run never switches between "with Gemini Nano" and "without" halfway: that waits for Start over.
+      setDevice((prev) => (labStarted.current && (prev === 'unavailable') !== (s === 'unavailable') ? prev : s));
+    });
+  }, []);
+  const onStarted = useCallback(
+    (started: boolean) => {
+      const was = labStarted.current;
+      labStarted.current = started;
+      if (was && !started) checkDevice(); // a first step ended without moving on: is Gemini Nano still there?
+    },
+    [checkDevice],
+  );
   useEffect(() => {
-    deviceModelStatus().then(setDevice);
+    checkDevice(30_000);
+    let last = Date.now();
+    const lookAgain = () => {
+      if (document.visibilityState !== 'visible' || kit.local.busy || labStarted.current || Date.now() - last < 5000) return;
+      last = Date.now();
+      checkDevice();
+    };
+    document.addEventListener('visibilitychange', lookAgain);
+    window.addEventListener('focus', lookAgain);
     // Fetch the photo lab once the page has settled and the browser is idle (or as soon as someone reaches for its tab).
     const t = setTimeout(() => {
       if ('requestIdleCallback' in window) requestIdleCallback(() => void loadPhotoLab(), { timeout: 4000 });
       else void loadPhotoLab();
     }, 3000);
-    return () => clearTimeout(t);
-  }, []);
+    return () => {
+      clearTimeout(t);
+      document.removeEventListener('visibilitychange', lookAgain);
+      window.removeEventListener('focus', lookAgain);
+    };
+  }, [kit, checkDevice]);
 
   const [tab, setTab] = useState<Tab>('text');
   const [simulateNoNano, setSimulateNoNano] = useState(false);
@@ -71,10 +108,13 @@ export default function App() {
     kept.current = texts;
   }, []);
   const reset = () => {
+    if (kit.local.busy) return; // Gemini Nano is still on a step; the buttons that lead here are held meanwhile
     ledger.clear();
     clearTaint();
     setLeakMsg('');
+    labStarted.current = false;
     setLabKey((k) => k + 1);
+    checkDevice();
   };
   // Start over with your post kept and the box for your public writing open: without writing of your own, a tester could
   // not find where to add it, four rounds running (17-nov).
@@ -83,7 +123,7 @@ export default function App() {
     reset();
   };
   const switchTab = (t: Tab) => {
-    if (t !== tab) {
+    if (t !== tab && !kit.local.busy) {
       setTab(t);
       reset();
     }
@@ -106,7 +146,9 @@ export default function App() {
     kept: kept.current,
     keep,
     addWriting,
+    onStarted,
   };
+  const held = deviceBusy ? 'Gemini Nano is finishing a step on your device' : undefined;
   // "off (simulated)" meant nothing to a tester (17-nov).
   const nano = simulateNoNano ? 'off for this test' : device;
 
@@ -151,6 +193,8 @@ export default function App() {
               type="checkbox"
               role="switch"
               checked={simulateNoNano}
+              disabled={deviceBusy}
+              title={held}
               onChange={(e) => {
                 setSimulateNoNano(e.target.checked);
                 reset();
@@ -163,7 +207,14 @@ export default function App() {
       </div>
 
       <nav className="tabs" aria-label="Threats">
-        <button className={tab === 'text' ? 'on' : ''} aria-pressed={tab === 'text'} aria-label="Who wrote this? Text, stylometry" onClick={() => switchTab('text')}>
+        <button
+          className={tab === 'text' ? 'on' : ''}
+          aria-pressed={tab === 'text'}
+          aria-label="Who wrote this? Text, stylometry"
+          onClick={() => switchTab('text')}
+          disabled={deviceBusy}
+          title={held}
+        >
           <img src="/brand/huella-72.webp" width="36" height="36" alt="" />
           <span className="tab-text">
             <span className="tab-q">Who wrote this?</span>
@@ -175,6 +226,8 @@ export default function App() {
           aria-pressed={tab === 'photo'}
           aria-label="Where was this taken? Photo, geolocation"
           onClick={() => switchTab('photo')}
+          disabled={deviceBusy}
+          title={held}
           onPointerEnter={() => void loadPhotoLab()}
           onFocus={() => void loadPhotoLab()}
         >
@@ -225,7 +278,7 @@ export default function App() {
         <div className="dock" role="region" aria-label="Next step">
           <div className="dock-inner">
             <div className="dock-host" ref={mountDock} />
-            <button className="ghost restart" onClick={reset} aria-label="Start over">
+            <button className="ghost restart" onClick={reset} aria-label="Start over" disabled={deviceBusy} title={held}>
               <span aria-hidden="true">↺</span>
               <span className="restart-label">Start over</span>
             </button>

@@ -4,7 +4,7 @@
 // it is never told which one is the user.
 
 import {
-  listAt, ModelJsonError, parseModelJson, parseModelJsonLenient, PrivacyViolation, Private, Public, release, secret,
+  keptPassages, listAt, ModelJsonError, parseModelJson, parseModelJsonLenient, PrivacyViolation, Private, Public, release, secret,
   type JsonSchema, type Kit, type Publishable, type Threat,
 } from '../framework';
 
@@ -28,20 +28,48 @@ const notCovered = <T extends { phrase: string }>(rules: T[], flagged: { phrase:
   rules.filter((r) => !flagged.some((d) => hasPhrase(d.phrase, r.phrase) || hasPhrase(r.phrase, d.phrase)));
 
 /**
- * Deterministic guard: did a model write the same NEW 3-word phrase three or more times? Measured live (16-nov): Gemini
- * Nano copied a placeholder from our prompt ("what you wrote instead") into the text seven times.
+ * Deterministic guard: is a model's text broken by repetition? Measured live (16-nov): Gemini Nano copied a placeholder
+ * from our prompt ("what you wrote instead") into a short text seven times. Broken: a phrase the draft never had, back
+ * at least once every 40 words; the same words three times back to back; the same sentence three times. A long post
+ * that says "I do not" three times is not (21-nov review: any new phrase said three times used to count as a loop).
  */
 export function looksBroken(next: string, prev: string): boolean {
-  const grams = (s: string) => {
-    const w = s.toLowerCase().split(/[^a-z0-9']+/).filter(Boolean);
-    const out: string[] = [];
-    for (let i = 0; i + 2 < w.length; i++) out.push(`${w[i]} ${w[i + 1]} ${w[i + 2]}`);
-    return out;
-  };
-  const before = new Set(grams(prev));
+  const words = (s: string) => s.toLowerCase().split(/[^\p{L}\p{N}']+/u).filter(Boolean);
+  const grams = (w: string[]) => w.slice(2).map((_, i) => `${w[i]} ${w[i + 1]} ${w[i + 2]}`);
+  const w = words(next);
+  const before = new Set(grams(words(prev)));
   const counts = new Map<string, number>();
-  for (const g of grams(next)) if (!before.has(g)) counts.set(g, (counts.get(g) ?? 0) + 1);
-  return [...counts.values()].some((n) => n >= 3);
+  for (const g of grams(w)) if (!before.has(g)) counts.set(g, (counts.get(g) ?? 0) + 1);
+  if ([...counts.values()].some((n) => n >= 3 && n * 40 >= w.length)) return true;
+  for (let n = 2; n <= 8; n++) {
+    for (let i = 0; i + 3 * n <= w.length; i++) {
+      let same = true;
+      for (let k = 0; k < n && same; k++) same = w[i + k] === w[i + n + k] && w[i + k] === w[i + 2 * n + k];
+      if (same) return true;
+    }
+  }
+  const sentences = new Map<string, number>();
+  for (const s of next.split(/[.!?…\n]+/)) {
+    const key = words(s).join(' ');
+    if (key.split(' ').length >= 4) sentences.set(key, (sentences.get(key) ?? 0) + 1);
+  }
+  return [...sentences.values()].some((n) => n >= 3);
+}
+
+/** The sentence of `text` around `passage` (more than one if the passage spans them), and where it starts and ends. */
+export function sentenceAround(text: string, passage: string): { start: number; end: number; text: string } | null {
+  let at = text.indexOf(passage);
+  if (at < 0) at = text.toLowerCase().indexOf(passage.toLowerCase());
+  if (at < 0 || !passage) return null;
+  const head = text.slice(0, at).match(/^[\s\S]*[.!?…\n]\s*/);
+  const start = head ? head[0].length : 0;
+  let end = at + passage.length;
+  // A passage that already ends its sentence ends the span; otherwise the span runs to the end of the sentence.
+  if (!/[.!?…]["'”’)\]]*$/.test(passage)) {
+    const stop = /[.!?…]["'”’)\]]*(?=\s|$)|\n/.exec(text.slice(end));
+    end = !stop ? text.length : end + stop.index + (stop[0] === '\n' ? 0 : stop[0].length);
+  }
+  return { start, end, text: text.slice(start, end) };
 }
 
 // ── Deterministic generalisation: no model, the same result every time ─────────────────────────────────────────────
@@ -434,6 +462,8 @@ export function deterministicGeneralise(text: string, phrases: string[]): { text
   return { text: out, done };
 }
 
+// No limits in the schemas (maxItems, maxLength, minimum…): Chrome 157 fails on them with "UnknownError" (?diag, 21-nov).
+// And no quoted evidence per claim: it tripled the meaning check's time on the device (3 s to 9.6 s, ?diag, 21-nov).
 const MEANING_SCHEMA: JsonSchema = {
   type: 'object',
   properties: {
@@ -571,6 +601,38 @@ function readClaims(answer: string): RewriteInfo['claims'] {
   });
 }
 
+/**
+ * A post in parts for the rewrite: its paragraphs, and a paragraph longer than `max` words cut between sentences. Each
+ * part keeps what followed it (a space, or the paragraph break). Measured live (?diag, 21-nov): asked to rewrite a
+ * 515-word post in one go, Gemini Nano took 118 s and returned 202 words, 12 of its 28 claims gone; a part of 80 words
+ * takes 4 s and keeps its length.
+ */
+export function rewriteParts(text: string, max = 140): { text: string; after: string }[] {
+  const out: { text: string; after: string }[] = [];
+  const pieces = text.split(/(\n\s*\n)/);
+  for (let i = 0; i < pieces.length; i += 2) {
+    const para = pieces[i];
+    const brk = pieces[i + 1] ?? '';
+    if (!para.trim()) {
+      if (out.length) out[out.length - 1].after += para + brk;
+      continue;
+    }
+    const sentences = para.match(/[^.!?…]+(?:[.!?…]+["'”’)\]]*|$)\s*/g) ?? [para];
+    let part = '';
+    for (const s of sentences) {
+      const count = (t: string) => t.split(/\s+/).filter(Boolean).length;
+      if (part && count(part) + count(s) > max) {
+        out.push({ text: part.trimEnd(), after: part.slice(part.trimEnd().length) || ' ' });
+        part = '';
+      }
+      part += s;
+    }
+    const lead = part.trimEnd();
+    out.push({ text: lead, after: part.slice(lead.length) + brk });
+  }
+  return out;
+}
+
 export interface AuthorshipOptions {
   selfId: string;
   /** The user's own public writing (already public: their blog, their main account). */
@@ -661,8 +723,11 @@ export function authorshipThreat(o: AuthorshipOptions): Threat<string, Clue, Aut
     for (let attempt = 0; attempt < 2; attempt++) {
       const res = await kit.local.generate(
         [
-          'List details in this text that could identify its author: exact dates, places, team sizes, internal project names, tenure. ' +
-            'Return JSON {"details":[{"phrase":"exact substring","why":"short reason"}]}.\n\nTEXT:\n',
+          // Only what the filter below keeps (a name, a date, a number): asking for job titles and unusual events too made the
+          // answer three times as long, 12 s instead of 4, for details that were dropped anyway (?diag, 21-nov).
+          'List details in this text that could identify its author: names of people, places, companies, products and ' +
+            'internal projects; dates; durations; team sizes and other counts. Copy each phrase exactly as it is written, ' +
+            'with a reason of a few words.\n\nTEXT:\n',
           text,
         ],
         { json: true, schema: DETAILS_SCHEMA, op: attempt ? `${op} (again: unreadable answer)` : op },
@@ -689,6 +754,40 @@ export function authorshipThreat(o: AuthorshipOptions): Threat<string, Clue, Aut
     return { details: [] as { phrase: string; why: string }[], readable: false };
   }
 
+  /**
+   * release() refuses a text that still carries about 7 words in a row of the private draft, and Gemini Nano sometimes
+   * copies a sentence whole. Each sentence that does is put in other words on the device (two rounds at most), so a good
+   * rewrite is not thrown away at the very end (21-nov review). Returns what is still copied after that.
+   */
+  async function rewordKept(text: string, kit: Kit): Promise<{ text: string; reworded: number; stuck: string[] }> {
+    let out = text;
+    let reworded = 0;
+    for (let round = 0; round < 2; round++) {
+      const kept = keptPassages(out, 8);
+      if (!kept.length) break;
+      for (const passage of kept) {
+        const span = sentenceAround(out, passage);
+        if (!span) continue;
+        const res = await kit.local.generate(
+          [
+            'Say this again in other words, with the same meaning and in the same language. Do not reuse four or more words in ' +
+              'a row from it, and do not add names, places, dates or numbers.\n\nPASSAGE:\n',
+            span.text,
+          ],
+          { json: true, schema: REWRITE_SCHEMA, op: round ? 'Reword a copied sentence (again)' : 'Reword a copied sentence' },
+        );
+        const next = readRewrite(res.text);
+        if (!next || looksLikeRefusal(next, span.text) || next.length > 3 * span.text.length + 40) continue;
+        // Keep the spacing around the sentence as it was.
+        const lead = span.text.match(/^\s*/)?.[0] ?? '';
+        const trail = span.text.match(/\s*$/)?.[0] ?? '';
+        out = out.slice(0, span.start) + lead + next.trim() + trail + out.slice(span.end);
+        reworded++;
+      }
+    }
+    return { text: out, reworded, stuck: keptPassages(out, 4) };
+  }
+
   const threat = {
     id: 'authorship',
     question: 'Who wrote this?',
@@ -709,7 +808,11 @@ export function authorshipThreat(o: AuthorshipOptions): Threat<string, Clue, Aut
       const scan = hasWords(draft) ? await detectDetails(input, kit, 'Find identifying details') : { details: [], readable: true };
       const details = scan.details;
       const t1 = performance.now();
-      const extra = notCovered(ruleDetails(draft), details);
+      // Names with capitals too, as without a model: Gemini Nano does not answer the same way twice, and in one run it left
+      // "Lisbon office" out, so the rewrite could keep it (?diag, 21-nov).
+      const counts = ruleDetails(draft);
+      const names = nameDetails(draft).filter((n) => !counts.some((c) => hasPhrase(c.phrase, n.phrase)));
+      const extra = notCovered([...counts, ...names], details);
       kit.ledger.add({
         op: 'Find counts and dates (fixed rules)',
         route: 'local-js',
@@ -749,41 +852,79 @@ export function authorshipThreat(o: AuthorshipOptions): Threat<string, Clue, Aut
       const unhandled = details.filter((d) => hasPhrase(ruled.text, d.phrase));
 
       const habits = clues.filter((c) => c.kind === 'style').map((c) => c.phrase);
-      const prompt =
-        'Rewrite the DRAFT so its author cannot be identified by writing style. ' +
-        (habits.length ? `Remove these habits: ${habits.join(', ')}. ` : '') +
-        (unhandled.length ? `Generalise these details: ${unhandled.map((d) => d.phrase).join(', ')}. ` : '') +
-        (feedback?.reasons.length ? `An attacker still recognised the author because: ${feedback.reasons.join('; ')}. ` : '') +
-        'Keep every claim and opinion. Do not add names, places, dates or numbers. Use a neutral, plain register. ' +
-        'Return JSON {"rewrite":"..."}.\n\nDRAFT:\n';
+      const promptFor = (part: string) => {
+        const here = unhandled.filter((d) => hasPhrase(part, d.phrase));
+        return (
+          'Rewrite the DRAFT so its author cannot be identified by writing style. ' +
+          (habits.length ? `Remove these habits: ${habits.join(', ')}. ` : '') +
+          (here.length ? `Generalise these details: ${here.map((d) => d.phrase).join(', ')}. ` : '') +
+          (feedback?.reasons.length ? `An attacker still recognised the author because: ${feedback.reasons.join('; ')}. ` : '') +
+          // The answer's shape is fixed by the schema: an example in the prompt got copied (16-nov), so there is none. The
+          // answer comes back in English whatever is asked (?diag, 21-nov): the fixed rules are English too.
+          'Keep every claim and opinion. Do not add names, places, dates or numbers. Use a neutral, plain register and ' +
+          'sentences of your own: never copy five or more words in a row from the DRAFT.\n\nDRAFT:\n'
+        );
+      };
       const ruledDraft = secret(ruled.text, 'draft, details generalised');
-      // Gemini Nano does not answer the same way twice: an unreadable, looping or refused rewrite gets one more try.
+      // A long post goes part by part (see rewriteParts); the 80-word sample is one part.
+      const parts = rewriteParts(ruled.text);
       let text = '';
-      let problem: 'unreadable' | 'repeated' | 'refused' | null = null;
-      for (let attempt = 0; attempt < 2; attempt++) {
-        const res = await kit.local.generate([prompt, ruledDraft], {
-          json: true,
-          schema: REWRITE_SCHEMA,
-          op: attempt ? `Rewrite on-device (again: ${problem} answer)` : 'Rewrite on-device',
-        });
-        text = readRewrite(res.text);
-        problem = !text ? 'unreadable' : looksBroken(text, ruled.text) ? 'repeated' : looksLikeRefusal(text, ruled.text) ? 'refused' : null;
-        if (!problem) break;
+      for (const [i, part] of parts.entries()) {
+        const op = parts.length > 1 ? `Rewrite part ${i + 1} of ${parts.length} on-device` : 'Rewrite on-device';
+        const input = parts.length > 1 ? secret(part.text, 'part of the draft') : ruledDraft;
+        // Gemini Nano does not answer the same way twice: an unreadable, looping or refused rewrite gets one more try.
+        let out = '';
+        let problem: 'unreadable' | 'repeated' | 'refused' | null = null;
+        for (let attempt = 0; attempt < 2; attempt++) {
+          const res = await kit.local.generate([promptFor(part.text), input], {
+            json: true,
+            schema: REWRITE_SCHEMA,
+            op: attempt ? `${op} (again: ${problem} answer)` : op,
+          });
+          out = readRewrite(res.text);
+          problem = !out ? 'unreadable' : looksBroken(out, part.text) ? 'repeated' : looksLikeRefusal(out, part.text) ? 'refused' : null;
+          if (!problem) break;
+        }
+        // No "run it again" here: the UI's friendlyError already ends every message with "Try again."
+        if (problem === 'unreadable') throw new Error('The local model returned no rewrite it could read');
+        if (problem === 'repeated') throw new Error('The local model repeated the same phrase over and over');
+        if (problem === 'refused') throw new Error('The local model declined, or dropped most of the post');
+        text += out + part.after;
       }
-      // No "run it again" here: the UI's friendlyError already ends every message with "Try again."
-      if (problem === 'unreadable') throw new Error('The local model returned no rewrite it could read');
-      if (problem === 'repeated') throw new Error('The local model repeated the same phrase over and over');
-      if (problem === 'refused') throw new Error('The local model declined, or dropped most of the post');
+      text = text.trimEnd();
       for (const d of unhandled) if (!hasPhrase(text, d.phrase)) generalised.push({ phrase: d.phrase, generic: '', by: 'nano' });
 
       // Deterministic check of the final text, no model: no detail left, and nothing specific that the model added
       // (a number, a date or a name that was not in the draft it saw).
-      const t1 = performance.now();
-      const added = newSpecifics(text, ruled.text);
-      const fix = deterministicGeneralise(text, [...details.map((d) => d.phrase), ...added]);
-      text = fix.text;
       const listed = (p: string) => generalised.some((g) => g.phrase.toLowerCase() === p.toLowerCase());
-      generalised.push(...fix.done.filter((d) => !listed(d.phrase)).map((d) => ({ ...d, by: 'rule' as const })));
+      const added: string[] = [];
+      const checkFinal = (t: string) => {
+        added.push(...newSpecifics(t, ruled.text).filter((p) => !added.includes(p)));
+        const fix = deterministicGeneralise(t, [...details.map((d) => d.phrase), ...added]);
+        generalised.push(...fix.done.filter((d) => !listed(d.phrase)).map((d) => ({ ...d, by: 'rule' as const })));
+        return fix.text;
+      };
+      const t1 = performance.now();
+      text = checkFinal(text);
+      let checkMs = performance.now() - t1;
+
+      // Sentences copied almost word for word are put in other words now, instead of being refused at release().
+      const copied = await rewordKept(text, kit);
+      if (copied.reworded) {
+        const t2 = performance.now();
+        text = checkFinal(copied.text);
+        checkMs += performance.now() - t2;
+      }
+      if (copied.stuck.length) {
+        const quote = (p: string) => `“${p.length > 140 ? `${p.slice(0, 140)}…` : p}”`;
+        throw Object.assign(
+          new Error(
+            `Gemini Nano kept ${copied.stuck.length === 1 ? 'a passage' : `${copied.stuck.length} passages`} of your post almost word for word, ` +
+              `even when asked again: ${copied.stuck.map(quote).join(', ')}. Try the rewrite again: Gemini Nano words things differently each time.`,
+          ),
+          { name: 'UserFacingError' },
+        );
+      }
       const left = [
         ...details.filter((d) => hasPhrase(text, d.phrase)).map((d) => ({ phrase: d.phrase, why: d.why })),
         ...added.filter((p) => hasPhrase(text, p)).map((phrase) => ({ phrase, why: 'Added by the rewrite.' })),
@@ -791,7 +932,7 @@ export function authorshipThreat(o: AuthorshipOptions): Threat<string, Clue, Aut
       kit.ledger.add({
         op: 'Check the final text for details',
         route: 'local-js',
-        ms: Math.round(performance.now() - t1),
+        ms: Math.round(checkMs),
         bytesOut: 0,
         note: added.length ? `no model · generalised ${count(added.length, 'detail')} the rewrite added` : 'no model',
       });
@@ -803,8 +944,9 @@ export function authorshipThreat(o: AuthorshipOptions): Threat<string, Clue, Aut
       try {
         const m = await kit.local.generate(
           [
-            'Compare the ORIGINAL and the FINAL text. List each claim or opinion of the ORIGINAL, in generic words (no names, ' +
-              'places or numbers), and whether the FINAL text still makes it. Return JSON {"claims":[{"claim":"...","kept":true}]}.\n\nORIGINAL:\n',
+            // No example answer: '"kept":true' in it leaned every answer towards true (21-nov review).
+            'Compare the ORIGINAL and the FINAL text. List each claim or opinion of the ORIGINAL in generic words (no names, ' +
+              'places or numbers), and say whether the FINAL text still makes it.\n\nORIGINAL:\n',
             input,
             '\n\nFINAL:\n',
             text,

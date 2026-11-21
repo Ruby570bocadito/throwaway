@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CloudModel, isDeviceError, isTemporary, Ledger, LocalModel, ModelTimeout, publicData, type BusyEvent, type LedgerEntry, type ModelBackend } from '.';
+import { CloudModel, isBlocked, isDeviceError, isTemporary, Ledger, LocalModel, ModelTimeout, publicData, type BusyEvent, type LedgerEntry, type ModelBackend } from '.';
 import { ModelPool } from './fallback';
 
 // Gemini's own answers when it is busy (measured live, 16-nov) and when the request itself is wrong.
@@ -61,6 +61,38 @@ describe('a pool of cloud models', () => {
       }, fast),
     ).rejects.toThrow('[400]');
     expect(calls).toEqual(['main']);
+  });
+
+  // The SDK's error when a model's safety filter withholds its answer (AIError, code "response-error").
+  const blocked = () =>
+    Object.assign(new Error('AI: Response error: Candidate was blocked due to SAFETY. Response body stored in error.response (AI/response-error)'), {
+      code: 'response-error',
+    });
+
+  it('takes an answer blocked by the main model’s safety filter to the backup, once (21-nov review)', async () => {
+    const pool = new ModelPool([
+      { name: 'main', model: 'main' },
+      { name: 'backup', model: 'backup' },
+    ]);
+    const calls: string[] = [];
+    const r = await pool.run(async (m) => {
+      calls.push(m.model);
+      if (m.model === 'main') throw blocked();
+      return 'answer from backup';
+    }, fast);
+    expect(r.value).toBe('answer from backup');
+    expect(calls).toEqual(['main', 'backup']); // a block is not retried on the same model
+    expect(isBlocked(blocked())).toBe(true);
+    expect(isTemporary(blocked())).toBe(false);
+    expect(isBlocked(bad())).toBe(false);
+  });
+
+  it('says the main model’s block when the backup blocks it too', async () => {
+    const pool = new ModelPool([
+      { name: 'main', model: 'main' },
+      { name: 'backup', model: 'backup' },
+    ]);
+    await expect(pool.run(async () => Promise.reject(blocked()), fast)).rejects.toMatchObject({ code: 'response-error' });
   });
 
   it('skips a broken backup and reports the main model being busy, with every try counted for the ledger', async () => {

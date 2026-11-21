@@ -52,6 +52,8 @@ h1, h2, h3 { margin: 0; color: var(--ink); }
 .switch input:checked + .switch-track { background: var(--slate); }
 .switch input:checked + .switch-track::after { transform: translateX(12px); }
 .switch input:focus-visible + .switch-track { outline: 3px solid var(--slate); outline-offset: 2px; }
+.switch:has(input:disabled) { opacity: 0.5; cursor: not-allowed; }
+.switch input:disabled { cursor: not-allowed; }
 .nano { display: inline-flex; align-items: center; gap: 7px; font: 400 12px/1.2 var(--mono); }
 .nano.ok .dot { background: var(--green); }
 .nano.warn .dot { background: var(--amber); }

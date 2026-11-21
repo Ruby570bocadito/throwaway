@@ -1,6 +1,13 @@
-import { cloudTrouble, errorCode, isDeviceError, ModelTimeout, PrivacyViolation, type Kit } from '../framework';
+import { cloudTrouble, errorCode, isBlocked, isDeviceError, ModelTimeout, PrivacyViolation, type Kit } from '../framework';
 
 const short = (s: string, n = 140) => (s.length > n ? `${s.slice(0, n).trimEnd()}…` : s).replace(/\.$/, '');
+
+/** The DOMException name Chrome's Prompt API threw, on the error or on the error the SDK wrapped it in. */
+const deviceErrorName = (e: unknown): string => {
+  const own = (e as { name?: unknown } | null)?.name;
+  const cause = (e as { cause?: { name?: unknown } } | null)?.cause?.name;
+  return [own, cause].find((n): n is string => typeof n === 'string' && /^(QuotaExceeded|NotAllowed|NotSupported|InvalidState|Network)Error$/.test(n)) ?? '';
+};
 
 /**
  * What happened and what to do, in plain words, with a short error code a report can quote. A raw exception string is
@@ -20,7 +27,23 @@ export function friendlyError(e: unknown): string {
   const tail = code ? ` (Error ${code}.)` : '';
   // Gemini Nano, on this device: never "the cloud".
   if (e instanceof ModelTimeout && e.where === 'device') return `${e.message} Try again; if it keeps happening, restart Chrome.`;
-  if (isDeviceError(e)) return `Gemini Nano could not finish this step on your device: ${short(msg)}. Try again; if it keeps happening, restart Chrome.${tail}`;
+  if (isDeviceError(e)) {
+    // Chrome's Prompt API says why in the error's name: each has its own thing to do (21-nov review).
+    const why = deviceErrorName(e);
+    if (why === 'QuotaExceededError') return `This is too long for Gemini Nano on this device. Shorten it, then try again.${tail}`;
+    if (why === 'NotAllowedError')
+      return `Chrome did not let Gemini Nano start: it needs a click on this page and enough free disk space. Press the button again.${tail}`;
+    if (why === 'NotSupportedError')
+      return `Gemini Nano in this Chrome cannot read this input (its language, or an image). Update Chrome, or try a post in English.${tail}`;
+    if (why === 'InvalidStateError') return `Gemini Nano is not ready yet; it may still be downloading. Wait a minute, then try again.${tail}`;
+    if (why === 'NetworkError') return `Gemini Nano’s download stopped. Check your connection, then try again.${tail}`;
+    // The SDK's word for "Chrome says this model cannot run here" (for a photo: it may read text but not images).
+    if (code === 'api-not-enabled')
+      return `Gemini Nano cannot do this step in this Chrome. Turn on “Try it without Gemini Nano” to go on without it.${tail}`;
+    return `Gemini Nano could not finish this step on your device: ${short(msg)}. Try again; if it keeps happening, restart Chrome.${tail}`;
+  }
+  if (isBlocked(e))
+    return `Google’s AI would not read this version: its safety filter stopped it, and the backup model’s too. Put the harshest words more mildly, then try again.${tail}`;
   if (/app ?check|\b40[13]\b|permission_denied/i.test(msg))
     return `This browser could not prove it is the real app (App Check). If you use an ad or tracker blocker, allow reCAPTCHA on this site, then reload the page.${tail}`;
   switch (cloudTrouble(e)) {
@@ -51,8 +74,8 @@ export function ErrorNote({ message }: { message: string }) {
 
 export interface LabProps {
   kit: Kit;
-  /** The local backend, to prepare Gemini Nano from a user gesture when live; reports download progress (0–1). */
-  localBackend: { prepare?: (onProgress?: (p: number) => void) => Promise<void> };
+  /** The local backend, to prepare Gemini Nano from a user gesture when live (for images too, if asked); reports download progress (0–1). */
+  localBackend: { prepare?: (onProgress?: (p: number) => void, o?: { image?: boolean }) => Promise<void> };
   /** The dock fixed at the bottom of the screen, owned by the shell: each lab renders its actions there. */
   dock: HTMLElement | null;
   /** No local model: the lab must not run local inference and must not fall back to the cloud with private data. */
@@ -66,6 +89,8 @@ export interface LabProps {
   keep?: (texts: KeptTexts) => void;
   /** Start over with the texts kept and the box for your own public writing open. */
   addWriting?: () => void;
+  /** Told whether the lab is past its first step or working: the shell asks Chrome about Gemini Nano again only before. */
+  onStarted?: (started: boolean) => void;
 }
 
 export interface KeptTexts {

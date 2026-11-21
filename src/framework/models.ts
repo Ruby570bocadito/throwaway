@@ -120,7 +120,36 @@ export class LocalModel {
   get name() {
     return this.backend.name;
   }
-  async generate(parts: LocalPart[], opts: GenerateOptions): Promise<ModelResult> {
+  /**
+   * One call on the device at a time. The app could start a second prompt while the first was still running (Start over,
+   * a change of tab), and the SDK cannot cancel the first: two sessions then competed for the same model (21-nov review).
+   */
+  private queue: Promise<unknown> = Promise.resolve();
+  private pending = 0;
+  private listeners = new Set<(busy: boolean, failed: boolean) => void>();
+  /** Told when Gemini Nano starts working and when it is idle again (and whether its last call failed). */
+  onActivity(fn: (busy: boolean, failed: boolean) => void): () => void {
+    this.listeners.add(fn);
+    return () => {
+      this.listeners.delete(fn);
+    };
+  }
+  /** A call is running on the device, or waiting for its turn. */
+  get busy() {
+    return this.pending > 0;
+  }
+  generate(parts: LocalPart[], opts: GenerateOptions): Promise<ModelResult> {
+    if (this.pending++ === 0) this.listeners.forEach((fn) => fn(true, false));
+    const run = this.queue.then(() => this.run(parts, opts));
+    const settle = (failed: boolean) => () => {
+      if (--this.pending === 0) this.listeners.forEach((fn) => fn(false, failed));
+    };
+    this.queue = run.then(settle(false), settle(true));
+    return run;
+  }
+  private async run(parts: LocalPart[], opts: GenerateOptions): Promise<ModelResult> {
+    // Cancelled while it waited for its turn: it never reaches the device.
+    if (opts.signal?.aborted) throw opts.signal.reason ?? new DOMException('Cancelled', 'AbortError');
     const resolved = resolveLocal(parts);
     const t0 = performance.now();
     let res: ModelResult;

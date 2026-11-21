@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
-import { PrivacyViolation, release, secret, type Private, type Publishable } from '../framework';
+import { markDeviceError, PrivacyViolation, release, secret, type Private, type Publishable } from '../framework';
 import { browserImageOps, normalizeToPng, svgToPng } from '../engine/image';
 import { DEMO_TRUTH, SCENE_H, SCENE_SVG, SCENE_W } from '../demo/photo';
 import { GRID, isIdentifier, locationThreat, type LocationVerdict, type PhotoClue } from '../threats/location';
@@ -39,7 +39,7 @@ function useObjectUrl(bytes: Uint8Array | null) {
   return { url: bytes ? (state?.url ?? null) : null, current: !!bytes && state?.bytes === bytes };
 }
 
-export function PhotoLab({ kit, localBackend, degraded, registerLeak, recorded, dock }: LabProps) {
+export function PhotoLab({ kit, localBackend, degraded, registerLeak, recorded, dock, onStarted }: LabProps) {
   const [stage, setStage] = useState<Stage>('loading');
   const [original, setOriginal] = useState<Uint8Array | null>(null);
   const [published, setPublished] = useState<Publishable<Uint8Array> | null>(null);
@@ -53,6 +53,8 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak, recorded, 
   // While the attack waits on a busy cloud model, the dock says so (a retry, or a switch to a backup model).
   const [busyNote, clearBusyNote] = useCloudBusy(kit.cloud, busy === 'attack');
   const [busySince, setBusySince] = useState<number | null>(null);
+  const started = (stage !== 'loading' && stage !== 'photo') || busy !== '';
+  useEffect(() => onStarted?.(started), [started, onStarted]);
   const [download, setDownload] = useState<number | null>(null);
   const [rounds, setRounds] = useState(1);
   const [error, setError] = useState('');
@@ -249,7 +251,13 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak, recorded, 
   }
 
   const prepare = async () => {
-    if (localBackend.prepare) await localBackend.prepare((p) => setDownload(p)); // a user gesture: Chrome requires it, and it may download Gemini Nano
+    if (!localBackend.prepare) return;
+    // A user gesture: Chrome requires it, and it may download Gemini Nano. Its errors are the device's, never the cloud's.
+    try {
+      await localBackend.prepare((p) => setDownload(p), { image: true });
+    } catch (e) {
+      throw markDeviceError(e);
+    }
   };
 
   const scan = () =>

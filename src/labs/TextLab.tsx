@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { readsAsEnglish, styleMarkers, type Reliability } from '../engine/stylometry';
 import { DECOYS, DRAFT, MARTA_PUBLIC, SELF_ID } from '../demo/scenario';
 import { FIELD_IDS, FIELD_LABELS, type DecoyPackId } from '../demo/fields';
-import { keptPassages, PrivacyViolation, release, secret, type Private, type Publishable } from '../framework';
+import { keptPassages, markDeviceError, PrivacyViolation, release, secret, type Private, type Publishable } from '../framework';
 import {
   aboutSubject,
   deterministicGeneralise,
@@ -50,7 +50,8 @@ const SCAN_PLAN_NO_MODEL: PlanStep[] = [
 ];
 const REWRITE_PLAN: PlanStep[] = [
   { match: /^Fixed rules generalised/, label: 'Generalise the details', route: 'local-js', optional: true },
-  { match: /^Rewrite on-device/, label: 'Rewrite your style', route: 'on-device', slow: true },
+  // A long post is rewritten part by part: the step is done with its last part ("Rewrite part 8 of 8 on-device").
+  { match: /^Rewrite (?:on-device|part (\d+) of \1 on-device)/, label: 'Rewrite your style', route: 'on-device', slow: true },
   { match: /^Check the final text/, label: 'Check the final text for details', route: 'local-js' },
   { match: /^Meaning check/, label: 'Check that the meaning survived', route: 'on-device', slow: true },
 ];
@@ -99,7 +100,7 @@ function Highlighted({ text, marks }: { text: string; marks: { phrase: string; k
   );
 }
 
-export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, dock, kept, keep, addWriting }: LabProps) {
+export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, dock, kept, keep, addWriting, onStarted }: LabProps) {
   const [stage, setStage] = useState<Stage>('draft');
   // Your own post and public writing come back after "Start over" or the Gemini Nano switch (the shell keeps them in memory).
   const [draft, setDraft] = useState(() => (!recorded && kept?.draft) || DRAFT);
@@ -116,6 +117,8 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
   const [current, setCurrent] = useState<string | null>(null);
   const [busy, setBusy] = useState('');
   const [busySince, setBusySince] = useState<number | null>(null);
+  const started = stage !== 'draft' || busy !== '';
+  useEffect(() => onStarted?.(started), [started, onStarted]);
   // Gemini Nano download progress, the first time only (live).
   const [download, setDownload] = useState<number | null>(null);
   // Counts finished attacks, so each verdict lands with its own stamp.
@@ -276,7 +279,13 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
   }
 
   const prepare = async () => {
-    if (localBackend.prepare) await localBackend.prepare((p) => setDownload(p)); // a user gesture: Chrome requires it, and it may download Gemini Nano
+    if (!localBackend.prepare) return;
+    // A user gesture: Chrome requires it, and it may download Gemini Nano. Its errors are the device's, never the cloud's.
+    try {
+      await localBackend.prepare((p) => setDownload(p));
+    } catch (e) {
+      throw markDeviceError(e);
+    }
   };
 
   const scan = () =>
@@ -493,8 +502,8 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
       {/* What the next attack sends, said before it is sent: the as-is test read as a formality to two testers (16-nov). */}
       {!busy && (stage === 'draft' || stage === 'scanned') && !recorded && readsAsEnglish(draft) === false && (
         <p className="dock-note warn">
-          This post does not read as English. Throwaway’s fixed rules and fingerprint are tuned for English, so counts, dates and habits in other
-          languages are mostly not caught.
+          This post does not read as English. Throwaway is tuned for English: counts, dates and habits in other languages are mostly not caught,
+          and the rewrite comes back in English.
         </p>
       )}
       {!busy && stage === 'draft' && standIn && (

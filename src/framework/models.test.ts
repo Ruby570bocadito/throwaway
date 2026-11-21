@@ -36,3 +36,62 @@ describe('the ledger counts every byte that may have left', () => {
     expect(ledger.all[0]).toMatchObject({ route: 'on-device', bytesOut: 0, note: 'no answer (timed out after 300 s)' });
   });
 });
+
+describe('Gemini Nano runs one call at a time', () => {
+  const slowNano = () => {
+    let running = 0;
+    let most = 0;
+    const order: string[] = [];
+    const backend: ModelBackend = {
+      name: 'nano',
+      generate: async (_parts, opts) => {
+        running++;
+        most = Math.max(most, running);
+        order.push(`start ${opts.op}`);
+        await new Promise((r) => setTimeout(r, 5));
+        running--;
+        order.push(`end ${opts.op}`);
+        if (opts.op === 'fails') throw new Error('The model crashed.');
+        return { text: 'ok', source: 'on_device' };
+      },
+    };
+    return { backend, order, most: () => most };
+  };
+
+  it('a second call waits for the first, in order, even when the first fails', async () => {
+    const nano = slowNano();
+    const local = new LocalModel(nano.backend, new Ledger());
+    const calls = [local.generate(['a'], { op: 'fails' }), local.generate(['b'], { op: 'second' }), local.generate(['c'], { op: 'third' })];
+    const settled = await Promise.allSettled(calls);
+    expect(settled.map((s) => s.status)).toEqual(['rejected', 'fulfilled', 'fulfilled']);
+    expect(nano.most()).toBe(1);
+    expect(nano.order).toEqual(['start fails', 'end fails', 'start second', 'end second', 'start third', 'end third']);
+  });
+
+  it('says when it is busy and when it is idle again, and whether the last call failed', async () => {
+    const local = new LocalModel(slowNano().backend, new Ledger());
+    const seen: string[] = [];
+    const off = local.onActivity((busy, failed) => seen.push(busy ? 'busy' : failed ? 'idle after a failure' : 'idle'));
+    const one = local.generate(['a'], { op: 'one' });
+    const two = local.generate(['b'], { op: 'two' });
+    expect(local.busy).toBe(true);
+    await Promise.all([one, two]);
+    await local.generate(['c'], { op: 'fails' }).catch(() => undefined);
+    off();
+    await local.generate(['d'], { op: 'unheard' });
+    expect(seen).toEqual(['busy', 'idle', 'busy', 'idle after a failure']);
+    expect(local.busy).toBe(false);
+  });
+
+  it('a call cancelled while it waited never reaches the device', async () => {
+    const nano = slowNano();
+    const local = new LocalModel(nano.backend, new Ledger());
+    const stop = new AbortController();
+    const first = local.generate(['a'], { op: 'first' });
+    const waiting = local.generate(['b'], { op: 'cancelled', signal: stop.signal });
+    stop.abort();
+    await first;
+    await expect(waiting).rejects.toMatchObject({ name: 'AbortError' });
+    expect(nano.order).toEqual(['start first', 'end first']);
+  });
+});

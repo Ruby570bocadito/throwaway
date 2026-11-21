@@ -2,7 +2,7 @@
 // currently experiencing high demand" for a minute or more at a time, and a whole lineup attack failed with it. Another
 // model has its own capacity, so a busy call moves on to the next model instead of waiting on the same one.
 
-import { isTemporary, triesOf, withRetry, type RetryOptions } from './retry';
+import { isBlocked, isTemporary, triesOf, withRetry, type RetryOptions } from './retry';
 
 export interface PoolModel<M> {
   name: string;
@@ -88,9 +88,10 @@ export class ModelPool<M> {
       } catch (e) {
         tries += triesOf(e);
         firstError ??= e;
-        // A real error from the first model (a safety block, a bad request) is not the model being busy: say it. From a
-        // backup it is skipped like a busy one, and the caller hears the first model's error, which says more.
-        if ((!isTemporary(e) && i === 0) || o.signal?.aborted) throw stamp(e, tries);
+        // A real error from the first model (a bad request, App Check) is not the model being busy: say it. A safety block
+        // goes on to the backup, which has filters of its own (21-nov review). From a backup any error is skipped like a busy
+        // one, and the caller hears the first model's error, which says more.
+        if ((!isTemporary(e) && !isBlocked(e) && i === 0) || o.signal?.aborted) throw stamp(e, tries);
         this.busyUntil.set(m.name, now() + this.coolDownMs);
         if (!last) o.onBusy?.({ kind: 'switch', from: m.name, to: list[i + 1].name });
       }

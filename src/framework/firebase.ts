@@ -3,7 +3,9 @@
 
 import { initializeApp, type FirebaseApp, type FirebaseOptions } from 'firebase/app';
 import { CustomProvider, initializeAppCheck, ReCaptchaEnterpriseProvider } from 'firebase/app-check';
-import { getAI, getGenerativeModel, GoogleAIBackend, InferenceMode, type GenerateContentRequest, type GenerativeModel, type Part } from 'firebase/ai';
+import {
+  getAI, getGenerativeModel, GoogleAIBackend, InferenceMode, type GenerateContentRequest, type GenerativeModel, type LanguageModelCreateOptions, type Part,
+} from 'firebase/ai';
 import type { GenerateOptions, ModelBackend, ModelResult, ResolvedPart } from './models';
 import type { JsonSchema } from './json';
 import { ModelPool, type PoolModel } from './fallback';
@@ -33,6 +35,17 @@ export interface FirebaseHybridConfig {
 const CLOUD_RETRY: RetryOptions = { retries: 4, baseMs: 1000, maxDelayMs: 8000, budgetMs: 45_000, maxRetryAfterMs: 20_000 };
 const LOCAL_RETRY: RetryOptions = { retries: 0 };
 
+/**
+ * What a session on the device says it will read: text alone for a post, text and an image for a photo. The SDK's default
+ * asks for image input in every session (21-nov review), so a Chrome that reads text but not images could not rewrite a
+ * post. English, as the SDK's default; the prompts ask for answers in the language of the post.
+ */
+const deviceIO = (image: boolean): LanguageModelCreateOptions => ({
+  expectedInputs: image ? [{ type: 'text', languages: ['en'] }, { type: 'image' }] : [{ type: 'text', languages: ['en'] }],
+  expectedOutputs: [{ type: 'text', languages: ['en'] }],
+});
+type DeviceModelKind = { image: boolean; schema?: JsonSchema };
+
 function toBase64(bytes: Uint8Array) {
   let s = '';
   for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]);
@@ -46,33 +59,41 @@ class AILogicBackend implements ModelBackend {
   readonly name: string;
   /** One model on the device; in the cloud, the main model and its backups, in order. */
   private pool: ModelPool<GenerativeModel>;
-  /** On-device structured output is fixed per model instance (Chrome responseConstraint), so keep one per schema. */
-  private makeWithSchema?: (schema: JsonSchema) => GenerativeModel;
-  private bySchema = new Map<string, GenerativeModel>();
+  /**
+   * On the device, Chrome fixes what a session reads (text, or text and an image) and its structured output
+   * (responseConstraint) when the session is created: one model instance for each, made when first needed.
+   */
+  private makeOnDevice?: (kind: DeviceModelKind) => GenerativeModel;
+  private onDevice = new Map<string, GenerativeModel>();
   private where: 'cloud' | 'device';
   private timeoutMs: number;
   private retry: RetryOptions;
   constructor(
     name: string,
     models: PoolModel<GenerativeModel>[],
-    o: { where: 'cloud' | 'device'; timeoutMs: number; retry: RetryOptions; makeWithSchema?: (schema: JsonSchema) => GenerativeModel },
+    o: { where: 'cloud' | 'device'; timeoutMs: number; retry: RetryOptions; makeOnDevice?: (kind: DeviceModelKind) => GenerativeModel },
   ) {
     this.name = name;
     this.pool = new ModelPool(models);
     this.where = o.where;
     this.timeoutMs = o.timeoutMs;
     this.retry = o.retry;
-    this.makeWithSchema = o.makeWithSchema;
+    this.makeOnDevice = o.makeOnDevice;
+    // The pool's own model is the text-only one without a schema.
+    if (o.makeOnDevice) this.onDevice.set(keyOf({ image: false }), models[0].model);
   }
-  private modelFor(model: GenerativeModel, opts: GenerateOptions): GenerativeModel {
-    if (!opts.schema || !this.makeWithSchema) return model;
-    const key = JSON.stringify(opts.schema);
-    let m = this.bySchema.get(key);
+  private deviceModel(kind: DeviceModelKind): GenerativeModel {
+    const key = keyOf(kind);
+    let m = this.onDevice.get(key);
     if (!m) {
-      m = this.makeWithSchema(opts.schema);
-      this.bySchema.set(key, m);
+      m = this.makeOnDevice!(kind);
+      this.onDevice.set(key, m);
     }
     return m;
+  }
+  private modelFor(model: GenerativeModel, parts: ResolvedPart[], opts: GenerateOptions): GenerativeModel {
+    if (!this.makeOnDevice) return model;
+    return this.deviceModel({ image: parts.some((p) => 'image' in p), schema: opts.schema });
   }
   async generate(parts: ResolvedPart[], opts: GenerateOptions): Promise<ModelResult> {
     // In the cloud, structured output goes in generationConfig. On-device, the SDK ignores generationConfig and uses
@@ -90,24 +111,36 @@ class AILogicBackend implements ModelBackend {
     const { value: res, tries, model } = await this.pool.run(
       (m, remaining) => {
         const ms = Math.max(1000, Math.min(this.timeoutMs, remaining));
-        const gm = this.modelFor(m.model, opts);
-        return withTimeout((signal) => gm.generateContent(request, { signal }), ms, () => new ModelTimeout(this.where, ms), opts.signal);
+        const gm = this.modelFor(m.model, parts, opts);
+        return withTimeout(
+          async (signal) => {
+            const r = await gm.generateContent(request, { signal });
+            // Read inside the try: a blocked answer then reaches the backup model, as a busy one does (21-nov review).
+            return { text: r.response.text(), source: r.response.inferenceSource };
+          },
+          ms,
+          () => new ModelTimeout(this.where, ms),
+          opts.signal,
+        );
       },
       { ...this.retry, signal: opts.signal, onBusy: opts.onBusy },
     );
     const backup = model !== this.pool.models[0].name;
     return {
-      text: res.response.text(),
-      source: res.response.inferenceSource === 'on_device' ? 'on_device' : 'in_cloud',
+      text: res.text,
+      source: res.source === 'on_device' ? 'on_device' : 'in_cloud',
       tries,
       ...(backup ? { model, backup } : {}),
     };
   }
-  /** On-device models must be initialised from a user gesture. */
-  async prepare(onProgress?: (p: number) => void) {
-    await this.pool.models[0].model.initializeDeviceModel(onProgress);
+  /** On-device models must be initialised from a user gesture: the text one, or the one that also reads images. */
+  async prepare(onProgress?: (p: number) => void, o: { image?: boolean } = {}) {
+    const m = this.makeOnDevice ? this.deviceModel({ image: !!o.image }) : this.pool.models[0].model;
+    await m.initializeDeviceModel(onProgress);
   }
 }
+
+const keyOf = (kind: DeviceModelKind) => `${kind.image ? 'image' : 'text'} ${kind.schema ? JSON.stringify(kind.schema) : ''}`;
 
 let app: FirebaseApp | null = null;
 
@@ -127,21 +160,18 @@ export function firebaseHybrid(cfg: FirebaseHybridConfig) {
     initializeAppCheck(app, { provider, isTokenAutoRefreshEnabled: true });
   }
   const ai = getAI(app, { backend: new GoogleAIBackend() });
-  const local = new AILogicBackend(
-    'Gemini Nano (on-device)',
-    [{ name: 'gemini-nano', model: getGenerativeModel(ai, { mode: InferenceMode.ONLY_ON_DEVICE, inCloudParams: { model: cfg.cloudModel } }) }],
-    {
-      where: 'device',
-      timeoutMs: cfg.localTimeoutMs ?? 300_000,
-      retry: LOCAL_RETRY,
-      makeWithSchema: (schema) =>
-        getGenerativeModel(ai, {
-          mode: InferenceMode.ONLY_ON_DEVICE,
-          inCloudParams: { model: cfg.cloudModel },
-          onDeviceParams: { promptOptions: { responseConstraint: schema } },
-        }),
-    },
-  );
+  const onDevice = ({ image, schema }: DeviceModelKind) =>
+    getGenerativeModel(ai, {
+      mode: InferenceMode.ONLY_ON_DEVICE,
+      inCloudParams: { model: cfg.cloudModel },
+      onDeviceParams: { createOptions: deviceIO(image), ...(schema ? { promptOptions: { responseConstraint: schema } } : {}) },
+    });
+  const local = new AILogicBackend('Gemini Nano (on-device)', [{ name: 'gemini-nano', model: onDevice({ image: false }) }], {
+    where: 'device',
+    timeoutMs: cfg.localTimeoutMs ?? 300_000,
+    retry: LOCAL_RETRY,
+    makeOnDevice: onDevice,
+  });
   const cloudModels = [cfg.cloudModel, ...(cfg.cloudFallbackModels ?? []).filter((m) => m && m !== cfg.cloudModel)];
   const cloud = new AILogicBackend(
     `${cfg.cloudModel} (cloud)`,

@@ -104,10 +104,10 @@ function lazyFirebase(cfg: FirebaseHybridConfig) {
         throw e;
       }));
   setTimeout(() => void load().catch(() => undefined), 0);
-  const local: ModelBackend & { prepare: (onProgress?: (p: number) => void) => Promise<void> } = {
+  const local: ModelBackend & { prepare: (onProgress?: (p: number) => void, o?: { image?: boolean }) => Promise<void> } = {
     name: 'Gemini Nano (on-device)',
     generate: async (parts, opts) => (await load()).local.generate(parts, opts),
-    prepare: async (onProgress) => (await load()).local.prepare(onProgress),
+    prepare: async (onProgress, o) => (await load()).local.prepare(onProgress, o),
   };
   const cloud: ModelBackend = {
     name: `${cfg.cloudModel} (cloud)`,

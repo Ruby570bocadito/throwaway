@@ -119,7 +119,7 @@ describe('Gemini Nano answering badly', () => {
   ])('%s', async (_name, answer, expected) => {
     const { kit } = kitWith(() => answer);
     const clues = await threatFor().findClues(secret(POST, 'draft'), kit);
-    const flagged = clues.filter((c) => c.kind === 'content' && !c.why.includes('fixed rule'));
+    const flagged = clues.filter((c) => c.kind === 'content' && !/fixed rule/i.test(c.why));
     expect(flagged.map((c) => c.phrase)).toEqual(expected);
   });
 
@@ -131,8 +131,9 @@ describe('Gemini Nano answering badly', () => {
 
     const never = kitWith(() => 'I could not find anything.');
     const rulesOnly = await threatFor().findClues(secret(POST, 'draft'), never.kit);
-    expect(rulesOnly.filter((c) => c.kind === 'content').map((c) => c.phrase)).toEqual(['March', '6 people to 2']);
-    expect(never.kit.ledger.all[0].note).toBe("no model · Nano's answer was unreadable, the rules found 2");
+    // Counts, dates and, since 21-nov, names with a capital letter (Nano left "Lisbon office" out in a ?diag run).
+    expect(rulesOnly.filter((c) => c.kind === 'content').map((c) => c.phrase)).toEqual(['March', '6 people to 2', 'Lisbon']);
+    expect(never.kit.ledger.all[0].note).toBe("no model · Nano's answer was unreadable, the rules found 3");
   });
 
   it('a rewrite that is unreadable, a refusal or a loop gets one more try', async () => {

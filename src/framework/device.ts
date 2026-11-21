@@ -1,16 +1,17 @@
 /**
  * Chrome built-in model availability (read-only; inference still goes through Firebase AI Logic). No Firebase import here.
  * If Chrome does not answer within `timeoutMs`, the model counts as unavailable: the app then runs in degraded mode
- * (you edit, it attacks), which never sends private data anywhere, instead of waiting on a spinner.
+ * (you edit, it attacks), which never sends private data anywhere, instead of waiting on a spinner. The app's first look
+ * waits 30 s, and it looks again later (Chrome can be slow to answer right after it starts).
  */
 export async function deviceModelStatus(timeoutMs = 10_000): Promise<'available' | 'downloadable' | 'unavailable'> {
   const LM = (globalThis as unknown as { LanguageModel?: { availability: (o?: unknown) => Promise<string> } }).LanguageModel;
   if (!LM) return 'unavailable';
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
-    // Same expected inputs the AI Logic Chrome adapter uses by default (text + image).
+    // What the post's sessions ask for (see deviceIO in firebase.ts): text in English. A photo also needs image input.
     const s = await Promise.race([
-      LM.availability({ expectedInputs: [{ type: 'text' }, { type: 'image' }], expectedOutputs: [{ type: 'text' }] }),
+      LM.availability({ expectedInputs: [{ type: 'text', languages: ['en'] }], expectedOutputs: [{ type: 'text', languages: ['en'] }] }),
       new Promise<string>((resolve) => (timer = setTimeout(() => resolve('unavailable'), timeoutMs))),
     ]);
     if (s === 'available') return 'available';
