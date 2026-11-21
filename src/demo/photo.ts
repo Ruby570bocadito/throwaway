@@ -119,6 +119,14 @@ export const PHOTO_CLUES = [
   { cell: 1, kind: 'text', what: 'Japanese flag' },
 ];
 
+/** REAL readings of single cells of this scene by Gemini Nano, on-device in the author's Chrome (?diag, 21-nov). */
+export const SCENE_READS: Record<number, string[]> = {
+  2: [],
+  3: ['CARRER DE LA LLUM'],
+  7: ['23'],
+  8: ['FORN PASTISSERIA'],
+};
+
 export type GeoAnswer = {
   place: string;
   lat: number;
@@ -191,11 +199,20 @@ export const GEO_ATTACKS: Record<string, GeoAnswer> = {
   },
 };
 
-/** The recording for a set of masked cells: exact match, else the recording with the closest number of masked cells. */
+/**
+ * The recording for a set of masked cells: exact match, else the recording whose masked cells are most alike (shared
+ * cells over all cells). Since 21-nov trees are no longer masked, so "1,3,7,8" replays "1,3,7,8,12", not a recording that
+ * happened to mask four cells.
+ */
 export function recordedGeo(masked: number[]): GeoAnswer {
   const key = masked.length ? [...masked].sort((x, y) => x - y).join(',') : 'none';
   if (GEO_ATTACKS[key]) return GEO_ATTACKS[key];
-  const size = (k: string) => (k === 'none' ? 0 : k.split(',').length);
-  const best = Object.keys(GEO_ATTACKS).sort((x, y) => Math.abs(size(x) - masked.length) - Math.abs(size(y) - masked.length))[0];
+  const cells = (k: string) => (k === 'none' ? [] : k.split(',').map(Number));
+  const alike = (k: string) => {
+    const c = cells(k);
+    const shared = c.filter((x) => masked.includes(x)).length;
+    return shared / (new Set([...c, ...masked]).size || 1);
+  };
+  const best = Object.keys(GEO_ATTACKS).sort((x, y) => alike(y) - alike(x))[0];
   return GEO_ATTACKS[best];
 }

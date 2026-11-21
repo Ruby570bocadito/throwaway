@@ -64,8 +64,8 @@
               <small>detail · found on your device</small>
             </div>
             <div class="ev ev-map">
-              <p><s>215 m</s> <span class="ev-arrow">→</span> <strong>869 km</strong></p>
-              <small>the photo, after masking five cells</small>
+              <p><s>215 m</s> <span class="ev-arrow">→</span> <strong>10,559 km</strong></p>
+              <small>the photo, after hiding three cells</small>
             </div>
           </div>
           <div class="hero-copy">
@@ -151,8 +151,8 @@
               <p>times a cloud model picked the real author out of ten writers, before and after the rewrite on the device</p>
             </div>
             <div class="stat reveal">
-              <strong><span class="bad">215 m</span> → <span class="good" data-from="0.215">869 km</span></strong>
-              <p>how far off its guess of the photo was, before and after masking five cells on the device</p>
+              <strong><span class="bad">215 m</span> → <span class="good" data-from="0.215">10,559 km</span></strong>
+              <p>how far off its guess of the photo was, before and after hiding three cells on the device</p>
             </div>
             <div class="stat reveal">
               <strong><span data-from="0">6/6</span></strong>
@@ -205,15 +205,15 @@
               <h3 class="q">Where was this taken?</h3>
               <p>
                 A street plaque, a house number, a bakery sign through the window. As posted, a cloud model read all three and placed the demo selfie 215
-                metres from the spot. After Gemini Nano found the clues and your device pixelated them, it guessed Rome.
+                metres from the spot. After Gemini Nano found the clues and your device blurred them, it guessed Tokyo.
               </p>
               <figure class="polaroid">
                 <div class="scene" role="img" aria-label="Illustrated demo selfie at a window, with a street plaque, a house number and a bakery sign outside">
                   <p class="scene-fallback">Illustrated demo photo: a selfie at a window, with a street plaque, a house number and a bakery sign outside.</p>
                   <div class="grid4" aria-hidden="true">
-                    <span class="m"></span><span></span><span class="clue m" data-tag="plaque"></span><span></span>
+                    <span></span><span></span><span class="clue m" data-tag="plaque"></span><span></span>
                     <span></span><span></span><span class="clue m" data-tag="house no."></span><span class="clue m" data-tag="bakery sign"></span>
-                    <span></span><span></span><span></span><span class="m"></span>
+                    <span></span><span></span><span></span><span></span>
                     <span></span><span></span><span></span><span></span>
                   </div>
                 </div>
@@ -302,7 +302,7 @@
                   <span><strong>Find what identifies you.</strong> Gemini Nano with <code>ONLY_ON_DEVICE</code>: names, places, dates and counts in a text; plaques, signs and plates in a photo.</span>
                 </li>
                 <li data-n="4">
-                  <span><strong>Fix it.</strong> Fixed rules generalise the details, then Gemini Nano rewrites your style and checks the meaning. Photos are pixelated cell by cell.</span>
+                  <span><strong>Fix it.</strong> Fixed rules generalise the details, then Gemini Nano rewrites your style and checks the meaning. In a photo, the cells with a clue are blurred, around the faces.</span>
                 </li>
               </ol>
             </div>
@@ -427,7 +427,7 @@
             <li>Stylometry on short texts is noisy. The local score is a signal, not proof.</li>
             <li>The meaning check runs on a small local model and is lenient. Read the final text before you post it.</li>
             <li>Names and places are caught only when Gemini Nano flags them. Counts and dates are always generalised.</li>
-            <li>Pixelation hides what a model can read today. Cropping is safer.</li>
+            <li>Blurring hides what a model can read today. Cropping is safer.</li>
             <li>A provider that sees many attempts could intersect lineups, since you are the one constant. Throwaway limits attempts.</li>
           </ul>
         </div>

@@ -8,8 +8,41 @@ import { errorCode, Ledger, LocalModel, PrivacyViolation, secret, type LedgerEnt
 import { buildAuthorship, buildKit, isLive } from '../kit';
 import { DRAFT } from '../demo/scenario';
 import { DEMO_TRUTH, SCENE_H, SCENE_SVG, SCENE_W } from '../demo/photo';
-import { browserImageOps, svgToPng } from '../engine/image';
-import { locationThreat } from '../threats/location';
+import { BENCH, type BenchPhoto, type Box } from '../demo/bench';
+import { browserImageOps, normalizeToPng, svgToPng } from '../engine/image';
+import { coverage, locationThreat, type Rect } from '../threats/location';
+
+/** One photo of the bench, after Gemini Nano scanned it and the app hid what it found. */
+interface BenchResult {
+  photo: BenchPhoto;
+  before?: string;
+  after?: string;
+  /** How much of each face and each identifier ended up hidden (0–1). */
+  faces: number[];
+  identifiers: number[];
+  share: number;
+  cells: number[];
+  clues: string[];
+  left: string[];
+  /** The faces the detector found (fractions of the photo), and which of the faces marked by hand it found. */
+  detected: Box[];
+  found: boolean[];
+  facesMs?: number;
+  facesError?: string;
+  /** Whether Gemini Nano scanned it and it was masked (not without Gemini Nano). */
+  masked: boolean;
+  /** Each scan of Gemini Nano as it came (cell kind what), to see where two scans agree. */
+  scans: string[];
+  /** What Gemini Nano read in each cell it was asked to read up close, as it came. */
+  reads: string[];
+  ms: number;
+  error?: string;
+}
+
+// The demo scene goes through the bench too: its scan is what the recorded run replays.
+const DEMO_SCENE: BenchPhoto = { name: 'demo-scene', place: 'the demo scene (Palma), not marked by hand', faces: [], identifiers: [] };
+const pct = (x: number) => `${Math.round(x * 100)}%`;
+const boxStyle = ([x, y, w, h]: Box) => ({ left: pct(x), top: pct(y), width: pct(w), height: pct(h) });
 
 type Status = 'run' | 'ok' | 'warn' | 'fail' | 'skip';
 type SectionId = 'browser' | 'chrome' | 'nano' | 'app';
@@ -202,7 +235,8 @@ export default function Diagnostics() {
   const rows = useRef(new Map<string, Row>());
   const problems = useRef<Problem[]>([]);
   const ledgerRows = useRef<LedgerEntry[]>([]);
-  const answers = useRef<{ op: string; ms: number; chars: number; blank: number }[]>([]);
+  const answers = useRef<{ op: string; ms: number; chars: number; blank: number; text?: string }[]>([]);
+  const bench = useRef<BenchResult[]>([]);
   const [, redraw] = useReducer((n: number) => n + 1, 0);
   const [running, setRunning] = useState(false);
   const [ran, setRan] = useState(false);
@@ -303,6 +337,11 @@ export default function Diagnostics() {
         );
       }
       setCurrent('');
+      // /app/?diag=photos starts the photo bench by itself: one link to open, nothing to find on the page.
+      if (new URLSearchParams(location.search).get('diag') === 'photos') {
+        document.getElementById('dg-bench')?.scrollIntoView({ block: 'start' });
+        await runBench();
+      }
     })();
     return () => {
       removeEventListener('error', onError);
@@ -332,6 +371,114 @@ export default function Diagnostics() {
     } finally {
       setRunning(false);
       setRan(true);
+      setCurrent('');
+    }
+  }
+
+  /**
+   * The photo bench: each photo through the app's own photo steps (the face detector, Gemini Nano's scan, the masking),
+   * then measured against what was marked by hand: which faces the detector found, how much of each face and of each
+   * identifier ended up hidden, and how much of the photo. Without Gemini Nano only the faces are checked. No attack:
+   * nothing goes to the cloud here.
+   */
+  async function runBench() {
+    if (!isLive()) return;
+    bench.current.forEach((b) => [b.before, b.after].forEach((u) => u && URL.revokeObjectURL(u)));
+    bench.current = [];
+    problems.current = problems.current.filter((p) => !p.step.startsWith('Photo '));
+    setRunning(true);
+    setSince(Date.now());
+    setNow(Date.now());
+    const ledger = new Ledger();
+    const built = buildKit(ledger);
+    const nano = built.backends.local as ModelBackend & { prepare?: (onProgress?: (p: number) => void, o?: { image?: boolean }) => Promise<void> };
+    const said: { op: string; text: string }[] = [];
+    const measured: ModelBackend = {
+      name: nano.name,
+      generate: async (parts, opts) => {
+        const r = await nano.generate(parts, opts);
+        said.push({ op: opts.op, text: r.text });
+        return r;
+      },
+    };
+    const kit = { ...built.kit, local: new LocalModel(measured, ledger) };
+    try {
+      setCurrent('Preparing Gemini Nano for photos');
+      let withNano = true;
+      try {
+        await nano.prepare?.(undefined, { image: true });
+      } catch (e) {
+        problem('Photo bench: prepare Gemini Nano (only the faces are checked)', e);
+        withNano = false;
+      }
+      const photos = [...BENCH, DEMO_SCENE];
+      for (const [i, photo] of photos.entries()) {
+        setCurrent(`Photo ${i + 1} of ${photos.length}: ${photo.name}`);
+        const t0 = performance.now();
+        said.length = 0;
+        const result: BenchResult = { photo, faces: [], identifiers: [], share: 0, cells: [], clues: [], left: [], detected: [], found: [], masked: false, scans: [], reads: [], ms: 0 };
+        try {
+          const blob =
+            photo === DEMO_SCENE
+              ? new Blob([(await svgToPng(SCENE_SVG, SCENE_W, SCENE_H)).slice()], { type: 'image/png' })
+              : await (await fetch(`/bench/${photo.name}.webp`)).blob();
+          const { png, width, height } = await normalizeToPng(blob);
+          result.before = URL.createObjectURL(new Blob([png.slice()], { type: 'image/png' }));
+          const px = ([x, y, w, h]: Box): Rect => ({ x: x * width, y: y * height, w: w * width, h: h * height });
+          // The detector alone first: it needs no Gemini Nano, so this part runs in any browser.
+          const t1 = performance.now();
+          try {
+            const heads = await browserImageOps.faces(png);
+            result.facesMs = performance.now() - t1;
+            result.detected = heads.map((r) => [r.x / width, r.y / height, r.w / width, r.h / height] as Box);
+            result.found = photo.faces.map((b) => coverage(heads, px(b)) >= 0.5);
+          } catch (e) {
+            result.facesError = `${describe(e).name}: ${describe(e).message}`;
+            problem(`Photo ${photo.name}: face detector`, e, performance.now() - t1);
+          }
+          if (withNano) {
+            const secretPhoto = secret(png, `bench photo ${photo.name}`);
+            const threat = locationThreat({ ops: browserImageOps });
+            const clues = await threat.findClues(secretPhoto, kit);
+            result.clues = clues.map((c) => `${c.cell} ${c.kind} (${clip(c.what, 30)})`);
+            try {
+              const out = await threat.sanitize(secretPhoto, clues, null, kit);
+              result.after = URL.createObjectURL(new Blob([out.value.slice()], { type: 'image/png' }));
+            } catch (e) {
+              if (!/^Nothing to mask/.test((e as Error).message)) throw e;
+            }
+            const hidden = threat.regions.map((g) => g.rect);
+            result.faces = photo.faces.map((b) => coverage(hidden, px(b)));
+            result.identifiers = photo.identifiers.map((d) => coverage(hidden, px(d.box)));
+            result.share = threat.maskedShare;
+            result.cells = threat.masked;
+            result.left = threat.leftVisible.map((c) => `${c.cell} ${c.kind} (${clip(c.what, 30)})`);
+            result.masked = true;
+            result.scans = said
+              .filter((x) => x.op.startsWith('Find location clues'))
+              .map((x) => {
+                try {
+                  const list = (JSON.parse(x.text) as { clues?: { cell?: unknown; kind?: unknown; what?: unknown }[] }).clues ?? [];
+                  return list.map((c) => `${String(c.cell)} ${String(c.kind)} (${clip(String(c.what ?? ''), 24)})`).join('; ');
+                } catch {
+                  return clip(x.text, 200);
+                }
+              });
+            result.reads = said
+              .filter((x) => x.op.startsWith('Read the text in cell'))
+              .map((x) => `${x.op.replace('Read the text in ', '')}: ${clip(x.text.replace(/\s+/g, ' '), 90)}`);
+            said.length = 0;
+          }
+        } catch (e) {
+          result.error = `${describe(e).name}: ${describe(e).message}`;
+          problem(`Photo ${photo.name}`, e, performance.now() - t0);
+        }
+        result.ms = performance.now() - t0;
+        bench.current = [...bench.current, result];
+        redraw();
+      }
+    } finally {
+      setRunning(false);
       setCurrent('');
     }
   }
@@ -546,6 +693,10 @@ export default function Diagnostics() {
   const all = [...rows.current.values()];
   const rowsOf = (s: SectionId) => all.filter((r) => r.section === s);
   const checked = all.filter((r) => r.section === 'nano' || r.section === 'app');
+  // The photos marked by hand (the demo scene is not): good when no face is touched and every identifier is hidden.
+  const benchMarked = bench.current.filter((b) => b.photo.faces.length || b.photo.identifiers.length);
+  const benchGood = benchMarked.filter((b) => !b.error && b.masked && b.faces.every((f) => f <= 0.05) && b.identifiers.every((x) => x >= 0.8)).length;
+  const benchFound = benchMarked.filter((b) => !b.facesError && b.found.every(Boolean)).length;
   const failed = checked.filter((r) => r.status === 'fail').length;
   const toLook = checked.filter((r) => r.status === 'warn').length;
 
@@ -564,6 +715,33 @@ export default function Diagnostics() {
     if (answers.current.length) {
       lines.push('', 'GEMINI NANO’S ANSWERS, AS THEY CAME');
       for (const a of answers.current) lines.push(`  ${a.op} · ${fmtMs(a.ms)} · ${a.chars.toLocaleString('en-US')} characters, ${a.blank.toLocaleString('en-US')} of them blank`);
+    }
+    if (bench.current.length) {
+      lines.push('', 'PHOTOS WITH PEOPLE');
+      for (const b of bench.current) {
+        if (b.error) {
+          lines.push(`  ✗ ${b.photo.name}: ${b.error} (${fmtMs(b.ms)})`);
+          continue;
+        }
+        const detector = b.facesError ?? `${b.detected.length} found in ${fmtMs(b.facesMs ?? 0)}, ${b.found.filter(Boolean).length} of ${b.found.length} marked faces`;
+        if (!b.masked) {
+          lines.push(`  ${b.found.every(Boolean) && !b.facesError ? '✓' : '!'} ${b.photo.name}: face detector ${detector} (no Gemini Nano: not masked)`);
+          continue;
+        }
+        const touched = b.faces.filter((f) => f > 0.05).length;
+        const good = touched === 0 && b.identifiers.every((x) => x >= 0.8);
+        const ids = b.photo.identifiers.map((d, i) => `${d.what} ${pct(b.identifiers[i])}`).join(', ');
+        lines.push(
+          `  ${good ? '✓' : '!'} ${b.photo.name}: ${pct(b.share)} hidden${b.cells.length ? ` (cells ${b.cells.join(', ')})` : ''} · faces touched ${touched} of ${b.faces.length}` +
+            `${b.faces.some((f) => f > 0) ? ` (${b.faces.map(pct).join(', ')})` : ''} · ${ids ? `hidden: ${ids}` : 'nothing to hide'} · ${fmtMs(b.ms)}`,
+        );
+        lines.push(`      clues: ${b.clues.join('; ') || 'none'}${b.left.length ? ` · left visible: ${b.left.join('; ')}` : ''}`);
+        b.scans.forEach((x, i) => lines.push(`      scan ${i + 1}: ${x || 'nothing'}`));
+        if (b.reads.length) lines.push(`      read up close: ${b.reads.join(' · ')}`);
+        lines.push(
+          `      face detector: ${b.facesError ?? `${b.detected.length} found in ${fmtMs(b.facesMs ?? 0)}, ${b.found.filter(Boolean).length} of ${b.found.length} marked faces`}`,
+        );
+      }
     }
     lines.push('', problems.current.length ? `ERRORS (${problems.current.length})` : 'ERRORS: none');
     for (const p of grouped(problems.current)) {
@@ -605,6 +783,9 @@ export default function Diagnostics() {
           <button className="dg-btn primary" onClick={runAll} disabled={running}>
             {running ? 'Checking…' : ran ? 'Run it again' : 'Run the check'}
           </button>
+          <button className="dg-btn primary" onClick={runBench} disabled={running || !isLive()}>
+            {bench.current.length ? 'Test the photos again' : 'Test the photos'}
+          </button>
           <button className="dg-btn" onClick={copy}>
             {copied ? 'Copied' : 'Copy report'}
           </button>
@@ -612,11 +793,15 @@ export default function Diagnostics() {
         <p className="dg-status" role="status">
           {running
             ? `${current || 'Starting'} · ${Math.max(0, Math.round((now - since) / 1000))} s`
-            : ran
-              ? failed || toLook
-                ? `${failed} failed, ${toLook} to look at. Copy the report and send it.`
-                : `All ${checked.length} checks passed.`
-              : 'Takes 2 to 6 minutes. Keep this tab in front while it runs.'}
+            : benchMarked.length
+              ? benchMarked.some((b) => b.masked)
+                ? `${benchGood} of ${benchMarked.length} photos with no face touched and every clue hidden. Copy the report and send it.`
+                : `Without Gemini Nano, only faces: the detector found every marked face in ${benchFound} of ${benchMarked.length} photos.`
+              : ran
+                ? failed || toLook
+                  ? `${failed} failed, ${toLook} to look at. Copy the report and send it.`
+                  : `All ${checked.length} checks passed.`
+                : 'Each takes 2 to 6 minutes. Keep this tab in front while it runs.'}
         </p>
       </header>
 
@@ -663,6 +848,58 @@ export default function Diagnostics() {
           </ul>
         </section>
       )}
+
+      <section className="dg-card" aria-labelledby="dg-bench">
+        <h2 id="dg-bench">Photos with people</h2>
+        <p className="dg-note">
+          Eight made-up photos through the app’s photo steps, on this device. After: faces in green (red if anything hid part of one), what gives the place
+          away in red (green once hidden).
+        </p>
+        <div className="dg-actions">
+          <button className="dg-btn" onClick={runBench} disabled={running || !isLive()}>
+            {bench.current.length ? 'Test the photos again' : 'Test the photos (about 3 min)'}
+          </button>
+        </div>
+        {bench.current.length > 0 && (
+          <ul className="dg-bench">
+            {bench.current.map((b) => {
+              const touched = b.faces.filter((f) => f > 0.05).length;
+              const missed = b.identifiers.filter((x) => x < 0.8).length;
+              return (
+                <li key={b.photo.name} className={`dg-shot ${b.error ? 'fail' : touched || missed ? 'warn' : 'ok'}`}>
+                  <div className="dg-pair">
+                    {[b.before, b.after ?? b.before].map((url, k) => (
+                      <figure key={k}>
+                        {url && <img src={url} alt="" />}
+                        {k === 0 && b.detected.map((f, i) => <span key={`g${i}`} className="dg-box found" style={boxStyle(f)} />)}
+                        {k === 1 &&
+                          b.photo.faces.map((f, i) => <span key={`f${i}`} className={`dg-box face ${b.faces[i] > 0.05 ? 'hit' : ''}`} style={boxStyle(f)} />)}
+                        {k === 1 &&
+                          b.photo.identifiers.map((d, i) => (
+                            <span key={`d${i}`} className={`dg-box id ${b.identifiers[i] >= 0.8 ? 'done' : ''}`} style={boxStyle(d.box)} />
+                          ))}
+                        <figcaption>{k === 0 ? 'Before, with the faces the detector found' : b.after ? 'After' : b.masked ? 'Nothing hidden' : 'Not masked (no Gemini Nano)'}</figcaption>
+                      </figure>
+                    ))}
+                  </div>
+                  <p className="dg-shot-name">
+                    <strong>{b.photo.name}</strong> · {b.photo.place}
+                  </p>
+                  <p className="dg-shot-facts">
+                    {b.error
+                      ? b.error
+                      : `faces found: ${b.facesError ? 'detector failed' : `${b.found.filter(Boolean).length} of ${b.found.length}`}` +
+                        (b.masked
+                          ? ` · ${pct(b.share)} hidden · faces touched: ${touched} of ${b.faces.length} · identifiers hidden: ${b.identifiers.length - missed} of ${b.identifiers.length}`
+                          : '') +
+                        ` · ${fmtMs(b.ms)}`}
+                  </p>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </section>
 
       {ledgerRows.current.length > 0 && (
         <section className="dg-card" aria-labelledby="dg-ledger">

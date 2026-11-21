@@ -34,3 +34,6 @@ dist-ssr
 
 # local test photos (served by the dev server only, never built or committed)
 test-photos/
+
+# MediaPipe WebAssembly, copied from node_modules before dev and build (scripts/copy-mediapipe.mjs)
+public/mediapipe/wasm-*/

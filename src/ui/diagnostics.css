@@ -79,6 +79,23 @@
   overflow-wrap: anywhere;
 }
 
+.dg-bench { margin: 14px 0 0; padding: 0; list-style: none; display: grid; gap: 18px; }
+.dg-shot { display: grid; gap: 6px; padding-top: 14px; border-top: 1px solid var(--line); }
+.dg-shot:first-child { padding-top: 0; border-top: 0; }
+.dg-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; align-items: start; }
+.dg-pair figure { position: relative; margin: 0; }
+.dg-pair img { display: block; width: 100%; height: auto; border-radius: var(--r-xs); }
+.dg-pair figcaption { margin-top: 4px; font: 400 12px/1.4 var(--mono); color: var(--muted); }
+.dg-box { position: absolute; pointer-events: none; border-radius: 2px; }
+.dg-box.face { outline: 2px dashed #2b734c; }
+.dg-box.face.hit { outline: 3px solid var(--red); }
+.dg-box.id { outline: 2px dashed var(--red); }
+.dg-box.id.done { outline: 2px solid #2b734c; }
+.dg-shot-name { font-size: 14px; }
+.dg-shot-facts { font: 400 13px/1.5 var(--mono); color: var(--text); }
+.dg-shot.warn .dg-shot-facts { color: #8a5a10; }
+.dg-shot.fail .dg-shot-facts { color: var(--red); }
+
 @keyframes dg-pulse { from { opacity: 0.35; } to { opacity: 1; } }
 
 @media (max-width: 640px) {
@@ -90,3 +107,4 @@
 @media (prefers-reduced-motion: reduce) {
   .dg-row.run .dg-dot { animation: none; }
 }
+.dg-box.found { outline: 2px dashed #2f6fd0; }

@@ -11,6 +11,10 @@ beforeEach(() => clearTaint());
 const fakeOps: ImageOps = {
   withGrid: async (png) => new Uint8Array([...png, 250]),
   maskCells: async (png, cells) => new Uint8Array([...png, 251, ...cells]),
+  size: async () => ({ width: 400, height: 300 }),
+  faces: async () => [],
+  crop: async (png, r) => new Uint8Array([...png.slice(0, 8), 252, r.x % 251, r.y % 251]),
+  paint: async (png, regions) => new Uint8Array([...png, 253, ...regions.map((g) => g.cell)]),
 };
 const PHOTO = new Uint8Array(Array.from({ length: 64 }, (_, i) => (i * 37) % 251));
 
@@ -47,11 +51,13 @@ describe('local clue search with a small model', () => {
   it('keeps the most specific clue per cell across scans, so a street sign is not left visible behind a "facade"', async () => {
     const scan1 = JSON.stringify({ clues: [{ cell: 3, kind: 'architecture', what: 'facade' }, { cell: 5, kind: 'architecture', what: 'roofs' }] });
     const scan2 = JSON.stringify({ clues: [{ cell: 3, kind: 'sign', what: 'Street sign reading Rua Augusta' }] });
-    const kit = kitAnswering(scan1, scan2);
-    const threat = locationThreat({ ops: fakeOps, maxMaskedCells: 0 });
+    // Then Gemini Nano reads the cell up close: the street name is there.
+    // The cells beside it, read too, show nothing.
+    const kit = kitAnswering(scan1, scan2, JSON.stringify({ texts: ['RUA AUGUSTA'] }), JSON.stringify({ texts: [] }));
+    const threat = locationThreat({ ops: fakeOps, maxMaskedShare: 0 });
     const clues = await threat.findClues(secret(PHOTO), kit);
     expect(clues).toEqual([
-      { cell: 3, kind: 'text', what: 'Street sign reading Rua Augusta' },
+      { cell: 3, kind: 'text', what: 'Street sign reading Rua Augusta', read: true, seen: ['RUA AUGUSTA'] },
       { cell: 5, kind: 'architecture', what: 'roofs' },
     ]);
     await threat.sanitize(secret(PHOTO), clues, null, kit);

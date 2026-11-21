@@ -3,7 +3,7 @@
 
 import { recordedBackend } from '../framework';
 import { ATTACK_AFTER, ATTACK_BEFORE, CLAIMS, CONTENT_DETAILS, LINEUP, REWRITE } from './scenario';
-import { PHOTO_CLUES, recordedGeo } from './photo';
+import { PHOTO_CLUES, recordedGeo, SCENE_READS } from './photo';
 
 /** Finds the lineup letter the prompt assigned to a candidate (the lineup is shuffled on every attempt). */
 function letterFor(prompt: string, id: string): string {
@@ -19,6 +19,11 @@ export function demoBackends() {
       // The five real details Gemini Nano found in the draft. Fixed rules generalise them before the rewrite.
       if (prompt.startsWith('List details')) return JSON.stringify({ details: CONTENT_DETAILS });
       if (prompt.startsWith('This photo')) return JSON.stringify({ clues: PHOTO_CLUES });
+      // REAL readings, cell by cell, by Gemini Nano in the author's Chrome (?diag photo bench, 21-nov).
+      if (prompt.startsWith('Write every piece of text')) {
+        const cell = Number(prompt.match(/cell (\d+) of a photo/)?.[1]);
+        return JSON.stringify({ texts: SCENE_READS[cell] ?? [] });
+      }
       if (prompt.startsWith('Rewrite the DRAFT')) return JSON.stringify({ rewrite: REWRITE });
       if (prompt.startsWith('Compare the ORIGINAL')) return JSON.stringify({ claims: CLAIMS.map((claim) => ({ claim, kept: true })) });
       return '{}';

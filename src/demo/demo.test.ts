@@ -1,6 +1,6 @@
 // Pins the recorded run (`?demo`) end to end. The video and the README quote these outcomes, so any change to the
 // framework, the rules or the stylometry must leave them exactly as they are: text 10/10 → 0/10, fingerprint #1 → #10,
-// photo Palma 215 m off (it claimed 0.5 km) → "Rome, Italy" after masking cells 1, 3, 7, 8, 12.
+// photo Palma 215 m off (it claimed 0.5 km) → "Tokyo, Japan" after hiding cells 3, 7, 8 (since 21-nov; it was Rome).
 
 import { beforeEach, describe, expect, it } from 'vitest';
 import { clearTaint, CloudModel, Ledger, LocalModel, publicData, redTeam, release, secret, type RedTeamEvent } from '../framework';
@@ -124,10 +124,14 @@ describe('recorded photo run (15/16-nov)', () => {
   const fakeOps: ImageOps = {
     withGrid: async (png) => new Uint8Array([...png, 250]),
     maskCells: async (png, cells) => new Uint8Array([...png, 251, ...cells]),
+  size: async () => ({ width: 400, height: 300 }),
+  faces: async () => [],
+  crop: async (png, r) => new Uint8Array([...png.slice(0, 8), 252, r.x % 251, r.y % 251]),
+  paint: async (png, regions) => new Uint8Array([...png, 253, ...regions.map((g) => g.cell)]),
   };
   const PHOTO = new Uint8Array(Array.from({ length: 64 }, (_, i) => (i * 37) % 251));
 
-  it('replays Palma 215 m off (claiming 0.5 km), then "Rome, Italy" after masking cells 1, 3, 7, 8, 12', async () => {
+  it('replays Palma 215 m off (claiming 0.5 km), then "Tokyo, Japan" after hiding the street name, number and shop sign', async () => {
     const kit = kitFor();
     const threat = locationThreat({ ops: fakeOps, truth: secret(DEMO_TRUTH, 'real location') });
     const events: RedTeamEvent<Uint8Array, PhotoClue, LocationVerdict>[] = [];
@@ -140,10 +144,11 @@ describe('recorded photo run (15/16-nov)', () => {
     expect(asIs.radiusKm).toBe(0.5);
     expect(threat.tier(asIs)).toBe('street');
     expect(threat.exposureReason(asIs)).toBe('readable');
-    expect(threat.masked).toEqual([1, 3, 7, 8, 12]);
-    expect(masked.place).toBe('Rome, Italy');
+    expect(threat.masked).toEqual([3, 7, 8]); // the poster in 1 has nothing to read, the tree in 12 only says the city
+    expect(masked.place).toBe('Tokyo, Japan');
     expect(masked.confidence).toBe('low');
-    expect(Math.round(masked.errorKm ?? 0)).toBe(869); // Palma → Rome, the figure the landing page and README quote
+    // Palma → Tokyo. The landing page and the README still quote Rome (869 km): they change with this photo work.
+    expect(Math.round(masked.errorKm ?? 0)).toBe(10559);
     expect(threat.tier(masked)).toBe('safe');
     expect(threat.leftVisible).toEqual([]);
   }, 30_000);

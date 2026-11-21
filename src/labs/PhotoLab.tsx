@@ -17,6 +17,8 @@ const STAGE_STEP: Record<Stage, number> = { loading: 0, photo: 0, scanned: 1, at
 const SCAN_PLAN: PlanStep[] = [
   { match: /^Find location clues \(scan 1/, label: 'Look for location clues · first pass', route: 'on-device', slow: true },
   { match: /^Find location clues \(scan 2/, label: 'Look again · second pass', route: 'on-device', slow: true },
+  // Then each cell said to show something readable is read up close (see readCell in threats/location.ts).
+  { match: /^Read the text in cell/, label: 'Read each clue up close', route: 'on-device', slow: true, optional: true },
 ];
 /** Time between two cells pixelating, one after another. */
 const PIX_STAGGER = 170;
@@ -296,10 +298,8 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak, recorded, 
     run('mask', async () => {
       const before = [...threat.masked];
       if (degraded) {
-        threat.masked = [...new Set([...threat.masked, ...manual])].sort((a, b) => a - b);
-        const bytes = await browserImageOps.maskCells(original!, threat.masked, GRID);
-        kit.ledger.add({ op: `Pixelate ${threat.masked.length} cells (your choice)`, route: 'local-js', ms: 40, bytesOut: 0 });
-        setPublished(release(bytes, `masked by the user: ${threat.masked.join(',')}`));
+        // The cells you picked, hidden around the faces like the ones Gemini Nano finds.
+        setPublished(await threat.hideCells(privatePhoto.current!, manual, kit));
         setManual([]);
       } else {
         await prepare();
@@ -316,12 +316,8 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak, recorded, 
   // and a tester could not tell which step came first (17-nov).
   const canPick = degraded && stage === 'attacked';
   const staleVerdict = stage === 'masked' && !busy && !!verdict;
-  // The budget is spent and the attacker only points at cells that are not identifiers: another round would add nothing.
-  const budgetFull =
-    !degraded &&
-    !!published &&
-    threat.masked.length >= threat.maxMasked &&
-    !(verdict?.clues ?? []).some((c) => isIdentifier(c) && !threat.masked.includes(c.cell));
+  // The budget is spent and the attacker only points at what is not an identifier: another round would add nothing.
+  const budgetFull = !degraded && !!published && threat.maskedShare >= threat.maxShare - 0.005 && !(verdict?.clues ?? []).some((c) => isIdentifier(c));
   const chosen = manual.filter((c) => !threat.masked.includes(c)).sort((x, y) => x - y);
   const maskLabel = !chosen.length
     ? 'Tap the cells to mask'
@@ -540,10 +536,12 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak, recorded, 
                     : 'No local model: first see what the attacker finds, then tap the cells to mask'}
               </h3>
               {canPick && verdict && chosen.length > 0 && (
-                <p className="hint">Already selected: the cells the attacker used. Tap a cell to add or remove it; “Mask” pixelates them on this device.</p>
+                <p className="hint">Already selected: the cells the attacker used. Tap a cell to add or remove it; “Mask” blurs them on this device, around the faces.</p>
               )}
               {visibleClues.length === 0 && !degraded ? (
-                <p className="good rise">{threat.masked.length ? `Masked ${threat.masked.length} cells on-device: ${threat.masked.join(', ')}.` : 'None found.'}</p>
+                <p className="good rise">
+                  {threat.masked.length ? `Hidden on this device: ${Math.round(threat.maskedShare * 100)}% of the photo, in cells ${threat.masked.join(', ')}.` : 'None found.'}
+                </p>
               ) : (
                 visibleClues.map((c, i) => (
                   <div key={`${c.cell}-${i}`} className="finding content rise" style={at(i)}>
@@ -553,8 +551,8 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak, recorded, 
               )}
               {!degraded && threat.leftVisible.length > 0 && (
                 <p className="hint">
-                  Left visible so the photo stays worth posting: facades and trees rarely give away more than the city. Masking covers at most{' '}
-                  {threat.maxMasked} of 16 cells, plus any street name, house number or plate.
+                  Left visible: nothing on a person is hidden, and masking covers at most a quarter of the photo, plus any street name, house number or
+                  plate.
                 </p>
               )}
             </div>

@@ -18,7 +18,7 @@ linkManifestAndWorker();
 const replayFigure = document.querySelector<HTMLElement>('.replay');
 if (replayFigure && !reduceMotion) replay(replayFigure);
 const photoCard = document.querySelector<HTMLElement>('[data-photo]');
-// Drawing and pixelating the scene takes a few hundred ms of main thread: do it when the card is near, not at load
+// Drawing and blurring the scene takes a few hundred ms of main thread: do it when the card is near, not at load
 // (Lighthouse, 16-nov: 740 ms of blocking time on the landing page, almost all of it this).
 if (photoCard) whenNear(photoCard, () => void photoDemo(photoCard));
 
@@ -56,7 +56,7 @@ function revealOnScroll() {
 }
 
 /**
- * A measured number replays its own measurement as it comes into view: 10/10 counts down to 0/10, 215 m grows to 869 km.
+ * A measured number replays its own measurement as it comes into view: 10/10 counts down to 0/10, 215 m grows to 10,559 km.
  * The HTML already holds the final value (it reads without JavaScript); the span keeps that width while it counts.
  */
 function countTo(el: HTMLElement) {
@@ -258,7 +258,7 @@ function replay(fig: HTMLElement) {
   })();
 }
 
-/** The photo card: the real demo scene, and the same pixelation the app runs on your device. */
+/** The photo card: the real demo scene, and the same blurring the app runs on your device. */
 async function photoDemo(card: HTMLElement) {
   const scene = card.querySelector<HTMLElement>('.scene');
   const guess = card.querySelector<HTMLElement>('.guess');
@@ -268,11 +268,13 @@ async function photoDemo(card: HTMLElement) {
   let size: [number, number];
   try {
     // Loaded only now, near the card: none of it is needed to paint the top of the page.
-    const [{ SCENE_H, SCENE_SVG, SCENE_W }, { browserImageOps, svgToPng }] = await Promise.all([import('../demo/photo'), import('../engine/image')]);
+    const [{ SCENE_H, SCENE_SVG, SCENE_W }, { browserImageOps, cellRect, svgToPng }] = await Promise.all([import('../demo/photo'), import('../engine/image')]);
     size = [SCENE_W, SCENE_H];
     const png = await svgToPng(SCENE_SVG, SCENE_W, SCENE_H);
-    // The five cells Gemini Nano flagged in a live run: a poster, the street plaque, the house number, the bakery sign, the orange tree.
-    const masked = await browserImageOps.maskCells(png, [1, 3, 7, 8, 12], GRID);
+    // The cells the app hides in the recorded run: the street plaque, the house number and the bakery sign, which Gemini
+    // Nano read up close. The poster and the orange tree are left: nothing to read, and a tree says the city at most.
+    const hidden = [3, 7, 8].map((cell) => ({ rect: cellRect(cell, GRID, SCENE_W, SCENE_H), style: 'blur' as const, cell, what: '' }));
+    const masked = await browserImageOps.paint(png, hidden);
     const toUrl = (bytes: Uint8Array) => URL.createObjectURL(new Blob([bytes.slice()], { type: 'image/png' }));
     urls = { asis: toUrl(png), masked: toUrl(masked) };
   } catch {
@@ -291,8 +293,8 @@ async function photoDemo(card: HTMLElement) {
     img.src = urls[which];
     for (const b of buttons) b.setAttribute('aria-pressed', String(b.dataset.show === which));
     const place = document.createElement('strong');
-    place.textContent = which === 'asis' ? '“Carrer de la Llum, 23, Palma”' : '“Rome, Italy”';
-    guess.replaceChildren('Cloud’s guess: ', place, which === 'asis' ? ' · 215 m from the spot' : ' · 869 km off');
+    place.textContent = which === 'asis' ? '“Carrer de la Llum, 23, Palma”' : '“Tokyo, Japan”';
+    guess.replaceChildren('Cloud’s guess: ', place, which === 'asis' ? ' · 215 m from the spot' : ' · 10,559 km off');
   };
   for (const b of buttons) {
     b.disabled = false;

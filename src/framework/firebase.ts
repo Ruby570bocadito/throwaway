@@ -23,7 +23,10 @@ export interface FirebaseHybridConfig {
   debugAppCheck?: boolean;
   /** Per try, for the cloud (default 30 s; Flash-Lite answers in ~1 s). The SDK's own default is 180 s. */
   cloudTimeoutMs?: number;
-  /** Per call, on the device (default 5 min: a laptop took 25–60 s for a rewrite, longer on first load). Not retried. */
+  /**
+   * Per call, on the device (default 2 min). A laptop took 25–60 s for a whole rewrite; now a post goes part by part, a
+   * few seconds each. Five minutes left a hung call (one did hang, on the photo bench, 21-nov) on a spinner. Not retried.
+   */
   localTimeoutMs?: number;
 }
 
@@ -168,7 +171,7 @@ export function firebaseHybrid(cfg: FirebaseHybridConfig) {
     });
   const local = new AILogicBackend('Gemini Nano (on-device)', [{ name: 'gemini-nano', model: onDevice({ image: false }) }], {
     where: 'device',
-    timeoutMs: cfg.localTimeoutMs ?? 300_000,
+    timeoutMs: cfg.localTimeoutMs ?? 120_000,
     retry: LOCAL_RETRY,
     makeOnDevice: onDevice,
   });

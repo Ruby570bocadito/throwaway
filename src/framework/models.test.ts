@@ -83,6 +83,33 @@ describe('Gemini Nano runs one call at a time', () => {
     expect(local.busy).toBe(false);
   });
 
+  it('asks once more after Chrome’s "UnknownError", and only after that error', async () => {
+    let calls = 0;
+    const hiccup: ModelBackend = {
+      name: 'nano',
+      generate: async () => {
+        calls++;
+        if (calls === 1) throw new DOMException('An unknown error occurred: kErrorUnknown', 'UnknownError');
+        return { text: 'ok', source: 'on_device' };
+      },
+    };
+    const ledger = new Ledger();
+    expect((await new LocalModel(hiccup, ledger).generate(['a'], { op: 'scan' })).text).toBe('ok');
+    expect(calls).toBe(2);
+    expect(ledger.all).toHaveLength(1);
+
+    let other = 0;
+    const broken: ModelBackend = {
+      name: 'nano',
+      generate: async () => {
+        other++;
+        throw new DOMException('Too long.', 'QuotaExceededError');
+      },
+    };
+    await expect(new LocalModel(broken, new Ledger()).generate(['a'], { op: 'scan' })).rejects.toMatchObject({ name: 'QuotaExceededError' });
+    expect(other).toBe(1);
+  });
+
   it('a call cancelled while it waited never reaches the device', async () => {
     const nano = slowNano();
     const local = new LocalModel(nano.backend, new Ledger());

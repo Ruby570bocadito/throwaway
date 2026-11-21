@@ -1,5 +1,9 @@
+import { readFileSync } from 'node:fs'
 import { defineConfig, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
+
+// The installed MediaPipe version names the folder its WebAssembly is served from (scripts/copy-mediapipe.mjs).
+const mediapipeVersion: string = JSON.parse(readFileSync(new URL('./node_modules/@mediapipe/tasks-vision/package.json', import.meta.url), 'utf8')).version
 
 /**
  * Preloads the fonts each page shows when it opens, so text does not reflow when they arrive. Lighthouse (16-nov) measured
@@ -31,6 +35,7 @@ function preloadFonts(): Plugin {
 // Two pages: the landing page (/) and the app (/app/). The landing page loads neither React, nor the app, nor Firebase.
 export default defineConfig({
   plugins: [react(), preloadFonts()],
+  define: { __MEDIAPIPE_VERSION__: JSON.stringify(mediapipeVersion) },
   build: {
     // Never inline assets as data: URLs (Vite inlined the smallest font subsets), so the CSP can keep font-src 'self'.
     assetsInlineLimit: 0,

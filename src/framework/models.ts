@@ -103,6 +103,9 @@ function resolveCloud(parts: CloudPart[], schema?: JsonSchema): ResolvedPart[] {
 
 const sizeOf = (parts: ResolvedPart[]) => parts.reduce((a, p) => a + ('text' in p ? byteLength(p.text) : p.image.length), 0);
 
+/** Chrome's "UnknownError", on the error or on the error the SDK wrapped it in. */
+const isChromeHiccup = (e: unknown) => [e, (e as { cause?: unknown } | null)?.cause].some((x) => (x as { name?: unknown } | null)?.name === 'UnknownError');
+
 /** Why a call got no answer, in the ledger's words. */
 function failureNote(e: unknown): string {
   if (e instanceof ModelTimeout) return `no answer (timed out after ${Math.round(e.ms / 1000)} s)`;
@@ -154,7 +157,14 @@ export class LocalModel {
     const t0 = performance.now();
     let res: ModelResult;
     try {
-      res = await this.backend.generate(resolved, opts);
+      try {
+        res = await this.backend.generate(resolved, opts);
+      } catch (e) {
+        // Chrome's Prompt API now and then fails once with "UnknownError" (kErrorUnknown), and answers the same prompt
+        // the next time (?diag photo bench, 21-nov): one more try, for that error only.
+        if (!isChromeHiccup(e) || opts.signal?.aborted) throw e;
+        res = await this.backend.generate(resolved, opts);
+      }
     } catch (e) {
       // Tagged as the device's: the UI must never blame the cloud for a Gemini Nano failure.
       markDeviceError(e);
