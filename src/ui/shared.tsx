@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { cloudTrouble, errorCode, isBlocked, isDeviceError, ModelTimeout, PrivacyViolation, type Kit } from '../framework';
 
 const short = (s: string, n = 140) => (s.length > n ? `${s.slice(0, n).trimEnd()}…` : s).replace(/\.$/, '');
@@ -69,6 +70,25 @@ export function ErrorNote({ message }: { message: string }) {
       <img src="/illus/papelera-200.webp" width="56" height="56" alt="" />
       <p>{message}</p>
     </div>
+  );
+}
+
+/**
+ * The risk before, measured on the device without sending anything, next to what the cloud test found in the version you
+ * would post (22-nov: the original is no longer sent to show the risk).
+ */
+export function BeforeAfter({ before, now, good }: { before: ReactNode; now: ReactNode; good: boolean }) {
+  return (
+    <dl className="before-after">
+      <div className="ba before">
+        <dt>Before, on this device</dt>
+        <dd>{before}</dd>
+      </div>
+      <div className={`ba now ${good ? 'good' : 'bad'}`}>
+        <dt>Now, in the cloud</dt>
+        <dd>{now}</dd>
+      </div>
+    </dl>
   );
 }
 

@@ -16,8 +16,8 @@ import {
   type AuthorshipVerdict,
   type Clue,
 } from '../threats/authorship';
-import { buildAuthorship, lineupField, loadDecoyPacks, type DecoyPacks } from '../kit';
-import { ErrorNote, friendlyError, type LabProps } from '../ui/shared';
+import { allowAsIsTest, buildAuthorship, lineupField, loadDecoyPacks, type DecoyPacks } from '../kit';
+import { BeforeAfter, ErrorNote, friendlyError, type LabProps } from '../ui/shared';
 import { Compare } from '../ui/Compare';
 import { Stepper, type StepDef } from '../ui/Stepper';
 import { WorkLog, type PlanStep } from '../ui/WorkLog';
@@ -38,7 +38,9 @@ const CONFIDENCE: Record<Reliability['level'], string> = {
   medium: 'Medium confidence',
   high: 'High confidence',
 };
-const STAGE_STEP: Record<Stage, number> = { draft: 0, scanned: 1, attacked: 2, rewritten: 3, reattacked: 4 };
+// Find → Fix → Test (22-nov): the original is never tested by default, so `attacked` (found, by the optional as-is test or a
+// test of the rewrite) leads back to Fix.
+const STAGE_STEP: Record<Stage, number> = { draft: 0, scanned: 1, attacked: 1, rewritten: 2, reattacked: 3 };
 
 // What each long action is expected to leave in the ledger, in order (see threats/authorship.ts).
 const SCAN_PLAN: PlanStep[] = [
@@ -238,7 +240,8 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
     if (!dock || busy || !acted.current) return;
     const active = document.activeElement;
     if (active && active !== document.body && !dock.contains(active)) return;
-    dock.querySelector<HTMLElement>('button:not(:disabled), a[href]')?.focus({ preventScroll: true });
+    // Never the button that would test the original: without Gemini Nano the main one starts disabled, and Enter must not send it.
+    dock.querySelector<HTMLElement>('button:not(:disabled):not(.as-is), a[href]')?.focus({ preventScroll: true });
   }, [stage, busy, dock]);
 
   // Fixed on-screen letters. Only this browser knows which card is "you"; the attacker gets a fresh shuffle each time.
@@ -371,7 +374,8 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
     [degraded, draft],
   );
   // While you edit without a local model, what you already removed is crossed out: a tester could not tell what was left (17-nov).
-  const editingByHand = degraded && stage === 'attacked';
+  // Right after the scan too: the fix comes before any test now (22-nov).
+  const editingByHand = degraded && (stage === 'scanned' || stage === 'attacked');
   // The edit is the draft until you change it; after a release, the released text.
   const editUnchanged = edited.trim() === (published ? published.value : draft).trim();
   // The same match as the highlighter: a habit like "so honestly i" is still there in "So, honestly, I".
@@ -440,11 +444,13 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
     }
   };
 
+  // Private by default (22-nov): the cloud only ever tests the version you would post. Testing the untouched original is
+  // offered only in the recorded demo (nothing is sent) or on a paid plan (`allowAsIsTest`).
+  const canTestOriginal = recorded || allowAsIsTest;
   const steps: StepDef[] = [
     { label: 'Find', where: degraded ? 'fixed rules, no model' : 'on your device' },
-    { label: 'Test', where: 'in the cloud' },
     { label: 'Fix', where: degraded ? 'you edit it' : 'on your device' },
-    { label: 'Test again', where: 'in the cloud' },
+    { label: 'Test', where: 'in the cloud' },
   ];
   const outcome = stage === 'reattacked' ? (contentClues.length ? 'warn' : 'good') : null;
   // A post of the user's own with no public writing of theirs: the lineup then looks for the sample writer, not for them,
@@ -485,6 +491,13 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
   // contradicting each other (17-nov). It goes by your subject or your details, and the note says so.
   const rankShown = !!stylo && !tooShort && !standIn;
   const styleGone = !!final && exposedNow && !inconclusive && rankShown && !!stylo && stylo.rank >= 6;
+  // The "before", measured on this device: where the draft's own style ranks among the ten (the shown rank follows the
+  // version you would post once there is one), with the habits and details the scan found. Nothing is sent to know it.
+  const pastDraft = stage !== 'draft';
+  const draftPrint = useMemo(() => (pastDraft ? threat.fingerprint(draft) : null), [threat, draft, pastDraft]);
+  const rankBefore = draftPrint && draftPrint.reliability?.level !== 'too-short' && !standIn ? Math.round(draftPrint.rank) : null;
+  const habitsBefore = clues.filter((c) => c.kind === 'style').length;
+  const detailsBefore = clues.filter((c) => c.kind === 'content').length;
 
   // Whose field the nine writers share, and what follows from it.
   const canPickField = stage === 'draft' && !!ownText && !!packs;
@@ -529,14 +542,14 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
           ),
           lede: recorded
             ? 'A recorded run: Gemini Nano’s answers on this sample post were recorded in Chrome, and replay here.'
-            : 'Throwaway scans your post on this device first. Nothing leaves it until you choose to test it.',
+            : 'Throwaway checks and fixes your post on this device. Only the version you would post is tested in the cloud, when you choose.',
         }
       : stage === 'scanned'
         ? {
             title: nHabits + nDetails ? `${capital(plural(nHabits, 'habit'))} and ${plural(nDetails, 'detail')} could give you away` : 'Nothing obvious gives you away',
             lede: degraded
-              ? 'Found with fixed rules on this device; names only by their capital letters. Next, a cloud AI tries to pick you out of ten writers.'
-              : 'Found on this device. Next, a cloud AI tries to pick you out of ten writers.',
+              ? 'Found with fixed rules on this device; names only by their capital letters. Change them in your post below: nothing has left this device.'
+              : 'Found on this device, and nothing has left it. Next, Gemini Nano rewrites your style and these details, here.',
           }
         : stage === 'attacked'
           ? {
@@ -553,8 +566,8 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
             ? {
                 title: degraded ? 'Your edited version' : 'Rewritten on your device',
                 lede: degraded
-                  ? 'Checked on this device: no long passage of your original is left. Next, test it again.'
-                  : 'In a plain, neutral voice on purpose: your style is what gave you away. Read it, then test it again.',
+                  ? 'Checked on this device: no long passage of your original is left. Next, test it: only this version goes to the cloud.'
+                  : 'In a plain, neutral voice on purpose: your style is what gives you away. Read it, then test it: only this version goes to the cloud.',
               }
             : {
                 title: nDetails ? `Your style is hidden, but ${plural(nDetails, 'detail')} can still identify you` : verdictTitle,
@@ -562,11 +575,12 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
                   ? 'Without your own public writing, this test looked for the sample writer, not you.'
                   : nDetails
                     ? 'Change them before you post.'
-                    : `It cannot tell you apart from the other nine writers${degraded ? ', and no counts or dates are left. Names, places and companies were not checked.' : ', and no identifying details are left.'}`,
+                    : // "No identifying details are left" overclaimed: the rewrite still named the design team (a tester, 22-nov).
+                      `It cannot tell you apart from the other nine writers${degraded ? ', and no counts or dates are left. Names, places and companies were not checked.' : ', and the details your device found were generalised.'}`,
               };
 
   // ── the note before the button: one, the one that matters most ──
-  const note: { text: string; warn: boolean } | null =
+  const note: { text: string; warn: boolean; consent?: boolean } | null =
     stage === 'draft'
       ? standIn
         ? { text: 'Without your own public writing, the test will look for the sample writer, not you. Add yours under the post first.', warn: true }
@@ -579,10 +593,23 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
       : stage === 'scanned'
         ? standIn
           ? { text: 'No public writing of yours: this test looks for the sample writer, not you. Start over to add yours: your post stays.', warn: true }
-          : // A judge read the as-is test as at odds with "the draft is the secret" (17-nov): say it is the only such step.
-            { text: 'Sends your original, unchanged, to Gemini in Google’s cloud, ten times (more if the model is busy), as if you had posted it. The only step that sends your original; Throwaway keeps nothing.', warn: true }
+          : canTestOriginal && !recorded
+            ? // Only on a paid plan: the one step that would send the original, said before the tap (judge 17-nov, testers 22-nov).
+              {
+                text: 'Testing the original sends your post, unchanged, to Gemini in Google’s cloud, ten times, as if you had posted it. Fixing it first sends nothing.',
+                warn: true,
+                consent: true,
+              }
+            : null
         : stage === 'rewritten' && published
-          ? { text: degraded ? 'Sends only your edited version, never the original.' : 'Sends only the rewritten version, never the original.', warn: false }
+          ? recorded
+            ? { text: 'A recorded run: nothing is sent. Live, only this version goes to Gemini, on Google’s free plan.', warn: false }
+            : // What Gemini's free plan allows, said before the tap (22-nov): only what you would post anyway goes.
+              {
+                text: `Sends only ${degraded ? 'your edited version' : 'this version'}, never your original, to Gemini on Google’s free plan: Google may use it to improve its products, and people may review it.`,
+                warn: true,
+                consent: true,
+              }
           : null;
 
   const actions = (
@@ -602,22 +629,18 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
           {busyNote}
         </p>
       )}
-      {!busy && note && <p className={`dock-note ${note.warn ? 'warn' : ''}`}>{note.text}</p>}
+      {!busy && note && <p className={`dock-note ${note.consent ? 'consent' : note.warn ? 'warn' : ''}`}>{note.text}</p>}
       <div className="dock-row">
         {stage === 'draft' && (
           <button className="primary" onClick={scan} disabled={!!busy || !draft.trim() || lineupPending} aria-busy={busy === 'scan'}>
             {busy ? <Busy label={busyLabel} /> : 'Check my post on this device'}
           </button>
         )}
-        {stage === 'scanned' && (
-          <button className="primary" onClick={attackAsIs} disabled={!!busy} aria-busy={busy === 'attack'}>
-            {busy ? <Busy label={busyLabel} /> : 'Test my original post'}
-          </button>
-        )}
-        {stage === 'attacked' && (
-          // Nothing edited yet, nothing to use: the button read as a step already done to a tester (17-nov).
+        {(stage === 'scanned' || stage === 'attacked') && (
+          // Fix first, on the device: nothing has to leave it to find out (22-nov). Nothing edited yet, nothing to use: the
+          // button read as a step already done to a tester (17-nov).
           <button className="primary" onClick={rewrite} disabled={!!busy || (degraded && editUnchanged)} aria-busy={busy === 'rewrite'}>
-            {busy
+            {busy === 'rewrite'
               ? <Busy label={busyLabel} />
               : degraded
                 ? editUnchanged
@@ -628,9 +651,22 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
                   : 'Rewrite it on this device'}
           </button>
         )}
+        {/* Testing the untouched original: never the main action, and never the one that gets focus (`.as-is`). Only in the
+            recorded demo, where nothing is sent, or on a paid plan (22-nov). */}
+        {stage === 'scanned' && canTestOriginal && !standIn && (
+          <button
+            className="ghost as-is"
+            onClick={attackAsIs}
+            disabled={!!busy}
+            aria-busy={busy === 'attack'}
+            title={recorded ? 'A recorded run: nothing is sent' : undefined}
+          >
+            {busy === 'attack' ? <Busy label={busyLabel} /> : recorded ? 'First, test the original (recorded)' : 'First, test my original'}
+          </button>
+        )}
         {stage === 'rewritten' && published && (
           <button className="primary" onClick={() => attack(published, true)} disabled={!!busy} aria-busy={busy === 'attack'}>
-            {busy ? <Busy label={busyLabel} /> : 'Test again'}
+            {busy ? <Busy label={busyLabel} /> : attacks > 0 ? 'Test again' : 'Test it'}
           </button>
         )}
         {stage === 'reattacked' && published && (
@@ -959,7 +995,8 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
         <span className="chip public">what the cloud sees</span>
       </div>
       <p className="section-note">
-        A cloud AI gets the text and ten public writers, shuffled on every attempt; it is never told which one is you. The other nine write about{' '}
+        When you test, a cloud AI gets the text and ten public writers, shuffled on every attempt; it is never told which one is you. The other nine write
+        about{' '}
         <strong>{FIELD_LABELS[lineupOf.field]}</strong>
         {fieldNote}
       </p>
@@ -1000,7 +1037,7 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
               {!attacking && before !== null && stage === 'reattacked' ? ` Before: ${before}/10.` : ''}
               {/* An AI is not your boss (a tester, 22-nov): the people who know you read the details, not the style. */}
               {!attacking && stage === 'reattacked' && !exposedNow && !standIn && !inconclusive
-                ? ' People who know you still might: reread names, numbers and dates before you post.'
+                ? ' People who know you still might: reread names, teams, roles, numbers and dates before you post.'
                 : ''}
             </p>
             <span className="ticks" aria-hidden="true">
@@ -1008,6 +1045,20 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
                 <i key={i} className={i < picks.length ? (picks[i] === SELF_ID ? 'hit' : 'miss') : ''} />
               ))}
             </span>
+            {/* The original was not sent: its risk comes from the device, said in words so a rank and a count of picks are
+                not read as one scale (22-nov). */}
+            {!attacking && final && published && !sentAsIs && !inconclusive && !standIn && (
+              <BeforeAfter
+                good={!exposedNow}
+                before={[
+                  rankBefore !== null ? `your style ranked #${rankBefore} of 10 writers` : '',
+                  habitsBefore + detailsBefore ? `${plural(habitsBefore, 'habit')} and ${plural(detailsBefore, 'detail')} could give you away` : '',
+                ]
+                  .filter(Boolean)
+                  .join('; ')}
+                now={`it picked you ${final.hits} of ${final.answered} times`}
+              />
+            )}
             {standIn && !attacking && addWriting && !inconclusive && (
               <button className="mini add-writing" onClick={addWriting}>
                 Add my public writing
@@ -1036,7 +1087,8 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
         })}
       </div>
       <p className="glyph-key">
-        Each card draws how often a writer uses the commonest words (“the”, “but”, “I”…) and marks (dashes, brackets) next to the other nine: the habits the AI can recognise.
+        Each card is a writing fingerprint: how often a writer uses little words (“the”, “but”, “I”…) and marks (dashes, brackets), compared with the other
+        nine. The AI recognises people by habits like these.
       </p>
 
       {styleGone && !busy && (
@@ -1127,7 +1179,8 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
 
   // What each step shows: your post until it has been attacked, the lineup from the scan on; a verdict comes first.
   const showPost = stage !== 'attacked' || editingByHand;
-  const showLineup = stage !== 'draft' && (stage !== 'rewritten' || attacking);
+  // A test that came back inconclusive stays on `rewritten`, and it may be the first test: its result must still show.
+  const showLineup = stage !== 'draft' && (stage !== 'rewritten' || attacking || !!final);
   const verdictFirst = stage === 'attacked' || stage === 'reattacked';
   // The mascot reacts to the step, and to what is running (Rafa, 22-nov: the app looked dead).
   const pose: Pose =

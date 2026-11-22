@@ -81,6 +81,38 @@ function canvasFor(img: ImageBitmap) {
   return { c, ctx };
 }
 
+/**
+ * The whole photo blurred, as a canvas `pad` px larger on every side. Chrome's canvas blur treats what lies outside the image
+ * as transparent: near the border the blurred layer was see-through and the sharp original showed through it (about 15–19 %
+ * contrast 20 px in, 22-nov review), so a sign cut by the edge was the weak spot. The edges are stretched outwards first
+ * (each border row and column repeated), so every blurred pixel inside the photo is fully opaque.
+ */
+function blurredWithEdges(img: ImageBitmap, radius: number, pad: number): HTMLCanvasElement {
+  const { width: w, height: h } = img;
+  const ext = document.createElement('canvas');
+  ext.width = w + pad * 2;
+  ext.height = h + pad * 2;
+  const e = ext.getContext('2d')!;
+  e.drawImage(img, pad, pad);
+  // Sides: the outermost row or column, stretched across the padding.
+  e.drawImage(img, 0, 0, w, 1, pad, 0, w, pad);
+  e.drawImage(img, 0, h - 1, w, 1, pad, pad + h, w, pad);
+  e.drawImage(img, 0, 0, 1, h, 0, pad, pad, h);
+  e.drawImage(img, w - 1, 0, 1, h, pad + w, pad, pad, h);
+  // Corners: the corner pixel.
+  e.drawImage(img, 0, 0, 1, 1, 0, 0, pad, pad);
+  e.drawImage(img, w - 1, 0, 1, 1, pad + w, 0, pad, pad);
+  e.drawImage(img, 0, h - 1, 1, 1, 0, pad + h, pad, pad);
+  e.drawImage(img, w - 1, h - 1, 1, 1, pad + w, pad + h, pad, pad);
+  const out = document.createElement('canvas');
+  out.width = ext.width;
+  out.height = ext.height;
+  const o = out.getContext('2d')!;
+  o.filter = `blur(${radius}px)`;
+  o.drawImage(ext, 0, 0);
+  return out;
+}
+
 export const browserImageOps: ImageOps = {
   async withGrid(png, n, type = 'image/png') {
     const img = await decode(png);
@@ -144,16 +176,18 @@ export const browserImageOps: ImageOps = {
       // One strength for the whole photo, a twentieth of its short side (about 40 px at 1280 × 853): no letter of a sign
       // or a plate survives it, however thin the strip left beside a face.
       const radius = Math.max(14, Math.round(Math.min(c.width, c.height) / 20));
-      // Blurs first, from the untouched photo (a blur reads the pixels around it); then the boxes, which hide all.
-      for (const g of regions.filter((r) => r.style === 'blur')) {
+      // Blurs first, from the untouched photo (a blur reads the pixels around it); then the boxes, which hide all. One blur of
+      // the whole photo, with its edges extended, serves every region (and no region shows the original at the border).
+      const blurs = regions.filter((r) => r.style === 'blur');
+      const pad = radius * 2;
+      const blurred = blurs.length ? blurredWithEdges(img, radius, pad) : null;
+      for (const g of blurs) {
         const { x, y, w, h } = g.rect;
         ctx.save();
         ctx.beginPath();
         ctx.rect(x, y, w, h);
         ctx.clip();
-        ctx.filter = `blur(${radius}px)`;
-        ctx.drawImage(img, 0, 0);
-        ctx.filter = 'none';
+        ctx.drawImage(blurred!, -pad, -pad);
         // A light veil of the box colour, so a hidden part reads as hidden on purpose, not as a smudge.
         ctx.fillStyle = MASK_VEIL;
         ctx.fillRect(x, y, w, h);

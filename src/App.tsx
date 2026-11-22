@@ -296,8 +296,8 @@ export default function App() {
           {/* "· recorded" on every model step read as a fake to a judge, without a word on what is replayed (17-nov). */}
           {!live && (
             <p className="hint">
-              Recorded run: Gemini’s answers are replayed from real runs in Chrome (15–16 November). The fingerprint, the fixed rules, the privacy guard,
-              the shuffled lineups and this receipt run live, in this tab.
+              Recorded run: Gemini’s answers are replayed from real runs in Chrome (15–16 November), so nothing leaves this tab; the bytes below are what the
+              real run sent. The fingerprint, the fixed rules, the privacy guard, the shuffled lineups and this receipt run live, in this tab.
             </p>
           )}
           {entries.length === 0 ? (
@@ -308,14 +308,22 @@ export default function App() {
           ) : (
             <LedgerTable entries={entries} />
           )}
+          {/* A replay sends nothing: "sent" next to "nothing is sent" read as a contradiction to a judge (22-nov). */}
           <p className="total">
-            Sent to the cloud: {fmt(sentOut)} bytes,{' '}
+            {live ? 'Sent to the cloud' : 'In the real run this replays, sent to the cloud'}: {fmt(sentOut)} bytes,{' '}
             {sentAsIs
               ? `${fmt(asIsBytes)} for the as-is test of your original that you chose${releasedBytes > 0 ? ` and ${fmt(releasedBytes)} for the version you released` : ''}.${
                   tab === 'text' ? ' Each attack also sends the public texts of the other writers.' : ''
                 } Without that choice, private originals cannot reach a cloud model: the types forbid it and a run-time guard blocks it.`
               : 'only what you released for publication, plus public data. Private originals cannot reach a cloud model: the types forbid it and a run-time guard blocks it.'}
           </p>
+          {/* What happens to it there, in Google's own terms for the free plan (22-nov): the reason the original is never sent. */}
+          {live && (
+            <p className="hint">
+              Tests run on Gemini’s free plan: Google may use what is sent to improve its products, and people may review it. That is why only the version you
+              would post is sent, never your original.
+            </p>
+          )}
           {/* A proof for developers and judges, not a step for someone checking a post (review, 16-nov). */}
           <details className="disclosure devtools">
             <summary>For developers: try to break it</summary>

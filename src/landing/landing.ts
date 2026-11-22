@@ -145,8 +145,9 @@ async function adaptToThisBrowser() {
             'Gratis y sin cuenta. Este Chrome puede añadir Gemini Nano, una IA pequeña de Google que funciona en tu ordenador. Chrome la descarga una vez, cuando empiezas tu primera revisión, y necesita unos 22 GB libres en el disco.' + appInEnglish,
           )
         : tr(
-            'Free, no account. This browser has no Gemini Nano: watch a real check, or check a post with fixed rules. The full check needs Chrome on a computer.',
-            'Gratis y sin cuenta. Este navegador no tiene Gemini Nano: mira una revisión real o revisa un post con reglas fijas. La revisión completa necesita Chrome en un ordenador.' + appInEnglish,
+            // The photo was missing here, so a phone-only tester did not know what she could do with one (22-nov).
+            'Free, no account. This browser has no Gemini Nano: watch a real check, check a post with fixed rules, or pick what to blur in a photo. The full check needs Chrome on a computer.',
+            'Gratis y sin cuenta. Este navegador no tiene Gemini Nano: mira una revisión real, revisa un post con reglas fijas o elige qué difuminar en una foto. La revisión completa necesita Chrome en un ordenador.' + appInEnglish,
           );
 }
 

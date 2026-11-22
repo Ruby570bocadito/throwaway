@@ -267,6 +267,13 @@ mark.detail { background-image: linear-gradient(transparent 10%, var(--peach-1) 
 .pcard.kept .pcard-icon { background: var(--peach-1); stroke: #8a4a1c; }
 .pcard h3 { margin-top: 16px; font: 600 24px/1.15 var(--serif); letter-spacing: -0.015em; }
 .pcard p { margin-top: 8px; font-size: 16px; }
+/* four ways to check the promises without trusting them */
+.verify { margin-top: 36px; padding: 24px 28px 26px; border: 2px dashed rgba(78, 94, 128, 0.45); border-radius: 22px; background: rgba(255, 255, 255, 0.55); }
+.verify h3 { font: 600 24px/1.15 var(--serif); letter-spacing: -0.015em; }
+.verify ol { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 32px; margin: 16px 0 0; padding: 0; list-style: none; counter-reset: verify; }
+.verify li { position: relative; padding-left: 38px; font-size: 16px; }
+.verify li::before { counter-increment: verify; content: counter(verify); position: absolute; left: 0; top: 0; display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: var(--navy); color: #fff; font: 600 14px/1 var(--ui); }
+.verify strong { color: var(--navy-ink); }
 .legal { max-width: 52em; margin: 28px auto 0; color: var(--muted); font-size: 13.5px; text-align: center; }
 
 /* what you need */
@@ -360,6 +367,8 @@ mark.detail { background-image: linear-gradient(transparent 10%, var(--peach-1) 
 @media (max-width: 720px) {
   body { font-size: 16px; }
   .wrap { padding: 0 16px; }
+  .verify { padding: 20px 18px 22px; }
+  .verify ol { grid-template-columns: 1fr; }
   .nav nav { display: none; }
   .nav .wrap { gap: 10px; min-height: 60px; }
   .lang { min-height: 34px; padding: 0 10px; }

@@ -65,11 +65,11 @@
             </div>
             <p class="promise">
               <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4.5" y="10.5" width="15" height="10" rx="2.5" /><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5" /></svg>
-              <span><strong>Your post and your photo stay on your computer.</strong> Only the fixed version goes to Google’s AI, and only when you test it.</span>
+              <span><strong>Your post and your photo are checked and fixed on your computer.</strong> Only the version you would post goes to Google’s AI, and only when you test it.</span>
             </p>
             <p class="fine" data-nano>
               Free, no account. The full check runs in Chrome on a computer, with Gemini Nano, a small Google AI that runs on your computer. On a phone:
-              watch a real check, or check a post with fixed rules.
+              watch a real check, check a post with fixed rules, or pick what to blur in a photo.
             </p>
           </div>
 
@@ -167,8 +167,8 @@
               <img class="step-art" src="/mascot/safe-256.webp" width="238" height="256" loading="lazy" alt="" />
               <span class="step-n" aria-hidden="true">3</span>
               <h3>Test</h3>
-              <p>A bigger AI in the cloud tries to find you, from the fixed version only. If it still can, Throwaway fixes more and tests again.</p>
-              <span class="where cloud">In the cloud · fixed version only</span>
+              <p>A bigger AI in the cloud tries to find you, from the version you would post. If it still can, Throwaway fixes more and tests again.</p>
+              <span class="where cloud">In the cloud · only what you would post</span>
             </li>
           </ol>
         </div>
@@ -206,7 +206,7 @@
                 </div>
                 <div class="v good">
                   <dt>Blurred on your device</dt>
-                  <dd>No street left to read. It could only guess the city from the old-town look: <strong>Palma</strong>.</dd>
+                  <dd>No street left to read. It could only guess the city from the old-town look: <strong>Palma</strong>, a whole city, not your door.</dd>
                 </div>
               </dl>
             </article>
@@ -246,7 +246,7 @@
                   <li class="w"><b>I</b></li>
                   <li class="w"><b>J</b></li>
                 </ol>
-                <p class="glyph-key">Each bar: how often a writer uses a common word like “the”, “and” or “I”. Habits like these are what the AI matches.</p>
+                <p class="glyph-key">Each writer’s bars are a writing fingerprint: how often they use little words like “the”, “and” or “I”. The AI recognises people by habits like these.</p>
               </div>
               <dl class="verdicts">
                 <div class="v bad">
@@ -259,7 +259,7 @@
                 </div>
               </dl>
               <ul class="facts">
-                <li><strong>All 6</strong> points of the review are still there</li>
+                <li><strong>The same 6 points</strong>, made in plainer words</li>
                 <li><strong>Nothing</strong> you wrote left the computer to be rewritten</li>
               </ul>
             </article>
@@ -282,7 +282,7 @@
             <article class="pcard leaves reveal">
               <svg class="pcard-icon" viewBox="0 0 48 48" aria-hidden="true"><path d="M14 34h21a8 8 0 0 0 0-16 11 11 0 0 0-21-2 9 9 0 0 0 0 18z" /><path d="M24 40V26m-5 5 5-5 5 5" /></svg>
               <h3>Leaves only when you test</h3>
-              <p>The fixed version goes to Gemini, Google’s AI, which tries to find you. Your original goes only if you choose to test it as it is, and you confirm first.</p>
+              <p>The version you would post goes to Gemini, Google’s AI, on its free plan: Google may use it to improve its products, and people may review it. Your original never leaves your computer.</p>
             </article>
             <article class="pcard kept reveal">
               <svg class="pcard-icon" viewBox="0 0 48 48" aria-hidden="true"><path d="M12 15h24l-2.4 25a3 3 0 0 1-3 2.7H17.4a3 3 0 0 1-3-2.7z" /><path d="M9 15h30M19 15v-4h10v4M21 23v12m6-12v12" /></svg>
@@ -290,10 +290,20 @@
               <p>No account, no database, no analytics and no cookies of ours. Close the tab and your draft is gone.</p>
             </article>
           </div>
+          <!-- A sceptical developer and the jury asked how to check the promises (22-nov): four ways, none needing trust. -->
+          <div class="verify reveal">
+            <h3>Don’t take our word for it</h3>
+            <ol>
+              <li><strong>Read the code.</strong> It is open source, on <a href="https://github.com/Ruby570bocadito/throwaway-Firebase-Hackaton">GitHub</a>.</li>
+              <li><strong>Count the bytes.</strong> In the app, “Sent to the cloud” opens a receipt of every step and every byte.</li>
+              <li><strong>Try to leak it.</strong> That receipt has a button that pushes your original into a cloud call. The guard blocks it.</li>
+              <li><strong>Watch the network.</strong> In your browser’s developer tools, your post or photo is in no request until you test, and then only the version you would post.</li>
+            </ol>
+          </div>
           <p class="legal reveal">
-            Why Google reCAPTCHA appears: when you test, it checks that the request comes from this app and not from a bot. It never sees your post or your
-            photo. This site is protected by reCAPTCHA and the Google <a href="https://policies.google.com/privacy">Privacy Policy</a> and
-            <a href="https://policies.google.com/terms">Terms of Service</a> apply; they also cover what Gemini does with a test.
+            Why Google reCAPTCHA appears: when you open the live app, it checks that requests come from this app and not from a bot, with cookies of Google’s
+            own. It never sees your post or your photo. This site is protected by reCAPTCHA and the Google <a href="https://policies.google.com/privacy">Privacy Policy</a> and
+            <a href="https://policies.google.com/terms">Terms of Service</a> apply, as they do to what you send Gemini in a test.
           </p>
         </div>
       </section>
@@ -307,7 +317,7 @@
               <div class="need-cols">
                 <div>
                   <h3>On a computer</h3>
-                  <p>Chrome 139 or newer, with Gemini Nano. Chrome downloads it the first time; it needs about 22 GB of free disk.</p>
+                  <p>Chrome 139 or newer, with Gemini Nano. Chrome downloads it the first time, and asks for 22 GB of free disk; the model itself is much smaller.</p>
                 </div>
                 <div>
                   <h3>On a phone or another browser</h3>
@@ -336,15 +346,23 @@
             </details>
             <details>
               <summary>What exactly leaves my device?</summary>
-              <p>Only what you test: the fixed version, and your original if you choose to test it as it is. It goes to Gemini in Google’s cloud, which tries to find you. Throwaway itself stores nothing.</p>
+              <p>Only the version you would post, and only when you test it. It goes to Gemini in Google’s cloud, which tries to find you. Your original never leaves your computer, and Throwaway itself stores nothing.</p>
+            </details>
+            <details>
+              <summary>What does Google do with what I test?</summary>
+              <p>
+                Tests run on the free plan of Gemini, Google’s AI. Google may use what you test to improve its products, and people at Google may read it. Its
+                <a href="https://ai.google.dev/gemini-api/terms">terms</a> say not to send anything sensitive there, so only the version you would post goes, never your
+                original.
+              </p>
             </details>
             <details>
               <summary>What is Gemini Nano? Will it download something?</summary>
-              <p>A small AI model from Google, built into Chrome. It runs on your computer, so your draft doesn’t have to go anywhere to be checked or fixed. Chrome downloads it once, when you start your first check, and needs about 22 GB of free disk for it.</p>
+              <p>A small AI model from Google, built into Chrome. It runs on your computer, so your draft doesn’t have to go anywhere to be checked or fixed. Chrome downloads it once, when you start your first check. It asks for 22 GB of free disk, though the model itself is much smaller, and removes it by itself if free space drops below 10 GB.</p>
             </details>
             <details>
               <summary>Does it work on my phone?</summary>
-              <p>The demo does, and so does checking a post with fixed rules. The full check needs Gemini Nano, which today runs in Chrome on computers.</p>
+              <p>The demo does, and so do checking a post with fixed rules and picking what to blur in a photo. The full check needs Gemini Nano, which today runs in Chrome on computers.</p>
             </details>
             <details>
               <summary>Can it promise nobody will find me?</summary>

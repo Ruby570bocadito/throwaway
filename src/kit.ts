@@ -14,6 +14,13 @@ export const isConfigured = () => Boolean(env.VITE_FIREBASE_API_KEY && env.VITE_
 /** `?demo` replays recorded model answers: for anyone without Gemini Nano in Chrome, and for the demo video. */
 export const demoRequested = () => typeof location !== 'undefined' && new URLSearchParams(location.search).has('demo');
 export const isLive = () => isConfigured() && !demoRequested();
+/**
+ * Whether the app may offer to test the untouched original in the cloud. Off: on Gemini's free plan Google may use what is
+ * sent to improve its products and people may review it, and its terms say not to send sensitive data there (22-nov). The
+ * risk "before" is measured on the device instead. A paid (billed) project can turn it on with VITE_ALLOW_AS_IS_TEST=true;
+ * the recorded demo always offers it, since it sends nothing.
+ */
+export const allowAsIsTest = env.VITE_ALLOW_AS_IS_TEST === 'true';
 
 export function buildKit(ledger: Ledger) {
   const live = isLive();

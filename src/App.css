@@ -112,7 +112,8 @@ a.menu-item:hover { background: var(--c-surface-2); color: var(--c-ink); }
 .banner.error img { width: 48px; height: 48px; flex: none; mix-blend-mode: multiply; }
 
 /* ── progress: Scan → Attack → Fix → Attack again ── */
-.stepper { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--sp-3); margin: 0 0 var(--sp-6); padding: 0; list-style: none; }
+/* Three steps since the fix comes before any test (22-nov): the grid follows however many there are. */
+.stepper { display: grid; grid-auto-columns: minmax(0, 1fr); grid-auto-flow: column; gap: var(--sp-3); margin: 0 0 var(--sp-6); padding: 0; list-style: none; }
 .st { position: relative; display: flex; align-items: center; gap: var(--sp-2); min-width: 0; padding-top: var(--sp-3); }
 .st::before, .st::after { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; border-radius: 3px; }
 .st::before { background: var(--c-line); }
@@ -316,6 +317,15 @@ p.good { margin: 0; font-size: var(--fs-14); }
 .ticks i { width: 18px; height: 6px; border-radius: 3px; background: var(--c-line-2); transition: background-color var(--t-1); }
 .ticks i.hit { background: var(--c-red); }
 .ticks i.miss { background: var(--c-accent); opacity: 0.4; }
+/* Before (measured on the device, nothing sent) and now (the cloud test of the version you would post), side by side. */
+.before-after { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sp-2); margin: var(--sp-3) 0 0; }
+.ba { padding: var(--sp-2) var(--sp-3); border: 1px solid var(--c-line); border-radius: var(--rad-md); background: var(--c-surface); }
+.ba dt { color: var(--c-muted); font-size: 12px; font-weight: 600; letter-spacing: 0.02em; text-transform: uppercase; }
+.ba dd { margin: 2px 0 0; color: var(--c-ink); font-size: var(--fs-14); line-height: 1.4; }
+.ba.before { border-color: var(--c-red-line); }
+.ba.now.good { border-color: var(--c-green-line); }
+.ba.now.bad { border-color: var(--c-red-line); }
+@media (max-width: 520px) { .before-after { grid-template-columns: 1fr; } }
 .add-writing { margin-top: var(--sp-3); }
 .reasons { display: grid; gap: var(--sp-2); margin: 0; padding-left: 18px; color: var(--c-text); font-size: var(--fs-14); line-height: 1.55; }
 .reasons .from-pick { color: var(--c-muted); font-style: normal; }
@@ -339,6 +349,8 @@ p.good { margin: 0; font-size: var(--fs-14); }
 .dock-row:empty { display: none; }
 .dock-note { max-width: 62ch; color: var(--c-muted); font-size: var(--fs-14); animation: rise var(--t-2) var(--curve) both; }
 .dock-note.busy, .dock-note.warn { color: var(--c-amber); }
+/* The one step that sends your original: a notice beside the button, not small print (testers, 22-nov). */
+.dock-note.consent { max-width: 70ch; padding: var(--sp-3) var(--sp-4); border: 1px solid var(--c-amber-line); border-radius: var(--rad-md); background: var(--c-amber-soft); color: #4d3207; font-size: var(--fs-16); line-height: 1.5; }
 .outcome { flex: 1 1 260px; color: var(--c-green); font: 600 var(--fs-16)/1.4 var(--f-ui); animation: rise var(--t-2) var(--curve) both; }
 .outcome.bad { color: var(--c-red); }
 .outcome.warn { color: var(--c-amber); }

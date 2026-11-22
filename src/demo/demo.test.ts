@@ -120,6 +120,58 @@ describe('recorded text run (v5, 16-nov)', () => {
   });
 });
 
+/** Whether any cloud call carried the original: the ledger notes it as "sent as-is by your choice". */
+const sentOriginal = (ledger: Ledger) => ledger.all.some((e) => e.route === 'cloud' && /as-is/.test(e.note ?? ''));
+
+// Private by default (22-nov): the app no longer tests the original first. The framework always allowed it (`redTeam`
+// without `asIs`), and the recorded answers still replay: these pin that path.
+describe('recorded run, private by default (22-nov)', () => {
+  it('text: rewritten on the device without testing the original, then 0 of 10', async () => {
+    const kit = kitFor();
+    const threat = authorshipThreat({
+      selfId: SELF_ID,
+      self: publicData(MARTA_PUBLIC, 'blog'),
+      decoys: DECOYS.map((d) => ({ id: d.id, text: publicData(d.corpus, 'decoy') })),
+    });
+    const events: RedTeamEvent<string, Clue, AuthorshipVerdict>[] = [];
+    for await (const e of redTeam(threat, secret(DRAFT, 'draft'), kit)) events.push(e);
+
+    expect(events.map((e) => e.type)).toEqual(['clues', 'sanitized', 'attacked', 'safe']);
+    expect((events[0] as { clues: Clue[] }).clues).toEqual([...STYLE, ...CONTENT]);
+    // The "before" the app shows is measured on the device: the draft's own style ranks first of the ten.
+    expect(threat.fingerprint(DRAFT).rank).toBe(1);
+    const v = (events[2] as { verdict: AuthorshipVerdict }).verdict;
+    expect([v.hits, v.answered]).toEqual([0, 10]);
+    expect(v.picks.filter((p) => p === 'd1')).toHaveLength(9);
+    expect(sentOriginal(kit.ledger)).toBe(false);
+  }, 30_000);
+
+  it('photo: blurs what the device found and read, then the first cloud test is already of the blurred photo', async () => {
+    const fakeOps: ImageOps = {
+      withGrid: async (png) => new Uint8Array([...png, 250]),
+      size: async () => ({ width: 400, height: 300 }),
+      faces: async () => [],
+      crop: async (png, r) => new Uint8Array([...png.slice(0, 8), 252, r.x % 251, r.y % 251]),
+      paint: async (png, regions) => new Uint8Array([...png, 253, ...regions.map((g) => g.cell)]),
+    };
+    const PHOTO = new Uint8Array(Array.from({ length: 64 }, (_, i) => (i * 37) % 251));
+    const kit = kitFor();
+    const threat = locationThreat({ ops: fakeOps, truth: secret(DEMO_TRUTH, 'real location') });
+    const events: RedTeamEvent<Uint8Array, PhotoClue, LocationVerdict>[] = [];
+    for await (const e of redTeam(threat, secret(PHOTO, 'photo'), kit)) events.push(e);
+
+    expect(events.map((e) => e.type)).toEqual(['clues', 'sanitized', 'attacked', 'safe']);
+    // The "before" the app shows: what Gemini Nano read up close, on the device.
+    const clues = (events[0] as { clues: PhotoClue[] }).clues;
+    expect([...new Set(clues.filter((c) => c.read).flatMap((c) => c.seen ?? []))]).toEqual(['CARRER DE LA LLUM', '23', 'FORN PASTISSERIA']);
+    expect(threat.masked).toEqual([3, 7, 8]);
+    const v = (events[2] as { verdict: LocationVerdict }).verdict;
+    expect(v.place).toBe('Tokyo, Japan');
+    expect(threat.tier(v)).toBe('safe');
+    expect(sentOriginal(kit.ledger)).toBe(false);
+  }, 30_000);
+});
+
 describe('recorded photo run (15/16-nov)', () => {
   const fakeOps: ImageOps = {
     withGrid: async (png) => new Uint8Array([...png, 250]),
@@ -150,5 +202,7 @@ describe('recorded photo run (15/16-nov)', () => {
     expect(Math.round(masked.errorKm ?? 0)).toBe(10559);
     expect(threat.tier(masked)).toBe('safe');
     expect(threat.leftVisible).toEqual([]);
+    // The as-is path is the one that sends the original, and the receipt says so (the private path's check relies on it).
+    expect(sentOriginal(kit.ledger)).toBe(true);
   }, 30_000);
 });

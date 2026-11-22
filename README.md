@@ -7,9 +7,9 @@
 **[Open the app](https://throwaway-hybrid.web.app/app/)** (Chrome with Gemini Nano) · **[Watch a recorded run](https://throwaway-hybrid.web.app/app/?demo)** (any browser) · **[How it works](https://throwaway-hybrid.web.app)** · No sign-up
 <!-- Demo video: add the YouTube link here before submitting. -->
 
-In 2013, a stylometry analysis unmasked J. K. Rowling as "Robert Galbraith" from her writing alone. A cloud AI now attempts the same in seconds: in our live tests it picked the author of an anonymous employer review out of ten writers, 10 times out of 10. Asking a chatbot to "make it anonymous" hands it the very draft you want to protect, and nothing checks the result.
+In 2013, a stylometry analysis unmasked J. K. Rowling as "Robert Galbraith" from her writing alone. A cloud AI can now attempt the same in seconds: in our runs in Chrome (the recorded demo replays one), it picked the author of an anonymous employer review out of ten writers, 10 times out of 10. Asking a chatbot to "make it anonymous" hands it the very draft you want to protect, and nothing checks the result.
 
-Your words give away **who** you are. Your photos give away **where** you are. Throwaway attacks both before anyone else does: **Gemini Nano defends on your device, and a cloud Gemini, through Firebase AI Logic, attacks only the versions you choose to test.**
+Your words give away **who** you are. Your photos give away **where** you are. Throwaway attacks both before anyone else does: **Gemini Nano finds and fixes what gives you away on your device, and a cloud Gemini, through Firebase AI Logic, attacks only the version you would post.** Your original never leaves the device.
 
 | Threat | The attacker asks | On your device | In the cloud |
 |---|---|---|---|
@@ -18,11 +18,12 @@ Your words give away **who** you are. Your photos give away **where** you are. T
 
 For a text (a Glassdoor review, a tip to a journalist, a post from an alt account):
 
-1. **Fingerprint, in your browser.** Burrows' Delta over function words and your habit phrases, compared with writing you have already made public. 0 bytes sent.
-2. **Attack, in the cloud.** The first attack measures the text as you would post it, and it only leaves the device once you confirm that. Gemini, through Firebase AI Logic (`ONLY_IN_CLOUD`), gets the text plus a lineup of ten public writers and tries to pick the author. It is never told which candidate is you.
-3. **Rewrite, on your device.** Fixed rules generalise the identifying details ("three years" → "several years"). Then Gemini Nano, through Firebase AI Logic (`ONLY_ON_DEVICE`), rewrites the draft without your habits. **Only a version you chose to post ever reaches the cloud.** With no local model, Throwaway does not fall back to the cloud: fixed rules flag counts, dates and capitalised names (and, if you ask, generalise counts with the word they count, dates and names before a noun), you rewrite the rest, and it attacks.
-4. **Attack again** until you are at chance level, one in ten.
-5. **Take it with you.** Copy the version you checked, or compare it word by word with your original. For a photo, download the masked version.
+1. **Find, on your device.** Burrows' Delta over function words and your habit phrases, compared with writing you have already made public, says how much your style stands out (the risk *before*, with no cloud call: the demo's draft ranks #1 of 10). Gemini Nano finds the identifying details. 0 bytes sent.
+2. **Fix, on your device.** Fixed rules generalise the identifying details ("three years" → "several years"). Then Gemini Nano, through Firebase AI Logic (`ONLY_ON_DEVICE`), rewrites the draft without your habits. With no local model, Throwaway does not fall back to the cloud: fixed rules flag counts, dates and capitalised names (and, if you ask, generalise counts with the word they count, dates and names before a noun), and you rewrite the rest.
+3. **Test, in the cloud.** Gemini, through Firebase AI Logic (`ONLY_IN_CLOUD`), gets the version you would post plus a lineup of ten public writers and tries to pick the author. It is never told which candidate is you. **Only the version you would post ever reaches the cloud.** If it still finds you, Nano rewrites again with the attacker's reasons, and the cloud tests again, until you are at chance level, one in ten.
+4. **Take it with you.** Copy the version you checked, or compare it word by word with your original. For a photo, download the blurred version.
+
+**Why the original is never tested in the cloud (22-nov).** The first version showed the risk by attacking your untouched draft. But the app runs on Gemini's free plan, where Google may use what is sent to improve its products and people may review it, and its terms ask not to send sensitive data. So the risk *before* is now measured on the device (the fingerprint rank, what Gemini Nano reads in a photo), and the framework's loop runs without a baseline (`redTeam` without `asIs`). The recorded demo still offers to test the original, since it sends nothing; a billed project can turn it on with `VITE_ALLOW_AS_IS_TEST=true`.
 
 To fingerprint you rather than the demo writer, paste writing you have already published under your name. It stays in the tab and is never stored; for the attack it is one of the ten public candidates.
 
@@ -46,7 +47,7 @@ flowchart TB
   subgraph device["Your device"]
     secret["Draft or photo"] --> nano["Gemini Nano · ONLY_ON_DEVICE"] --> out["release()"]
   end
-  out -->|"only what you choose to test"| attacker["Cloud Gemini · ONLY_IN_CLOUD"]
+  out -->|"only the version you would post"| attacker["Cloud Gemini · ONLY_IN_CLOUD"]
   attacker -.->|"guess + reasons"| nano
 ```
 
@@ -58,7 +59,7 @@ flowchart TB
 | Rewrite the style, then the meaning check | `ONLY_ON_DEVICE` (Gemini Nano) | nothing |
 | Check the final text for added numbers, dates or names | none (plain JavaScript) | nothing |
 | Find the location clues in a photo | `ONLY_ON_DEVICE` (Gemini Nano, image input) | nothing |
-| Attack | `ONLY_IN_CLOUD` (`gemini-3.5-flash-lite`; `gemini-3.1-flash-lite` as a backup while it is busy, and the receipt says so) | the text or photo you are about to publish, plus public writing |
+| Attack (the app calls it a "test") | `ONLY_IN_CLOUD` (`gemini-3.5-flash-lite`; `gemini-3.1-flash-lite` as a backup while it is busy, and the receipt says so) | the fixed text or blurred photo you are about to publish, plus public writing. On Gemini's free plan Google may use it to improve its products and people may review it, so the original is never sent |
 
 ```ts
 // src/framework/firebase.ts, simplified
@@ -85,11 +86,11 @@ interface Threat<Input, Clue, Verdict> {
 }
 ```
 
-`redTeam(threat, input, kit)` runs the loop: attack, sanitize with the attacker's feedback, attack again, until the attacker stops finding you.
+`redTeam(threat, input, kit)` runs the loop: sanitize on the device, attack, sanitize again with the attacker's feedback, until the attacker stops finding you. An optional `asIs` baseline attacks the untouched input first; the app uses it only in the recorded demo.
 
 **The privacy contract is enforced, not promised:**
 
-- `Private<T>` (your draft, your photo) can only be read by `LocalModel` (Firebase AI Logic `ONLY_ON_DEVICE`). Passing it to `CloudModel` (`ONLY_IN_CLOUD`) **does not compile**.
+- `Private<T>` (your draft, your photo) can only be read by `LocalModel` (Firebase AI Logic `ONLY_ON_DEVICE`). Passing it to `CloudModel` (`ONLY_IN_CLOUD`) is a **type error**, so the app does not build; the run-time check below catches anything that slips past the types.
 - If private data is smuggled into a cloud call, a run-time taint check **blocks the call** and logs it as `blocked` in the ledger. It compares every outgoing part, alone and joined, in a normalised form: windows of about 32 letters (7–8 words) after folding case, accents, invisible characters, look-alike letters, HTML, URL and JSON escapes and up to three layers of base64, in any script. It also matches the private photo (raw, base64, `data:` URL or binary string) and your real coordinates. Try "Try to leak the original", under "For developers".
 - The only way out is `release()`, which refuses content that still carries the private original unless the user confirms they would publish it as-is.
 - If the SDK ever served a local call from the cloud, `LocalModel` throws.

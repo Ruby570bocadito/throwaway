@@ -7,7 +7,7 @@ export interface StepDef {
 }
 
 /**
- * Scan → Attack → Fix → Attack again. `current` is the step to do next (steps.length once the loop is over), `busySince` marks
+ * Find → Fix → Test (the fix comes before any test since 22-nov). `current` is the step to do next (steps.length once the loop is over), `busySince` marks
  * it as running (and since when), `outcome` colours the last step, `skipped` lists steps the run did not need, `round` counts
  * fix-and-attack loops.
  */
@@ -41,7 +41,7 @@ export function Stepper({
             <span className="st-text">
               <span className="st-label">
                 {s.label}
-                {round > 1 && i >= 2 && i === current && <span className="st-round"> · round {round}</span>}
+                {round > 1 && i >= 1 && i === current && <span className="st-round"> · round {round}</span>}
               </span>
               <span className="st-where">
                 {state === 'busy' ? `running · ${formatSeconds(elapsed)}` : state === 'skip' ? 'not needed' : s.where}

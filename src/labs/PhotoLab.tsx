@@ -6,7 +6,8 @@ import { DEMO_TRUTH, SCENE_H, SCENE_SVG, SCENE_W } from '../demo/photo';
 import { GRID, isIdentifier, locationThreat, type LocationVerdict, type PhotoClue } from '../threats/location';
 import { WorldMap, type MapPoint } from '../ui/WorldMap';
 import { Why } from '../ui/Why';
-import { ErrorNote, formatKm, friendlyError, type LabProps } from '../ui/shared';
+import { BeforeAfter, ErrorNote, formatKm, friendlyError, type LabProps } from '../ui/shared';
+import { allowAsIsTest } from '../kit';
 import { Stepper, type StepDef } from '../ui/Stepper';
 import { WorkLog, type PlanStep } from '../ui/WorkLog';
 import { useAnimatedNumber, useReducedMotion, withTransition } from '../ui/motion';
@@ -14,7 +15,8 @@ import { useCloudBusy } from '../ui/busy';
 import { Mascot, type Pose } from '../ui/Mascot';
 
 type Stage = 'loading' | 'photo' | 'scanned' | 'attacked' | 'masked' | 'safe';
-const STAGE_STEP: Record<Stage, number> = { loading: 0, photo: 0, scanned: 1, attacked: 2, masked: 3, safe: 4 };
+// Find → Blur → Test (22-nov): the original is never tested by default, so `attacked` (found by a test) leads back to Blur.
+const STAGE_STEP: Record<Stage, number> = { loading: 0, photo: 0, scanned: 1, attacked: 1, masked: 2, safe: 3 };
 // Gemini Nano is asked twice and the answers merged (threats/location.ts).
 const SCAN_PLAN: PlanStep[] = [
   { match: /^Find location clues \(scan 1/, label: 'Look for location clues · first pass', route: 'on-device', slow: true },
@@ -58,6 +60,8 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak, recorded, 
   const [manual, setManual] = useState<number[]>([]);
   // "Attack it as I would post it" sends the photo as it is: the user's choice, and the chip says so.
   const [sentAsIs, setSentAsIs] = useState(false);
+  // Gemini Nano found nothing on the device that places the photo: the user may still pick cells, or test it as they would post it.
+  const [nothingToBlur, setNothingToBlur] = useState(false);
   const [busy, setBusy] = useState('');
   // While the attack waits on a busy cloud model, the actions say so (a retry, or a switch to a backup model).
   const [busyNote, clearBusyNote] = useCloudBusy(kit.cloud, busy === 'attack');
@@ -177,7 +181,8 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak, recorded, 
     if (!dock || busy || !acted.current) return;
     const active = document.activeElement;
     if (active && active !== document.body && !dock.contains(active)) return;
-    dock.querySelector<HTMLElement>('button:not(:disabled), a[href]')?.focus({ preventScroll: true });
+    // Never the button that would test the original: Enter must not send it.
+    dock.querySelector<HTMLElement>('button:not(:disabled):not(.as-is), a[href]')?.focus({ preventScroll: true });
   }, [stage, busy, dock]);
 
   // When the last cell has blurred, show the blurred photo itself; the cut-outs go once it has loaded (or after 800 ms).
@@ -337,12 +342,22 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak, recorded, 
     run('mask', async () => {
       const before = [...threat.masked];
       let next: Publishable<Uint8Array>;
-      if (degraded) {
+      if (degraded || (stage === 'scanned' && nothingToBlur)) {
         // The cells you picked, hidden around the faces like the ones Gemini Nano finds.
         next = await threat.hideCells(privatePhoto.current!, manual, kit);
       } else {
         await prepare();
-        next = await threat.sanitize(privatePhoto.current!, clues, verdict, kit);
+        try {
+          // Right after the scan there is no verdict: the clues found on this device decide (22-nov), nothing is sent.
+          next = await threat.sanitize(privatePhoto.current!, clues, verdict, kit);
+        } catch (e) {
+          // Nothing found that places it (or it is all face): pick cells, or test it as you would post it.
+          if (stage === 'scanned' && /^Nothing to mask/.test((e as Error).message)) {
+            setNothingToBlur(true);
+            return;
+          }
+          throw e;
+        }
       }
       const fresh = threat.masked.filter((c) => !before.includes(c));
       await go('masked', () => {
@@ -377,9 +392,14 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak, recorded, 
 
   const clueAt = (cell: number) => clues.find((c) => c.cell === cell && !threat.masked.includes(c.cell));
   const attackerAt = (cell: number) => verdict?.clues.find((c) => c.cell === cell && !threat.masked.includes(c.cell));
-  // Cells are chosen once the attacker has seen the photo as it is: chosen before, they were ignored by that first attack,
-  // and a tester could not tell which step came first (17-nov).
-  const canPick = degraded && stage === 'attacked';
+  // Without Gemini Nano, or when it found nothing, you pick the cells yourself, right after the scan: the blur comes before any
+  // test since 22-nov. After a test that still found you, the cells it used are preselected (no model only).
+  const canPick = ((degraded || nothingToBlur) && stage === 'scanned') || (degraded && stage === 'attacked');
+  // Private by default (22-nov): testing the untouched original only in the recorded demo (nothing sent) or on a paid plan.
+  const canTestOriginal = recorded || allowAsIsTest;
+  // What Gemini Nano read up close, on this device: the "before", known without sending anything.
+  const readHere = [...new Set(clues.filter((c) => c.read).flatMap((c) => c.seen ?? []))].slice(0, 4);
+  const readAddress = clues.some((c) => c.read && isIdentifier(c));
   // Blurred and not attacked again yet: every cell can be blurred or shown again with a tap.
   const canToggle = stage === 'masked' && !!published;
   const staleVerdict = stage === 'masked' && !busy && !!verdict;
@@ -396,9 +416,8 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak, recorded, 
 
   const steps: StepDef[] = [
     { label: 'Find', where: degraded ? 'no local model' : 'on your device' },
-    { label: 'Test', where: 'in the cloud' },
     { label: 'Blur', where: degraded ? 'you choose cells' : 'on your device' },
-    { label: 'Test again', where: 'in the cloud' },
+    { label: 'Test', where: 'in the cloud' },
   ];
   const working = !degraded && busy === 'scan';
   const attacking = busy === 'attack';
@@ -433,22 +452,26 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak, recorded, 
           lede: recorded
             ? 'A recorded run: Gemini Nano’s answers on this demo photo were recorded in Chrome, and replay here.'
             : degraded
-              ? 'The AI looks first, then you tap the cells to blur. Nothing leaves this device until you choose to test it.'
-              : 'Throwaway looks for clues on this device first: street names, house numbers, plates, signs. Nothing leaves it until you choose to test it.',
+              ? 'No on-device AI here: you tap the cells to blur, on this device. Only the blurred photo is tested in the cloud, when you choose.'
+              : 'Throwaway finds the clues and blurs them on this device: street names, house numbers, plates, signs. Only the blurred photo is tested in the cloud, when you choose.',
         }
       : stage === 'scanned'
         ? {
             title: degraded
-              ? 'First, see what the AI finds'
+              ? 'Tap what could place this photo'
               : visibleClues.length
                 ? `${capital(plural(visibleClues.length, 'clue'))} could place this photo`
                 : 'Nothing obvious places this photo',
-            // Your own photo with no location yet: ask now, before the attack, or the guess cannot be measured at all.
+            // Your own photo with no location yet: ask now, before the test, or the guess cannot be measured at all.
             lede: !truthPoint
               ? 'Share your location before the test, so this device can measure how close the guess lands: it never leaves this device.'
               : degraded
-                ? 'A cloud AI looks at the photo as it is and says where it was taken; then you choose what to blur.'
-                : 'Found on this device. Next, a cloud AI tries to say where it was taken.',
+                ? 'Tap the cells with street names, house numbers, plates or signs. They are blurred on this device, around the faces.'
+                : nothingToBlur
+                  ? 'Gemini Nano found nothing here that places it. Tap any cell you still want blurred, or test it as you would post it.'
+                  : readHere.length
+                    ? `On this device, Gemini Nano read ${readHere.map((t) => `“${t}”`).join(', ')}${readAddress ? ': that is an address' : ''}. Next, Throwaway blurs the clues here; nothing has left this device.`
+                    : 'Found on this device, and nothing has left it. Next, Throwaway blurs the clues here.',
           }
         : stage === 'attacked'
           ? {
@@ -464,7 +487,7 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak, recorded, 
           : stage === 'masked'
             ? {
                 title: 'Blurred on your device',
-                lede: `${share}% of the photo, around the faces. Tap a cell to blur it or show it again, then test it again.`,
+                lede: `${share}% of the photo, around the faces. Tap a cell to blur it or show it again, then test it${history.length ? ' again' : ''}.`,
               }
             : {
                 title: city && !unmeasured && published ? 'Your street is hidden, your city is not' : verdictTitle,
@@ -485,21 +508,58 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak, recorded, 
           {busyNote}
         </p>
       )}
-      {!busy && stage === 'scanned' && (
-        <p className="dock-note warn">
-          Sends your original photo, unchanged, to Gemini in Google’s cloud (again if the model is busy), as if you had posted it. The only step that sends your original; Throwaway keeps nothing.
+      {/* Before a tap that sends something: a notice, not small print (two testers missed it, 22-nov), with what Gemini's
+          free plan allows. */}
+      {!busy && stage === 'scanned' && nothingToBlur && chosen.length === 0 && !recorded && (
+        <p className="dock-note consent">
+          Testing sends this photo as you would post it to Gemini, on Google’s free plan: Google may use it to improve its products, and people may review it.
         </p>
       )}
-      {!busy && stage === 'masked' && <p className="dock-note">Sends only the blurred photo, never the original.</p>}
+      {!busy && stage === 'scanned' && canTestOriginal && !recorded && !nothingToBlur && (
+        <p className="dock-note consent">
+          Testing the original sends your photo, unchanged, to Gemini in Google’s cloud, as if you had posted it. Blurring it first sends nothing.
+        </p>
+      )}
+      {!busy && stage === 'masked' && (
+        <p className={`dock-note ${recorded ? '' : 'consent'}`}>
+          {recorded
+            ? 'A recorded run: nothing is sent. Live, only the blurred photo goes to Gemini, on Google’s free plan.'
+            : `Sends only the blurred photo, never your original, to Gemini on Google’s free plan: Google may use it to improve its products, and people may review it.${
+                blurFaces ? '' : ' Your face goes too, unless you tick “Blur faces too”.'
+              }`}
+        </p>
+      )}
       <div className="dock-row">
         {stage === 'photo' && (
           <button className="primary" onClick={scan} disabled={!!busy} aria-busy={busy === 'scan'}>
             {busy ? busyContent : 'Check my photo on this device'}
           </button>
         )}
-        {stage === 'scanned' && (
+        {/* Blur first, on the device: nothing has to leave it to find out (22-nov). */}
+        {stage === 'scanned' && (degraded || nothingToBlur) && !(nothingToBlur && chosen.length === 0) && (
+          <button className="primary" onClick={mask} disabled={!!busy || chosen.length === 0} aria-busy={busy === 'mask'}>
+            {busy === 'mask' ? busyContent : maskLabel}
+          </button>
+        )}
+        {stage === 'scanned' && nothingToBlur && chosen.length === 0 && (
           <button className="primary" onClick={attackAsIs} disabled={!!busy} aria-busy={attacking}>
-            {busy ? busyContent : 'Test my original photo'}
+            {busy ? busyContent : 'Test it as I would post it'}
+          </button>
+        )}
+        {stage === 'scanned' && !degraded && !nothingToBlur && (
+          <button className="primary" onClick={mask} disabled={!!busy} aria-busy={busy === 'mask'}>
+            {busy === 'mask' ? busyContent : 'Blur the clues on this device'}
+          </button>
+        )}
+        {stage === 'scanned' && canTestOriginal && !nothingToBlur && (
+          <button
+            className="ghost as-is"
+            onClick={attackAsIs}
+            disabled={!!busy}
+            aria-busy={attacking}
+            title={recorded ? 'A recorded run: nothing is sent' : undefined}
+          >
+            {attacking ? busyContent : recorded ? 'First, test the original (recorded)' : 'First, test my original'}
           </button>
         )}
         {stage === 'scanned' && !truthPoint && !busy && (
@@ -514,7 +574,7 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak, recorded, 
         )}
         {stage === 'masked' && published && (
           <button className="primary" onClick={() => attack(published, true)} disabled={!!busy} aria-busy={attacking}>
-            {busy ? busyContent : 'Test again'}
+            {busy ? busyContent : history.length ? 'Test again' : 'Test it'}
           </button>
         )}
         {stage === 'safe' && published && publishedUrl && (
@@ -628,9 +688,12 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak, recorded, 
             <button className="mini" onClick={() => fileInput.current?.click()}>
               Use my own photo
             </button>
-            <button className="mini" onClick={useMyLocation}>
-              Use my location
-            </button>
+            {/* Only for a photo of yours: on the demo photo it replaced the scene's place (Palma) with yours (22-nov). */}
+            {source === 'own' && (
+              <button className="mini" onClick={useMyLocation}>
+                Use my location
+              </button>
+            )}
           </span>
           <input ref={fileInput} type="file" accept="image/jpeg,image/png,image/webp" hidden onChange={(e) => e.target.files?.[0] && loadOwnPhoto(e.target.files[0])} />
         </div>
@@ -650,7 +713,8 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak, recorded, 
 
       {showCells && (
         <p className="legend" aria-hidden="true">
-          {visibleClues.length > 0 && <span className="key clue">Found on your device</span>}
+          {/* After blurring, a red cell left visible read as a mistake (a tester, 22-nov): say it is yours to blur. */}
+          {visibleClues.length > 0 && <span className="key clue">{threat.masked.length > 0 ? 'Found, not blurred: tap it to blur it' : 'Found on your device'}</span>}
           {!!verdict && !safe && verdict.clues.some((c) => !threat.masked.includes(c.cell)) && <span className="key atk">Used by the cloud AI</span>}
           {threat.masked.length > 0 && <span className="key blur">Blurred</span>}
         </p>
@@ -710,8 +774,16 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak, recorded, 
             <strong>{attacking ? 'The AI is looking at your photo' : verdictHeadline}</strong>
             <p>
               {attacking ? 'A cloud AI guesses where it was taken, from what it sees.' : `Guess: ${verdict!.place}. ${verdictDetail}`}
-              {!attacking && history.length > 1 ? ` Before blurring: ${formatKm(history[0])}.` : ''}
+              {/* Only the as-is path has a cloud guess from before blurring; on the private path the first test is already blurred. */}
+              {!attacking && sentAsIs && history.length > 1 ? ` Before blurring: ${formatKm(history[0])}.` : ''}
             </p>
+            {!attacking && verdict && published && !sentAsIs && !staleVerdict && readHere.length > 0 && (
+              <BeforeAfter
+                good={safe}
+                before={`Gemini Nano read ${readHere.map((t) => `“${t}”`).join(', ')}${readAddress ? ': an address anyone can look up' : ''}`}
+                now={`it guesses “${verdict.place}”${verdict.errorKm !== null ? `, ${formatKm(verdict.errorKm)} off` : ''}`}
+              />
+            )}
           </div>
         </div>
         <WorldMap
@@ -770,7 +842,7 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak, recorded, 
         current={STAGE_STEP[stage]}
         busySince={busySince}
         outcome={stage === 'safe' ? (city ? 'warn' : 'good') : null}
-        skipped={stage === 'safe' && !published ? [2, 3] : []}
+        skipped={stage === 'safe' && !published ? [1] : []}
         round={rounds}
       />
       {error && <ErrorNote message={error} />}
