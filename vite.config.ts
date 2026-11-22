@@ -32,7 +32,8 @@ function preloadFonts(): Plugin {
   }
 }
 
-// Two pages: the landing page (/) and the app (/app/). The landing page loads neither React, nor the app, nor Firebase.
+// Three pages: the landing page in English (/) and Spanish (/es/), and the app (/app/). The landing pages load neither React,
+// nor the app, nor Firebase.
 export default defineConfig({
   plugins: [react(), preloadFonts()],
   define: { __MEDIAPIPE_VERSION__: JSON.stringify(mediapipeVersion) },
@@ -40,7 +41,7 @@ export default defineConfig({
     // Never inline assets as data: URLs (Vite inlined the smallest font subsets), so the CSP can keep font-src 'self'.
     assetsInlineLimit: 0,
     rollupOptions: {
-      input: { landing: 'index.html', app: 'app/index.html' },
+      input: { landing: 'index.html', es: 'es/index.html', app: 'app/index.html' },
     },
   },
 })

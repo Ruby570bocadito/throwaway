@@ -1,8 +1,8 @@
 // Throwaway's service worker: makes the app installable and lets the shell (and the recorded run) open offline.
 // It only ever stores this site's own static files. Calls to Firebase AI Logic, App Check and reCAPTCHA go to another origin
 // and are never touched, and nothing you type or upload becomes a request, so it can never be cached.
-const CACHE = 'throwaway-shell-v1';
-const SHELL = ['/', '/app/', '/manifest.webmanifest', '/brand/bola-128.webp', '/brand/icon-192.png'];
+const CACHE = 'throwaway-shell-v2';
+const SHELL = ['/', '/es/', '/app/', '/manifest.webmanifest', '/brand/bola-128.webp', '/brand/icon-192.png'];
 // Hashed build files never change; the brand images and illustrations are versioned by name.
 const STATIC = /^\/(assets|brand|illus)\//;
 const MAX_ENTRIES = 80;
@@ -12,7 +12,7 @@ async function precache() {
   const cache = await caches.open(CACHE);
   await cache.addAll(SHELL);
   const assets = new Set();
-  for (const page of ['/', '/app/']) {
+  for (const page of ['/', '/es/', '/app/']) {
     const html = await (await cache.match(page))?.text();
     for (const m of html?.matchAll(/(?:src|href)="(\/assets\/[^"]+)"/g) ?? []) assets.add(m[1]);
   }
@@ -53,7 +53,13 @@ self.addEventListener('fetch', (event) => {
 
   if (req.mode === 'navigate') {
     // Pages: the network first, so a new deploy shows at once; the stored shell only when offline.
-    const page = url.pathname.startsWith('/app') ? '/app/' : url.pathname === '/' || url.pathname === '/index.html' ? '/' : null;
+    const page = url.pathname.startsWith('/app')
+      ? '/app/'
+      : url.pathname.startsWith('/es')
+        ? '/es/'
+        : url.pathname === '/' || url.pathname === '/index.html'
+          ? '/'
+          : null;
     event.respondWith(
       fetch(req)
         .then((res) => {

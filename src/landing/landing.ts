@@ -10,6 +10,9 @@ declare global {
 window.__landing = true; // tells the fallback in boot.js that this script ran
 
 const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+/** The page's language: English at /, Spanish at /es/ (22-nov). The script's own words follow it. */
+const ES = document.documentElement.lang === 'es';
+const tr = (en: string, es: string) => (ES ? es : en);
 
 /**
  * Each writer's glyph in the demo lineup, seats A to J (you are C): how often they use the twelve commonest function words
@@ -31,6 +34,7 @@ const GLYPHS: number[][] = [
 
 revealOnScroll();
 followSections();
+rememberLanguage();
 void adaptToThisBrowser();
 linkManifestAndWorker();
 const shot = document.querySelector<HTMLElement>('.hero-shot');
@@ -57,6 +61,18 @@ function revealOnScroll() {
     { rootMargin: '0px 0px -8% 0px' },
   );
   for (const el of items) io.observe(el);
+}
+
+/** The language switch is remembered, so / does not send a Spanish browser back to /es/ after it chose English (boot.js). */
+function rememberLanguage() {
+  for (const a of document.querySelectorAll<HTMLAnchorElement>('[data-lang]'))
+    a.addEventListener('click', () => {
+      try {
+        localStorage.setItem('lang', a.dataset.lang ?? 'en');
+      } catch {
+        // private mode or blocked storage: the link still works, it is just not remembered
+      }
+    });
 }
 
 /** The navigation marks the section you are reading. */
@@ -116,12 +132,22 @@ async function adaptToThisBrowser() {
   const note = document.querySelector<HTMLElement>('[data-nano]');
   if (!note) return;
   // Three testers read "your first check starts the download" as a hidden download (22-nov): say what, when and how big.
+  const appInEnglish = ' La app, de momento, está en inglés.';
   note.textContent =
     status === 'available'
-      ? 'Free, no account. Gemini Nano, the small Google AI that runs on your computer, is ready in this Chrome: the full check works here.'
+      ? tr(
+          'Free, no account. Gemini Nano, the small Google AI that runs on your computer, is ready in this Chrome: the full check works here.',
+          'Gratis y sin cuenta. Gemini Nano, la IA pequeña de Google que funciona en tu ordenador, ya está lista en este Chrome: la revisión completa funciona aquí.' + appInEnglish,
+        )
       : status === 'downloadable'
-        ? 'Free, no account. This Chrome can add Gemini Nano, a small Google AI that runs on your computer. Chrome downloads it once, when you start your first check, and needs about 22 GB of free disk.'
-        : 'Free, no account. This browser has no Gemini Nano: watch a real check, or check a post with fixed rules. The full check needs Chrome on a computer.';
+        ? tr(
+            'Free, no account. This Chrome can add Gemini Nano, a small Google AI that runs on your computer. Chrome downloads it once, when you start your first check, and needs about 22 GB of free disk.',
+            'Gratis y sin cuenta. Este Chrome puede añadir Gemini Nano, una IA pequeña de Google que funciona en tu ordenador. Chrome la descarga una vez, cuando empiezas tu primera revisión, y necesita unos 22 GB libres en el disco.' + appInEnglish,
+          )
+        : tr(
+            'Free, no account. This browser has no Gemini Nano: watch a real check, or check a post with fixed rules. The full check needs Chrome on a computer.',
+            'Gratis y sin cuenta. Este navegador no tiene Gemini Nano: mira una revisión real o revisa un post con reglas fijas. La revisión completa necesita Chrome en un ordenador.' + appInEnglish,
+          );
 }
 
 /**
@@ -173,11 +199,11 @@ function heroShot(fig: HTMLElement) {
   if (!box || !chip || !mascot) return;
   const POSE: Record<Phase, string> = { idle: 'wave', scan: 'scan', found: 'alarm', blur: 'blur', safe: 'safe' };
   const CHIP: Record<Phase, string> = {
-    idle: 'Your photo, on your device',
-    scan: 'Looking for clues on your device…',
-    found: '3 clues found on your device',
-    blur: 'Blurred on your device',
-    safe: 'Tested by an AI in the cloud',
+    idle: tr('Your photo, on your device', 'Tu foto, en tu dispositivo'),
+    scan: tr('Looking for clues on your device…', 'Buscando pistas en tu dispositivo…'),
+    found: tr('3 clues found on your device', '3 pistas encontradas en tu dispositivo'),
+    blur: tr('Blurred on your device', 'Difuminado en tu dispositivo'),
+    safe: tr('Tested by an AI in the cloud', 'Probado por una IA en la nube'),
   };
   const show = (phase: Phase) => {
     box.dataset.phase = phase;
@@ -259,7 +285,7 @@ function lineupReplay(root: HTMLElement) {
     root.dataset.phase = phase;
     chip.textContent = label;
     num.textContent = score;
-    what.textContent = 'tries found the real author';
+    what.textContent = tr('tries found the real author', 'intentos acertaron');
     // the version the attacker is reading stands out
     before?.classList.toggle('live', phase === 'before');
     after?.classList.toggle('live', phase === 'after');
@@ -267,7 +293,7 @@ function lineupReplay(root: HTMLElement) {
 
   if (reduceMotion) {
     // Still: the original's run, which the verdicts under the lineup then compare with the rewrite.
-    say('before', 'Original', '10/10');
+    say('before', tr('Original', 'Original'), '10/10');
     for (let i = 0; i < 10; i++) pick(ME);
     cards[ME].classList.remove('pointed');
     return;
@@ -288,7 +314,7 @@ function lineupReplay(root: HTMLElement) {
       replay(num, 'stamp');
       await wait(2200);
 
-      say('after', 'Rewritten on your device', '0/0');
+      say('after', tr('Rewritten on your device', 'Reescrita en tu dispositivo'), '0/0');
       clear();
       await wait(1500);
       for (let i = 1; i <= 10; i++) {
