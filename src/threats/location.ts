@@ -85,6 +85,8 @@ export interface LocationOptions {
    * every cell and the union of its clues and the attacker's pixelated the whole photo.
    */
   maxMaskedShare?: number;
+  /** Blur the faces too (default off). Testers asked for it (22-nov); the threat's own switch can change it later. */
+  blurFaces?: boolean;
 }
 
 /** Clues that point at one spot; the rest (architecture, vegetation, "other") mostly say which city, not where in it. */
@@ -219,6 +221,13 @@ export function coverage(rects: Rect[], within: Rect, steps = 96): number {
       if (near.some((r) => px >= r.x && px < r.x + r.w && py >= r.y && py < r.y + r.h)) hit++;
     }
   return hit / (steps * steps);
+}
+
+/** A face box grown by a tenth on each side (hair, ears, chin), kept inside the photo. */
+export function grown(r: Rect, whole: Rect, by = 0.1): Rect {
+  const x = Math.max(whole.x, r.x - r.w * by);
+  const y = Math.max(whole.y, r.y - r.h * by);
+  return { x, y, w: Math.min(whole.x + whole.w, r.x + r.w * (1 + by)) - x, h: Math.min(whole.y + whole.h, r.y + r.h * (1 + by)) - y };
 }
 
 /** A rectangle with holes cut out of it (faces), as the rectangles left: bands above and below each hole, and either side. */
@@ -450,10 +459,14 @@ export function locationThreat(o: LocationOptions): Threat<Uint8Array, PhotoClue
   masked: number[];
   regions: MaskRegion[];
   maskedShare: number;
+  clueShare: number;
   /** Flagged clues left visible: the budget was spent on more specific ones, or the clue's cell is all face. */
   leftVisible: PhotoClue[];
   maxShare: number;
   faces: Rect[];
+  /** Blur the faces too (off unless you ask). */
+  blurFaces: boolean;
+  setBlurFaces(input: Private<Uint8Array>, on: boolean, kit: Kit): Promise<Publishable<Uint8Array> | null>;
   hideCells(input: Private<Uint8Array>, cells: number[], kit: Kit): Promise<Publishable<Uint8Array>>;
   toggleCells(input: Private<Uint8Array>, cells: number[], kit: Kit): Promise<Publishable<Uint8Array>>;
   exposureReason(v: LocationVerdict): ExposureReason | null;
@@ -520,12 +533,19 @@ export function locationThreat(o: LocationOptions): Threat<Uint8Array, PhotoClue
     const whole = { x: 0, y: 0, w: photoSize!.width, h: photoSize!.height };
     const t0 = performance.now();
     threat.regions = [...threat.regions, ...fresh];
-    threat.maskedShare = coverage(threat.regions.map((g) => g.rect), whole);
+    // The faces, only if you asked: a layer of their own over the cells, never counted against the budget (22-nov).
+    const faceLayer: MaskRegion[] = threat.blurFaces
+      ? (await facesIn(png, kit)).map((rect) => ({ rect: grown(rect, whole), style: 'blur' as const, cell: 0, what: 'a face, by your choice' }))
+      : [];
+    const painted = [...threat.regions, ...faceLayer];
+    threat.maskedShare = coverage(painted.map((g) => g.rect), whole);
+    threat.clueShare = coverage(threat.regions.map((g) => g.rect), whole);
     threat.masked = Array.from({ length: GRID * GRID }, (_, i) => i + 1).filter((c) => cellCovered(c) > 0.02);
     threat.leftVisible = left.sort((a, b) => a.cell - b.cell);
-    const masked = await o.ops.paint(png, threat.regions);
+    const masked = await o.ops.paint(png, painted);
     const kept = left.length ? ` · kept ${left.length} ${left.length === 1 ? 'clue' : 'clues'} visible: all face, or past the budget` : '';
-    kit.ledger.add({ op, route: 'local-js', ms: Math.round(performance.now() - t0), bytesOut: 0, note: `${Math.round(threat.maskedShare * 100)}% of the photo${kept}` });
+    const faced = faceLayer.length ? ` · ${faceLayer.length} ${faceLayer.length === 1 ? 'face' : 'faces'} blurred, by your choice` : '';
+    kit.ledger.add({ op, route: 'local-js', ms: Math.round(performance.now() - t0), bytesOut: 0, note: `${Math.round(threat.maskedShare * 100)}% of the photo${kept}${faced}` });
     // release() refuses bytes identical to the private original.
     return release(masked, `masked cells ${threat.masked.join(',')}`);
   }
@@ -541,12 +561,16 @@ export function locationThreat(o: LocationOptions): Threat<Uint8Array, PhotoClue
     masked: [] as number[],
     /** What is hidden, so far: every round adds to it. */
     regions: [] as MaskRegion[],
-    /** The share of the photo hidden, 0–1. */
+    /** The share of the photo hidden, 0–1, faces included when you blur them. */
     maskedShare: 0,
+    /** The share hidden for clues only: what the budget counts (your faces never do). */
+    clueShare: 0,
     leftVisible: [] as PhotoClue[],
     maxShare: o.maxMaskedShare ?? 0.25,
     /** The faces found in the photo (whole heads), once it has been masked. */
     faces: [] as Rect[],
+    /** Blur the faces too: off unless you ask (the point is to post your photo, minus where it was taken). */
+    blurFaces: o.blurFaces ?? false,
 
     async findClues(input: Private<Uint8Array>, kit: Kit): Promise<PhotoClue[]> {
       // The faces are looked for on the CPU while Gemini Nano scans on the GPU: blurring then does not wait for them.
@@ -680,7 +704,8 @@ export function locationThreat(o: LocationOptions): Threat<Uint8Array, PhotoClue
       };
       for (const c of clues) consider(c, false);
       for (const c of feedback?.clues ?? []) consider(c, true);
-      if (!best.size && !threat.regions.length) {
+      const facesToBlur = threat.blurFaces ? (await facesIn(png, kit)).length : 0;
+      if (!best.size && !threat.regions.length && !facesToBlur) {
         // Masking nothing would re-encode the original, and release() would (rightly) refuse it as the private photo.
         throw new Error('Nothing to mask: no cell of this photo was flagged as a location clue. If you would post it as it is, attack it as it is');
       }
@@ -719,7 +744,7 @@ export function locationThreat(o: LocationOptions): Threat<Uint8Array, PhotoClue
         fresh = [...fresh, ...regions];
         hiddenCells.add(cell);
       }
-      if (!fresh.length && !threat.regions.length) {
+      if (!fresh.length && !threat.regions.length && !facesToBlur) {
         throw new Error('Nothing to mask: what was flagged in this photo is all face. If you would post it as it is, attack it as it is');
       }
       const count = new Set(fresh.map((g) => g.cell)).size;
@@ -767,6 +792,18 @@ export function locationThreat(o: LocationOptions): Threat<Uint8Array, PhotoClue
       const did = [add.length && `hide ${add.length === 1 ? `cell ${add[0]}` : `${add.length} cells`}`, show.length && `show ${show.length === 1 ? `cell ${show[0]}` : `${show.length} cells`} again`].filter(Boolean);
       const op = `${did.join(' and ').replace(/^./, (ch) => ch.toUpperCase())}, around the faces`;
       return hide(png, fresh, threat.leftVisible.filter((c) => !hiddenCells.has(c.cell)), kit, op);
+    },
+
+    /**
+     * Blur the faces too, or show them again. Before anything is blurred it only sets the choice (the next blur paints it);
+     * after, the photo is painted again from the private original, and null means there is nothing to paint yet.
+     */
+    async setBlurFaces(input: Private<Uint8Array>, on: boolean, kit: Kit): Promise<Publishable<Uint8Array> | null> {
+      threat.blurFaces = on;
+      if (!threat.regions.length) return null;
+      const png = Private.openLocally(input);
+      photoSize ??= await o.ops.size(png);
+      return hide(png, [], threat.leftVisible, kit, on ? 'Blur the faces too, by your choice' : 'Show the faces again');
     },
 
     async attack(published: Publishable<Uint8Array>, kit: Kit): Promise<LocationVerdict> {

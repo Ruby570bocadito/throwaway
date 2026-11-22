@@ -135,7 +135,8 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
   const [sentAsIs, setSentAsIs] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [copied, setCopied] = useState(false);
-  const [showCompare, setShowCompare] = useState(false);
+  // Open from the start: a tester did not find the before and after behind a button (22-nov).
+  const [showCompare, setShowCompare] = useState(true);
   // Without a local model the fixed rules can still generalise counts and dates in your edit, when you ask (17-nov).
   const [genNote, setGenNote] = useState('');
   // Writing you already published under your name (optional, live only, never stored): the fingerprint compares you with you.

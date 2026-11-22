@@ -50,6 +50,8 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak, recorded, 
   const [stage, setStage] = useState<Stage>('loading');
   const [original, setOriginal] = useState<Uint8Array | null>(null);
   const [published, setPublished] = useState<Publishable<Uint8Array> | null>(null);
+  // Blur the faces too: off by default, your choice (testers asked for it, 22-nov). The threat paints it.
+  const [blurFaces, setBlurFaces] = useState(false);
   const [clues, setClues] = useState<PhotoClue[]>([]);
   const [verdict, setVerdict] = useState<LocationVerdict | null>(null);
   const [history, setHistory] = useState<number[]>([]);
@@ -351,6 +353,20 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak, recorded, 
       });
     });
 
+  // A new photo or location makes a new threat: it keeps your choice about faces.
+  useEffect(() => {
+    threat.blurFaces = blurFaces;
+  }, [threat, blurFaces]);
+  const toggleFaces = (on: boolean) =>
+    run('toggle', async () => {
+      setBlurFaces(on);
+      const next = await threat.setBlurFaces(privatePhoto.current!, on, kit);
+      if (next) {
+        setReveal(null);
+        setPublished(next);
+      }
+    });
+
   // One tap per cell once the photo is blurred: blur it, or show it again (21-nov plan). Painted again on the device.
   const toggle = (cell: number) =>
     run('toggle', async () => {
@@ -368,7 +384,7 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak, recorded, 
   const canToggle = stage === 'masked' && !!published;
   const staleVerdict = stage === 'masked' && !busy && !!verdict;
   // The budget is spent and the attacker only points at what is not an identifier: another round would add nothing.
-  const budgetFull = !degraded && !!published && threat.maskedShare >= threat.maxShare - 0.005 && !(verdict?.clues ?? []).some((c) => isIdentifier(c));
+  const budgetFull = !degraded && !!published && threat.clueShare >= threat.maxShare - 0.005 && !(verdict?.clues ?? []).some((c) => isIdentifier(c));
   const chosen = manual.filter((c) => !threat.masked.includes(c)).sort((x, y) => x - y);
   const maskLabel = !chosen.length
     ? 'Tap the cells to blur'
@@ -595,9 +611,12 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak, recorded, 
       {published && (
         <label className="compare-range">
           <span>Blurred</span>
-          <input type="range" min={0} max={100} value={compare} onChange={(e) => setCompare(Number(e.target.value))} aria-label="Show the original from the left, to compare" />
-          <span>Original</span>
+          <input type="range" min={0} max={100} value={compare} onChange={(e) => setCompare(Number(e.target.value))} aria-label="Drag to compare the blurred photo with your original" />
+          <span>Your original</span>
         </label>
+      )}
+      {published && (
+        <p className="hint compare-hint">Drag the slider to see your original under the blur. Only the blurred version leaves this device.</p>
       )}
 
       {stage === 'photo' && !recorded && (
@@ -631,10 +650,20 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak, recorded, 
 
       {showCells && (
         <p className="legend" aria-hidden="true">
-          {visibleClues.length > 0 && <span className="key clue">Clue found on your device</span>}
-          {!!verdict && !safe && verdict.clues.some((c) => !threat.masked.includes(c.cell)) && <span className="key atk">Used by the AI</span>}
+          {visibleClues.length > 0 && <span className="key clue">Found on your device</span>}
+          {!!verdict && !safe && verdict.clues.some((c) => !threat.masked.includes(c.cell)) && <span className="key atk">Used by the cloud AI</span>}
           {threat.masked.length > 0 && <span className="key blur">Blurred</span>}
         </p>
+      )}
+
+      {showCells && (
+        <label className="face-switch">
+          <input type="checkbox" checked={blurFaces} disabled={!!busy} onChange={(e) => void toggleFaces(e.target.checked)} />
+          <span>
+            <strong>Blur faces too</strong> Off, your face stays: the point is to post your photo, minus where it was taken. On, every face
+            found on this device is blurred as well.
+          </span>
+        </label>
       )}
 
       {showCells && !degraded && (

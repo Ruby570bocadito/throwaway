@@ -197,9 +197,13 @@ export default function App() {
             </button>
           </nav>
           <div className="topbar-end">
-            <span className={`mode-badge ${live ? 'live' : 'demo'}`}>
+            {/* "Recorded run" left two testers asking whether the AI was real (22-nov). */}
+            <span
+              className={`mode-badge ${live ? 'live' : 'demo'}`}
+              title={live ? 'Live: Gemini Nano on this device, Gemini in the cloud' : 'A real run in Chrome, replayed: the AI answers were recorded on 15–16 November; everything else runs live in this tab'}
+            >
               <i className="dot" aria-hidden="true" />
-              {live ? 'Live' : 'Recorded run'}
+              {live ? 'Live' : 'Demo: a real run, replayed'}
             </span>
             <button
               ref={receiptButton}

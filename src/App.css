@@ -425,6 +425,10 @@ dialog.sheet::backdrop { background: rgba(35, 42, 61, 0.32); animation: fade-in 
 .private-note { color: var(--c-green); }
 .card .findings { margin-top: var(--sp-4); }
 .reasons-box { margin-top: var(--sp-4); }
+.face-switch { display: flex; gap: var(--sp-3); align-items: flex-start; margin-top: var(--sp-3); padding: var(--sp-3) var(--sp-4); border: 1.5px dashed var(--c-line-2); border-radius: var(--rad-md); background: var(--c-surface-2); color: var(--c-muted); font-size: var(--fs-14); line-height: 1.5; cursor: pointer; }
+.face-switch input { flex: none; width: 18px; height: 18px; margin: 2px 0 0; accent-color: var(--c-accent); cursor: pointer; }
+.face-switch strong { margin-right: 4px; color: var(--c-ink); }
+.face-switch:has(input:checked) { border-style: solid; border-color: var(--c-accent); background: var(--c-accent-soft); }
 .stale { opacity: 0.45; filter: grayscale(0.6); transition: opacity var(--t-3), filter var(--t-3); }
 .stale-note { margin: 4px 0 0; color: var(--c-amber); }
 .photo { position: relative; overflow: hidden; border: 6px solid #fff; border-radius: var(--rad-md); background: #fff; box-shadow: 0 0 0 1px var(--c-line), var(--elev-2); }
@@ -460,6 +464,7 @@ dialog.sheet::backdrop { background: rgba(35, 42, 61, 0.32); animation: fade-in 
 .photo-divider { position: absolute; top: 0; bottom: 0; z-index: 2; width: 2px; margin-left: -1px; background: #fff; box-shadow: 0 0 0 1px rgba(22, 24, 29, 0.28); pointer-events: none; }
 .compare-range { display: flex; align-items: center; gap: var(--sp-3); margin-top: var(--sp-3); color: var(--c-muted); font-size: var(--fs-12); }
 .compare-range input { flex: 1; min-width: 0; accent-color: var(--c-accent); }
+.compare-hint { margin-top: var(--sp-1); font-size: var(--fs-12); }
 .truth-note { margin-top: var(--sp-3); font-size: var(--fs-12); }
 .key.clue::before { background: rgba(180, 56, 43, 0.12); box-shadow: inset 0 0 0 2px var(--c-red); }
 .key.atk::before { background: rgba(243, 194, 107, 0.25); box-shadow: inset 0 0 0 2px #f3c26b; }

@@ -584,6 +584,51 @@ describe('reading each cell up close (bench, 21-nov)', () => {
     expect(t.masked).toEqual([7]);
   });
 
+  it('blurs the faces only when you ask: a layer of their own, outside the budget and the cells told to the attacker', async () => {
+    const painted: number[][] = [];
+    const ops: ImageOps = {
+      ...fakeOps,
+      faces: async () => [{ x: 20, y: 40, w: 100, h: 120 }],
+      paint: async (png, regions) => (painted.push(regions.map((g) => g.cell)), new Uint8Array([...png, 253, ...regions.map((g) => g.cell)])),
+    };
+    const ledger = new Ledger();
+    const nano = benchNano([{ cell: 7, kind: 'number', what: 'House number 23' }], { 7: ['23'] });
+    const kit = { local: new LocalModel(nano, ledger), cloud: new CloudModel(nano, ledger), ledger };
+    const t = locationThreat({ ops, scans: 1 });
+    const photo = secret(PHOTO, 'photo');
+    await t.sanitize(photo, await t.findClues(photo, kit), null, kit);
+    expect(painted[painted.length - 1]).not.toContain(0);
+    const without = t.maskedShare;
+    expect(await t.setBlurFaces(photo, true, kit)).not.toBeNull();
+    expect(painted[painted.length - 1]).toContain(0); // the face layer (cell 0: no cell of its own)
+    expect(t.masked).toEqual([7]);
+    expect(t.maskedShare).toBeGreaterThan(without);
+    expect(t.clueShare).toBeCloseTo(without); // the budget never counts a face
+    expect(ledger.all[0]?.note).toMatch(/1 face blurred, by your choice/); // newest first
+    await t.setBlurFaces(photo, false, kit);
+    expect(painted[painted.length - 1]).not.toContain(0);
+    expect(t.maskedShare).toBeCloseTo(without);
+  });
+
+  it('remembers the choice made before blurring: the first blur paints the faces too', async () => {
+    const painted: number[][] = [];
+    const ops: ImageOps = {
+      ...fakeOps,
+      faces: async () => [{ x: 20, y: 40, w: 100, h: 120 }],
+      paint: async (png, regions) => (painted.push(regions.map((g) => g.cell)), new Uint8Array([...png, 253, ...regions.map((g) => g.cell)])),
+    };
+    const ledger = new Ledger();
+    const nano = benchNano([{ cell: 7, kind: 'number', what: 'House number 23' }], { 7: ['23'] });
+    const kit = { local: new LocalModel(nano, ledger), cloud: new CloudModel(nano, ledger), ledger };
+    const t = locationThreat({ ops, scans: 1 });
+    const photo = secret(PHOTO, 'photo');
+    const clues = await t.findClues(photo, kit);
+    expect(await t.setBlurFaces(photo, true, kit)).toBeNull(); // nothing blurred yet: nothing painted
+    expect(painted).toEqual([]);
+    await t.sanitize(photo, clues, null, kit);
+    expect(painted[painted.length - 1]).toEqual([7, 0]);
+  });
+
   it('sends the attacker a JPEG of the photo, not a PNG: a phone photo was 1–2 MB per attack', async () => {
     const types: (string | undefined)[] = [];
     const mimes: string[] = [];
