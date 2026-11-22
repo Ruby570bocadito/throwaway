@@ -23,7 +23,7 @@
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
     <meta name="twitter:card" content="summary_large_image" />
-    <link rel="preload" as="image" href="/demo/selfie-800.webp" imagesrcset="/demo/selfie-800.webp 800w, /demo/selfie-1400.webp 1400w" imagesizes="(max-width: 980px) 92vw, 620px" fetchpriority="high" />
+    <link rel="preload" as="image" href="/demo/selfie-800.webp" imagesrcset="/demo/selfie-640.webp 640w, /demo/selfie-800.webp 800w, /demo/selfie-1400.webp 1400w" imagesizes="(max-width: 980px) 92vw, 620px" fetchpriority="high" />
     <link rel="stylesheet" href="/src/landing/landing.css" />
   </head>
   <body>
@@ -41,7 +41,7 @@
           <a href="#privacy">Privacidad</a>
           <a href="#faq">Preguntas</a>
         </nav>
-        <a class="lang" href="/" hreflang="en" lang="en" data-lang="en" aria-label="Read this page in English"><span class="lang-long">English</span><span class="lang-short">EN</span></a>
+        <a class="lang" href="/" hreflang="en" lang="en" data-lang="en" aria-label="EN · English"><span class="lang-long">English</span><span class="lang-short">EN</span></a>
         <a class="btn small" href="/app/">Abrir la app</a>
       </div>
     </header>
@@ -79,7 +79,7 @@
               <img
                 class="shot-img"
                 src="/demo/selfie-800.webp"
-                srcset="/demo/selfie-800.webp 800w, /demo/selfie-1400.webp 1400w"
+                srcset="/demo/selfie-640.webp 640w, /demo/selfie-800.webp 800w, /demo/selfie-1400.webp 1400w"
                 sizes="(max-width: 980px) 92vw, 620px"
                 width="1400"
                 height="933"
@@ -89,7 +89,7 @@
               <img
                 class="shot-blur"
                 src="/demo/selfie-blurred-800.webp"
-                srcset="/demo/selfie-blurred-800.webp 800w, /demo/selfie-blurred-1400.webp 1400w"
+                srcset="/demo/selfie-blurred-640.webp 640w, /demo/selfie-blurred-800.webp 800w, /demo/selfie-blurred-1400.webp 1400w"
                 sizes="(max-width: 980px) 92vw, 620px"
                 width="1400"
                 height="933"
@@ -119,21 +119,21 @@
           </header>
           <div class="scenes">
             <article class="scene-card reveal">
-              <img src="/illus/streamer-800.webp" srcset="/illus/streamer-800.webp 800w, /illus/streamer-1400.webp 1400w" sizes="(max-width: 980px) 92vw, 380px" width="800" height="533" loading="lazy" alt="Una streamer en su escritorio, con micrófono y webcam. Por la ventana, a su espalda, se ven la placa de una calle y el toldo de una tienda. La mascota de papel apunta con una lupa a la ventana." />
+              <img src="/illus/streamer-800.webp" srcset="/illus/streamer-640.webp 640w, /illus/streamer-800.webp 800w, /illus/streamer-1400.webp 1400w" sizes="(max-width: 980px) 92vw, 380px" width="800" height="533" loading="lazy" alt="Una streamer en su escritorio, con micrófono y webcam. Por la ventana, a su espalda, se ven la placa de una calle y el toldo de una tienda. La mascota de papel apunta con una lupa a la ventana." />
               <div class="scene-copy">
                 <h3>Streamers</h3>
                 <p>Una ventana a tu espalda, un cartel de la calle, la tienda de enfrente: quien te ve puede atar cabos y saber dónde vives. Revisa una captura antes de publicarla.</p>
               </div>
             </article>
             <article class="scene-card reveal">
-              <img src="/illus/review-800.webp" srcset="/illus/review-800.webp 800w, /illus/review-1400.webp 1400w" sizes="(max-width: 980px) 92vw, 380px" width="800" height="533" loading="lazy" alt="Un oficinista cansado escribe en la mesa de la cocina. La mascota de papel señala unas líneas marcadas en la pantalla del portátil." />
+              <img src="/illus/review-800.webp" srcset="/illus/review-640.webp 640w, /illus/review-800.webp 800w, /illus/review-1400.webp 1400w" sizes="(max-width: 980px) 92vw, 380px" width="800" height="533" loading="lazy" alt="Un oficinista cansado escribe en la mesa de la cocina. La mascota de papel señala unas líneas marcadas en la pantalla del portátil." />
               <div class="scene-copy">
                 <h3>Reseñas anónimas</h3>
                 <p>Tu jefe sabe cómo escribes. Las palabras que siempre usas y los detalles que solo conoce tu equipo pueden firmar la reseña por ti.</p>
               </div>
             </article>
             <article class="scene-card reveal">
-              <img src="/illus/selfie-800.webp" srcset="/illus/selfie-800.webp 800w, /illus/selfie-1400.webp 1400w" sizes="(max-width: 980px) 92vw, 380px" width="800" height="533" loading="lazy" alt="Alguien se hace una selfi en un balcón mientras la mascota de papel sostiene un cristal esmerilado sobre las placas del portal." />
+              <img src="/illus/selfie-800.webp" srcset="/illus/selfie-640.webp 640w, /illus/selfie-800.webp 800w, /illus/selfie-1400.webp 1400w" sizes="(max-width: 980px) 92vw, 380px" width="800" height="533" loading="lazy" alt="Alguien se hace una selfi en un balcón mientras la mascota de papel sostiene un cristal esmerilado sobre las placas del portal." />
               <div class="scene-copy">
                 <h3>Selfis y cuentas secundarias</h3>
                 <p>Un número de portal o la placa de una calle detrás de ti son una dirección. Throwaway difumina la pista y deja tu cara en paz.</p>
@@ -191,9 +191,9 @@
               <h3 id="proof-photo">La selfi</h3>
               <p class="proof-ask">Una selfi en una ventana, con una calle detrás. Le preguntamos a la IA dónde se hizo.</p>
               <div class="compare">
-                <img class="compare-after" src="/demo/selfie-blurred-800.webp" srcset="/demo/selfie-blurred-800.webp 800w, /demo/selfie-blurred-1400.webp 1400w" sizes="(max-width: 980px) 92vw, 560px" width="1400" height="933" loading="lazy" alt="La selfi después de Throwaway: la placa de la calle, el cartel de la panadería y el número del portal están difuminados; su cara no." />
+                <img class="compare-after" src="/demo/selfie-blurred-800.webp" srcset="/demo/selfie-blurred-640.webp 640w, /demo/selfie-blurred-800.webp 800w, /demo/selfie-blurred-1400.webp 1400w" sizes="(max-width: 980px) 92vw, 560px" width="1400" height="933" loading="lazy" alt="La selfi después de Throwaway: la placa de la calle, el cartel de la panadería y el número del portal están difuminados; su cara no." />
                 <div class="compare-before" aria-hidden="true">
-                  <img src="/demo/selfie-800.webp" srcset="/demo/selfie-800.webp 800w, /demo/selfie-1400.webp 1400w" sizes="(max-width: 980px) 92vw, 560px" width="1400" height="933" loading="lazy" alt="" />
+                  <img src="/demo/selfie-800.webp" srcset="/demo/selfie-640.webp 640w, /demo/selfie-800.webp 800w, /demo/selfie-1400.webp 1400w" sizes="(max-width: 980px) 92vw, 560px" width="1400" height="933" loading="lazy" alt="" />
                 </div>
                 <span class="compare-line" aria-hidden="true"><span class="compare-knob"></span></span>
                 <span class="compare-tag before" aria-hidden="true">Original</span>
