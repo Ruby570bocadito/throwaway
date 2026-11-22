@@ -227,11 +227,6 @@ export default function App() {
               className={`receipt-button ${status}`}
               onClick={() => sheet.current?.showModal()}
               aria-haspopup="dialog"
-              aria-label={
-                sentOut === 0
-                  ? tr(`Receipt: nothing sent to the cloud yet, ${statusText}`, `Recibo: aún no se ha enviado nada a la nube, ${statusText}`)
-                  : tr(`Receipt: ${shortBytes(sentOut)} sent to the cloud, ${statusText}`, `Recibo: ${shortBytes(sentOut)} enviados a la nube, ${statusText}`)
-              }
             >
               <i className="dot" aria-hidden="true" />
               {sentOut === 0 ? (
@@ -245,6 +240,9 @@ export default function App() {
                   <span className="receipt-num">{shortBytes(sentOut)}</span>
                 </>
               )}
+              {/* The name read aloud starts with the words on screen, whichever fit (WCAG 2.5.3; Lighthouse, 22-nov), then says
+                  what the button opens. */}
+              <span className="sr-only">{tr(` · receipt, ${statusText}`, ` · recibo, ${statusText}`)}</span>
             </button>
             <Menu
               live={live}
