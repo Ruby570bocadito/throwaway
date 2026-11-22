@@ -1,4 +1,4 @@
-// The photo bench (/app/?diag): eight made-up photos with people (Muse Image, 21-nov), each with what must never be
+// The photo bench (/app/?diag): nine made-up photos with people (Muse Image, 21 and 22-nov), each with what must never be
 // hidden (faces) and what must be (street names, house numbers, plates). Boxes are fractions of the photo's width and
 // height (x, y, w, h), marked by hand on the generated photos. /bench/<name>.webp is the photo at 1280 px.
 
@@ -69,6 +69,18 @@ export const BENCH: BenchPhoto[] = [
     place: 'West 4th Street, New York',
     faces: [[0.465, 0.17, 0.21, 0.44]],
     identifiers: [{ what: 'W 4 St', box: [0.668, 0.03, 0.218, 0.152] }],
+  },
+  {
+    // The new demo photo (Muse, 22-nov), on the landing page: its Gemini Nano answers, recorded here, will replace the
+    // drawn scene in the recorded run.
+    name: 'window-palma',
+    place: 'Carrer de la Llum, Palma',
+    faces: [[0.145, 0.24, 0.27, 0.44]],
+    identifiers: [
+      { what: 'CARRER DE LA LLUM', box: [0.631, 0.062, 0.088, 0.131] },
+      { what: 'house number 23', box: [0.75, 0.48, 0.034, 0.039] },
+      { what: 'FORN PASTISSERIA', box: [0.795, 0.403, 0.125, 0.088] },
+    ],
   },
   {
     name: 'crossing-tokyo',

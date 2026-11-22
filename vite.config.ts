@@ -10,7 +10,7 @@ const mediapipeVersion: string = JSON.parse(readFileSync(new URL('./node_modules
  * a 0.27 layout shift in the app from Eczar, Work Sans and JetBrains Mono swapping in after the first paint.
  */
 function preloadFonts(): Plugin {
-  const landing = /^assets\/(eczar-latin-(500|600)|work-sans-latin-400|jetbrains-mono-latin-400)-normal-[\w-]+\.woff2$/
+  const landing = /^assets\/(eczar-latin-(500|600)|inter-latin-wght)-normal-[\w-]+\.woff2$/
   const app = /^assets\/(eczar-latin-(500|600)|inter-latin-wght|jetbrains-mono-latin-400)-normal-[\w-]+\.woff2$/
   return {
     name: 'preload-fonts',

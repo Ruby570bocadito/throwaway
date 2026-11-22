@@ -7,7 +7,6 @@ import { DEMO_TRUTH } from '../demo/photo';
 // Fake image ops: no canvas in Node. Masking appends the masked cells, so the bytes change like a real edit would.
 const fakeOps: ImageOps = {
   withGrid: async (png) => new Uint8Array([...png, 250]),
-  maskCells: async (png, cells) => new Uint8Array([...png, 251, ...cells]),
   size: async () => ({ width: 400, height: 300 }),
   faces: async () => [],
   crop: async (png, r) => new Uint8Array([...png.slice(0, 8), 252, r.x % 251, r.y % 251]),
@@ -570,6 +569,37 @@ describe('reading each cell up close (bench, 21-nov)', () => {
       ),
     );
     expect(t.masked).toEqual([2]);
+  });
+
+  it('looks for faces once, while Gemini Nano scans: blurring does not wait for the detector again', async () => {
+    let faceCalls = 0;
+    const ledger = new Ledger();
+    const nano = benchNano([{ cell: 7, kind: 'number', what: 'House number 23' }], { 7: ['23'] });
+    const kit = { local: new LocalModel(nano, ledger), cloud: new CloudModel(nano, ledger), ledger };
+    const t = locationThreat({ ops: { ...fakeOps, faces: async () => (faceCalls++, []) }, scans: 1 });
+    const clues = await t.findClues(secret(PHOTO, 'photo'), kit);
+    expect(faceCalls).toBe(1);
+    await t.sanitize(secret(PHOTO, 'photo'), clues, null, kit);
+    expect(faceCalls).toBe(1);
+    expect(t.masked).toEqual([7]);
+  });
+
+  it('sends the attacker a JPEG of the photo, not a PNG: a phone photo was 1–2 MB per attack', async () => {
+    const types: (string | undefined)[] = [];
+    const mimes: string[] = [];
+    const cloud: ModelBackend = {
+      name: 'cloud',
+      generate: async (parts) => {
+        for (const p of parts) if ('image' in p) mimes.push(p.mime);
+        return { text: JSON.stringify({ place: 'Somewhere', lat: 1, lon: 1, radiusKm: 5000, confidence: 'low', clues: [] }), source: 'in_cloud' };
+      },
+    };
+    const ledger = new Ledger();
+    const kit = { local: new LocalModel(cloud, ledger), cloud: new CloudModel(cloud, ledger), ledger };
+    const t = locationThreat({ ops: { ...fakeOps, withGrid: async (png, _n, type) => (types.push(type), new Uint8Array([...png, 250])) } });
+    await t.attack(release(PHOTO, 'as is', { userConfirmedAsIs: true }), kit);
+    expect(types).toEqual(['image/jpeg']);
+    expect(mimes).toEqual(['image/jpeg']);
   });
 
   it('still hides an identifier it could read nowhere, within the budget (the attacker may read it better)', async () => {

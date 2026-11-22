@@ -647,6 +647,8 @@ export interface AuthorshipOptions {
 }
 
 const LETTERS = 'ABCDEFGHIJKLMNOP';
+/** Attack attempts in flight at once, once the cloud has answered: about three times faster, gentle on a free tier. */
+const ATTACK_AT_ONCE = 3;
 
 /**
  * Fisher–Yates with crypto randomness. `sort(() => Math.random() - 0.5)` is biased: items stay near where they started,
@@ -966,25 +968,39 @@ export function authorshipThreat(o: AuthorshipOptions): Threat<string, Clue, Aut
     },
 
     async attack(published: Publishable<string>, kit: Kit): Promise<AuthorshipVerdict> {
-      const picks: string[] = [];
+      const picks: string[] = Array<string>(attempts).fill('none');
       let reasons: string[] = [];
       let reasonsPick = 'none';
       let reasonsOrder: string[] = [];
       let answered = 0;
       let lastError: unknown = null;
       let failedInARow = 0;
-      for (let i = 0; i < attempts; i++) {
+      // Attempts run ATTACK_AT_ONCE at a time once the cloud has answered, and one at a time before that or after a
+      // failure: ten one after another took 10–20 s; the stopping rule below still counts failures in a row.
+      const running = new Set<Promise<void>>();
+      let next = 0;
+      while (next < attempts) {
         // The cloud stopped answering (each attempt already retried for up to 45 s): the rest would only make the user
         // wait. Twice in a row before any answer, or three times in a row at any point. The skipped attempts count as no
         // answer, so the verdict stays a rate over the answers and the UI still gets one callback per attempt.
-        if (failedInARow >= (answered ? 3 : 2)) {
-          for (let k = i; k < attempts; k++) {
-            picks.push('none');
-            o.onAttempt?.('none', k);
-          }
-          kit.ledger.add({ op: `Attack attempts ${i + 1}–${attempts} skipped`, route: 'local-js', ms: 0, bytesOut: 0, note: 'the cloud model is not answering' });
-          break;
+        if (failedInARow >= (answered ? 3 : 2)) break;
+        if (running.size >= (answered && !failedInARow ? ATTACK_AT_ONCE : 1)) {
+          await Promise.race(running);
+          continue;
         }
+        const run = attempt(next++).finally(() => running.delete(run));
+        run.catch(() => undefined); // seen by the race or by Promise.all below
+        running.add(run);
+      }
+      await Promise.all(running);
+      if (next < attempts) {
+        for (let k = next; k < attempts; k++) o.onAttempt?.('none', k);
+        kit.ledger.add({ op: `Attack attempts ${next + 1}–${attempts} skipped`, route: 'local-js', ms: 0, bytesOut: 0, note: 'the cloud model is not answering' });
+      }
+      if (answered === 0 && lastError) throw lastError;
+      return { picks, hits: picks.filter((p) => p === o.selfId).length, attempts, answered, reasons, reasonsPick, reasonsOrder };
+
+      async function attempt(i: number) {
         const order = shuffled(lineup);
         let pickId = 'none';
         try {
@@ -1019,11 +1035,9 @@ export function authorshipThreat(o: AuthorshipOptions): Threat<string, Clue, Aut
           lastError = e;
           failedInARow++;
         }
-        picks.push(pickId);
+        picks[i] = pickId;
         o.onAttempt?.(pickId, i);
       }
-      if (answered === 0 && lastError) throw lastError;
-      return { picks, hits: picks.filter((p) => p === o.selfId).length, attempts, answered, reasons, reasonsPick, reasonsOrder };
     },
 
     /** Exposed if the attacker picks the user more often than `maxHits` out of `attempts`, as a rate over the answers. */

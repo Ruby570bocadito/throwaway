@@ -11,6 +11,7 @@ import { Stepper, type StepDef } from '../ui/Stepper';
 import { WorkLog, type PlanStep } from '../ui/WorkLog';
 import { useAnimatedNumber, useReducedMotion, withTransition } from '../ui/motion';
 import { useCloudBusy } from '../ui/busy';
+import { Mascot, type Pose } from '../ui/Mascot';
 
 type Stage = 'loading' | 'photo' | 'scanned' | 'attacked' | 'masked' | 'safe';
 const STAGE_STEP: Record<Stage, number> = { loading: 0, photo: 0, scanned: 1, attacked: 2, masked: 3, safe: 4 };
@@ -235,7 +236,7 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak, recorded, 
           ? 'It names a city, and nothing here can check it'
           : 'It knows your city, not your street'
         : reason
-          ? 'The attacker found you'
+          ? 'The AI found you'
           : verdict.errorKm !== null
             ? 'Wrong place: it guessed far from you'
             : verdict.lat === null
@@ -255,16 +256,16 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak, recorded, 
           ? `Distance from where you really are, computed on your device. Its confidence: ${verdict.confidence}. Within ${formatKm(1)} it would know your street; within ${formatKm(50)}, your city.`
           : verdict.lat === null
             ? `It gave no place and no coordinates. Its confidence: ${verdict.confidence}.`
-            : `The attacker’s own precision claim. Its confidence: ${verdict.confidence}.`;
+            : `The AI’s own precision claim. Its confidence: ${verdict.confidence}.`;
   // What the last attack got wrong, said as it happened rather than as a promise ("Looks safe to post" read as a guarantee
   // to both testers, 16-nov).
   const missed = !verdict
     ? ''
     : verdict.errorKm !== null
-      ? `the attacker guesses “${verdict.place}”: ${formatKm(verdict.errorKm)} from where it was taken`
+      ? `the AI guesses “${verdict.place}”: ${formatKm(verdict.errorKm)} from where it was taken`
       : verdict.lat === null
-        ? 'the attacker cannot place it at all'
-        : `the attacker is too unsure to find it (it says “${verdict.place}”)`;
+        ? 'the AI cannot place it at all'
+        : `the AI is too unsure to find it (it says “${verdict.place}”)`;
 
   async function run(label: string, fn: () => Promise<void>) {
     acted.current = true;
@@ -378,10 +379,10 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak, recorded, 
   const share = Math.round(threat.maskedShare * 100);
 
   const steps: StepDef[] = [
-    { label: 'Scan', where: degraded ? 'no local model' : 'on your device' },
-    { label: 'Attack', where: 'in the cloud' },
+    { label: 'Find', where: degraded ? 'no local model' : 'on your device' },
+    { label: 'Test', where: 'in the cloud' },
     { label: 'Blur', where: degraded ? 'you choose cells' : 'on your device' },
-    { label: 'Attack again', where: 'in the cloud' },
+    { label: 'Test again', where: 'in the cloud' },
   ];
   const working = !degraded && busy === 'scan';
   const attacking = busy === 'attack';
@@ -391,7 +392,7 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak, recorded, 
         ? 'Scanning…'
         : 'Looking at your photo on this device…'
       : attacking
-        ? 'Attacking…'
+        ? 'Testing…'
         : busy === 'mask'
           ? 'Blurring on your device…'
           : busy === 'toggle'
@@ -416,19 +417,19 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak, recorded, 
           lede: recorded
             ? 'A recorded run: Gemini Nano’s answers on this demo photo were recorded in Chrome, and replay here.'
             : degraded
-              ? 'The attacker looks first, then you tap the cells to blur. Nothing leaves this device until you choose to test it.'
+              ? 'The AI looks first, then you tap the cells to blur. Nothing leaves this device until you choose to test it.'
               : 'Throwaway looks for clues on this device first: street names, house numbers, plates, signs. Nothing leaves it until you choose to test it.',
         }
       : stage === 'scanned'
         ? {
             title: degraded
-              ? 'First, see what the attacker finds'
+              ? 'First, see what the AI finds'
               : visibleClues.length
                 ? `${capital(plural(visibleClues.length, 'clue'))} could place this photo`
                 : 'Nothing obvious places this photo',
             // Your own photo with no location yet: ask now, before the attack, or the guess cannot be measured at all.
             lede: !truthPoint
-              ? 'Share your location before the attack, so this device can measure how close the guess lands: it never leaves this device.'
+              ? 'Share your location before the test, so this device can measure how close the guess lands: it never leaves this device.'
               : degraded
                 ? 'A cloud AI looks at the photo as it is and says where it was taken; then you choose what to blur.'
                 : 'Found on this device. Next, a cloud AI tries to say where it was taken.',
@@ -441,13 +442,13 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak, recorded, 
                 : degraded
                   ? 'Tap the cells to blur: the ones it used are selected. They are blurred on this device, around the faces.'
                   : published
-                    ? 'Next, Throwaway blurs what the attacker used, on this device and around the faces.'
+                    ? 'Next, Throwaway blurs what the AI used, on this device and around the faces.'
                     : 'Next, Throwaway blurs the clues on this device: street names, numbers, plates and signs first, never a face, and at most a quarter of the photo.',
             }
           : stage === 'masked'
             ? {
                 title: 'Blurred on your device',
-                lede: `${share}% of the photo, around the faces. Tap a cell to blur it or show it again, then attack it again.`,
+                lede: `${share}% of the photo, around the faces. Tap a cell to blur it or show it again, then test it again.`,
               }
             : {
                 title: city && !unmeasured && published ? 'Your street is hidden, your city is not' : verdictTitle,
@@ -470,19 +471,19 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak, recorded, 
       )}
       {!busy && stage === 'scanned' && (
         <p className="dock-note warn">
-          Sends this photo, as it is, to a cloud AI (again if the model is busy), as if you had posted it: the only step that sends your original.
+          Sends your original photo, unchanged, to Gemini in Google’s cloud (again if the model is busy), as if you had posted it. The only step that sends your original; Throwaway keeps nothing.
         </p>
       )}
       {!busy && stage === 'masked' && <p className="dock-note">Sends only the blurred photo, never the original.</p>}
       <div className="dock-row">
         {stage === 'photo' && (
           <button className="primary" onClick={scan} disabled={!!busy} aria-busy={busy === 'scan'}>
-            {busy ? busyContent : 'Scan my photo locally'}
+            {busy ? busyContent : 'Check my photo on this device'}
           </button>
         )}
         {stage === 'scanned' && (
           <button className="primary" onClick={attackAsIs} disabled={!!busy} aria-busy={attacking}>
-            {busy ? busyContent : 'Attack it as I would post it'}
+            {busy ? busyContent : 'Test my original photo'}
           </button>
         )}
         {stage === 'scanned' && !truthPoint && !busy && (
@@ -492,12 +493,12 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak, recorded, 
         )}
         {stage === 'attacked' && !budgetFull && (
           <button className="primary" onClick={mask} disabled={!!busy || (degraded && chosen.length === 0)} aria-busy={busy === 'mask'}>
-            {busy ? busyContent : degraded ? maskLabel : published ? 'Blur what the attacker used' : 'Blur the clues on this device'}
+            {busy ? busyContent : degraded ? maskLabel : published ? 'Blur what the AI used' : 'Blur the clues on this device'}
           </button>
         )}
         {stage === 'masked' && published && (
           <button className="primary" onClick={() => attack(published, true)} disabled={!!busy} aria-busy={attacking}>
-            {busy ? busyContent : 'Attack again'}
+            {busy ? busyContent : 'Test again'}
           </button>
         )}
         {stage === 'safe' && published && publishedUrl && (
@@ -522,7 +523,7 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak, recorded, 
       <div className="post-head">
         <h2 id="photo-title">{published ? 'The version you would post' : 'Your photo'}</h2>
         <span className={`chip ${!published && sentAsIs ? 'asis' : 'private'}`}>
-          {published ? 'released for publication' : sentAsIs ? 'sent as-is to the attacker · your choice' : 'private · stays on this device'}
+          {published ? 'released for publication' : sentAsIs ? 'sent as it is to the AI · your choice' : 'private · stays on this device'}
         </span>
       </div>
       <div className={`photo ${working ? 'scanning' : ''}`}>
@@ -566,7 +567,7 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak, recorded, 
                   style={at(fresh >= 0 ? fresh : order)}
                   disabled={!active}
                   onClick={() => (canToggle ? toggle(cell) : setManual((m) => (m.includes(cell) ? m.filter((x) => x !== cell) : [...m, cell])))}
-                  aria-label={`Cell ${cell}${c ? `: ${c.what}` : ''}${a && !safe ? ', used by the attacker' : ''}${isMasked ? ', blurred' : ''}${
+                  aria-label={`Cell ${cell}${c ? `: ${c.what}` : ''}${a && !safe ? ', used by the AI' : ''}${isMasked ? ', blurred' : ''}${
                     canToggle ? (isMasked ? '. Show it again' : '. Blur it') : ''
                   }`}
                   aria-pressed={canPick && !isMasked ? picked : canToggle ? isMasked : undefined}
@@ -584,7 +585,7 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak, recorded, 
                   )}
                   <span className="n">{cell}</span>
                   {c && <span className="tag">{c.kind}</span>}
-                  {!c && a && !safe && <span className="tag atk">used by attacker</span>}
+                  {!c && a && !safe && <span className="tag atk">used by the AI</span>}
                 </button>
               );
             })}
@@ -631,7 +632,7 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak, recorded, 
       {showCells && (
         <p className="legend" aria-hidden="true">
           {visibleClues.length > 0 && <span className="key clue">Clue found on your device</span>}
-          {!!verdict && !safe && verdict.clues.some((c) => !threat.masked.includes(c.cell)) && <span className="key atk">Used by the attacker</span>}
+          {!!verdict && !safe && verdict.clues.some((c) => !threat.masked.includes(c.cell)) && <span className="key atk">Used by the AI</span>}
           {threat.masked.length > 0 && <span className="key blur">Blurred</span>}
         </p>
       )}
@@ -665,19 +666,19 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak, recorded, 
   const attacker = (attacking || verdict) && (
     <section className="section map-section" aria-labelledby="map-title">
       <div className="section-head">
-        <h2 id="map-title">The attacker’s guess</h2>
+        <h2 id="map-title">The AI’s guess</h2>
         <span className="chip public">what the cloud sees</span>
       </div>
       <p className="section-note">A cloud geolocation AI sees only the version you would post. Your device measures how far off it lands.</p>
       {/* Blurred but not attacked again: the last guess is about the photo before, and looked current to a judge (17-nov). */}
-      {staleVerdict && <p className="notice slim">Before blurring. Attack again to see where it guesses with the blurred photo.</p>}
+      {staleVerdict && <p className="notice slim">Before blurring. Test again to see where it guesses with the blurred photo.</p>}
       <div className={staleVerdict ? 'stale' : undefined}>
         <div className={`result ${attacking ? '' : level}`} aria-live="polite">
           <div key={history.length} className={`result-num km ${attacking ? '' : 'land'}`}>
             {attacking ? <span className="spinner" aria-hidden="true" /> : formatKm(kmShown)}
           </div>
           <div className="result-text">
-            <strong>{attacking ? 'The attacker is looking at your photo' : verdictHeadline}</strong>
+            <strong>{attacking ? 'The AI is looking at your photo' : verdictHeadline}</strong>
             <p>
               {attacking ? 'A cloud AI guesses where it was taken, from what it sees.' : `Guess: ${verdict!.place}. ${verdictDetail}`}
               {!attacking && history.length > 1 ? ` Before blurring: ${formatKm(history[0])}.` : ''}
@@ -693,7 +694,7 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak, recorded, 
           level={level}
         />
         {!attacking && verdict && verdict.clues.length > 0 && (
-          <Why summary={safe ? 'what the attacker went by, and still missed' : 'what the attacker used'}>
+          <Why summary={safe ? 'what the AI went by, and still missed' : 'what the AI used'}>
             {/* Why blurring stops with these cells still visible: a judge read them as a loop that gave up (17-nov). */}
             {safe && <p className="hint">Not blurred, because they did not help it find you. Blurring stops here.</p>}
             <ul className="reasons">
@@ -713,6 +714,26 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak, recorded, 
   // The verdict first once there is one; the photo first before, and while it is being blurred.
   const verdictFirst = stage === 'attacked' || stage === 'safe';
 
+  // The mascot reacts to the step, and to what is running (Rafa, 22-nov: the app looked dead).
+  const pose: Pose =
+    busy === 'scan'
+      ? 'scan'
+      : busy === 'attack'
+        ? 'think'
+        : busy === 'mask' || busy === 'toggle'
+          ? 'blur'
+          : stage === 'loading' || stage === 'photo'
+            ? 'wave'
+            : stage === 'scanned'
+              ? 'scan'
+              : stage === 'attacked'
+                ? 'alarm'
+                : stage === 'masked'
+                  ? 'blur'
+                  : city
+                    ? 'think'
+                    : 'safe';
+
   return (
     <div className="stage" ref={stageRef}>
       <Stepper
@@ -725,8 +746,11 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak, recorded, 
       />
       {error && <ErrorNote message={error} />}
       <header className="stage-head">
-        <h1 className="stage-title">{head.title}</h1>
-        <p className="stage-lede">{head.lede}</p>
+        <div className="stage-words">
+          <h1 className="stage-title">{head.title}</h1>
+          <p className="stage-lede">{head.lede}</p>
+        </div>
+        <Mascot pose={pose} className="stage-mascot" />
       </header>
       {verdictFirst && attacker}
       {photo}

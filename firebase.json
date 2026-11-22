@@ -32,6 +32,30 @@
         "headers": [{ "key": "Cache-Control", "value": "public, max-age=604800" }]
       },
       {
+        "source": "/mascot/**",
+        "headers": [{ "key": "Cache-Control", "value": "public, max-age=86400, stale-while-revalidate=604800" }]
+      },
+      {
+        "source": "/illus/**",
+        "headers": [{ "key": "Cache-Control", "value": "public, max-age=86400, stale-while-revalidate=604800" }]
+      },
+      {
+        "source": "/demo/**",
+        "headers": [{ "key": "Cache-Control", "value": "public, max-age=86400, stale-while-revalidate=604800" }]
+      },
+      {
+        "source": "/brand/**",
+        "headers": [{ "key": "Cache-Control", "value": "public, max-age=86400, stale-while-revalidate=604800" }]
+      },
+      {
+        "source": "/bench/**",
+        "headers": [{ "key": "Cache-Control", "value": "public, max-age=86400, stale-while-revalidate=604800" }]
+      },
+      {
+        "source": "/og-image.jpg",
+        "headers": [{ "key": "Cache-Control", "value": "public, max-age=86400, stale-while-revalidate=604800" }]
+      },
+      {
         "source": "/",
         "headers": [{ "key": "Cache-Control", "value": "no-cache" }]
       },

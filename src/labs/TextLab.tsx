@@ -26,6 +26,7 @@ import { WriterCard } from '../ui/Writer';
 import { Why } from '../ui/Why';
 import { useAnimatedNumber, withTransition } from '../ui/motion';
 import { useCloudBusy } from '../ui/busy';
+import { Mascot, type Pose } from '../ui/Mascot';
 
 type Stage = 'draft' | 'scanned' | 'attacked' | 'rewritten' | 'reattacked';
 const LETTERS = 'ABCDEFGHIJ';
@@ -439,10 +440,10 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
   };
 
   const steps: StepDef[] = [
-    { label: 'Scan', where: degraded ? 'fixed rules, no model' : 'on your device' },
-    { label: 'Attack', where: 'in the cloud' },
+    { label: 'Find', where: degraded ? 'fixed rules, no model' : 'on your device' },
+    { label: 'Test', where: 'in the cloud' },
     { label: 'Fix', where: degraded ? 'you edit it' : 'on your device' },
-    { label: 'Attack again', where: 'in the cloud' },
+    { label: 'Test again', where: 'in the cloud' },
   ];
   const outcome = stage === 'reattacked' ? (contentClues.length ? 'warn' : 'good') : null;
   // A post of the user's own with no public writing of theirs: the lineup then looks for the sample writer, not for them,
@@ -487,7 +488,7 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
   // Whose field the nine writers share, and what follows from it.
   const canPickField = stage === 'draft' && !!ownText && !!packs;
   // "like you" read as "they resemble you" to both testers (16-nov): the field is what is shared, so it says so.
-  const sameField = ', the same field as you: the attacker has to recognise your style, not your subject.';
+  const sameField = ', the same field as you: the AI has to recognise your style, not your subject.';
   const fieldNote = !ownText
     ? recorded || draft === DRAFT
       ? sameField
@@ -498,7 +499,7 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
         ? `: no field stood out in your writing${stage === 'draft' ? ', so pick the closest one' : ''}.`
         : lineupOf.wanted === lineupOf.matched
           ? sameField
-          : `. Your writing reads as ${FIELD_LABELS[lineupOf.matched]}, so the attacker may go by subject, not style.`;
+          : `. Your writing reads as ${FIELD_LABELS[lineupOf.matched]}, so the AI may go by subject, not style.`;
 
   const busyLabel =
     busy === 'scan'
@@ -506,7 +507,7 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
         ? 'Scanning…'
         : 'Scanning on your device…'
       : busy === 'attack'
-        ? `Attacking · ${Math.min(picks.length + 1, 10)} of 10`
+        ? `Testing · ${Math.min(picks.length + 1, 10)} of 10`
         : busy === 'rewrite'
           ? degraded
             ? 'Checking your edit…'
@@ -516,7 +517,7 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
   // ── what this step says: a title and one sentence ──
   const nHabits = styleClues.length;
   const nDetails = contentClues.length;
-  const verdictTitle = standIn ? 'Not a test of you yet' : exposedNow ? 'The attacker found you' : 'You are one of ten';
+  const verdictTitle = standIn ? 'Not a test of you yet' : exposedNow ? 'The AI found you' : 'You are one of ten';
   const head: { title: ReactNode; lede: string } =
     stage === 'draft'
       ? {
@@ -542,7 +543,7 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
               lede: degraded
                 ? 'No on-device AI here, so you change it: your habits and details are marked in the post below.'
                 : rounds > 1
-                  ? 'Still found after a rewrite. Gemini Nano can rewrite it again, keeping what the attacker went by in mind.'
+                  ? 'Still found after a rewrite. Gemini Nano can rewrite it again, keeping in mind what the AI went by.'
                   : exposedNow
                     ? 'Next, Gemini Nano rewrites your style and the details, on this device.'
                     : 'You could post it as it is. Gemini Nano can still rewrite it on this device, to be safe.',
@@ -551,8 +552,8 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
             ? {
                 title: degraded ? 'Your edited version' : 'Rewritten on your device',
                 lede: degraded
-                  ? 'Checked on this device: no long passage of your original is left. Next, attack it again.'
-                  : 'In a plain, neutral voice on purpose: your style is what gave you away. Read it, then attack it again.',
+                  ? 'Checked on this device: no long passage of your original is left. Next, test it again.'
+                  : 'In a plain, neutral voice on purpose: your style is what gave you away. Read it, then test it again.',
               }
             : {
                 title: nDetails ? `Your style is hidden, but ${plural(nDetails, 'detail')} can still identify you` : verdictTitle,
@@ -567,7 +568,7 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
   const note: { text: string; warn: boolean } | null =
     stage === 'draft'
       ? standIn
-        ? { text: 'Without your own public writing, the attack will look for the sample writer, not you. Add yours under the post first.', warn: true }
+        ? { text: 'Without your own public writing, the test will look for the sample writer, not you. Add yours under the post first.', warn: true }
         : !recorded && readsAsEnglish(draft) === false
           ? {
               text: 'This post does not read as English. Throwaway is tuned for English: counts, dates and habits in other languages are mostly not caught, and the rewrite comes back in English.',
@@ -576,9 +577,9 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
           : null
       : stage === 'scanned'
         ? standIn
-          ? { text: 'No public writing of yours: this attack looks for the sample writer, not you. Start over to add yours: your post stays.', warn: true }
+          ? { text: 'No public writing of yours: this test looks for the sample writer, not you. Start over to add yours: your post stays.', warn: true }
           : // A judge read the as-is test as at odds with "the draft is the secret" (17-nov): say it is the only such step.
-            { text: 'Sends this exact text to a cloud AI, ten times (more if the model is busy), as if you had posted it: the only step that sends your original.', warn: true }
+            { text: 'Sends your original, unchanged, to Gemini in Google’s cloud, ten times (more if the model is busy), as if you had posted it. The only step that sends your original; Throwaway keeps nothing.', warn: true }
         : stage === 'rewritten' && published
           ? { text: degraded ? 'Sends only your edited version, never the original.' : 'Sends only the rewritten version, never the original.', warn: false }
           : null;
@@ -604,12 +605,12 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
       <div className="dock-row">
         {stage === 'draft' && (
           <button className="primary" onClick={scan} disabled={!!busy || !draft.trim() || lineupPending} aria-busy={busy === 'scan'}>
-            {busy ? <Busy label={busyLabel} /> : 'Scan my post locally'}
+            {busy ? <Busy label={busyLabel} /> : 'Check my post on this device'}
           </button>
         )}
         {stage === 'scanned' && (
           <button className="primary" onClick={attackAsIs} disabled={!!busy} aria-busy={busy === 'attack'}>
-            {busy ? <Busy label={busyLabel} /> : 'Attack it as I would post it'}
+            {busy ? <Busy label={busyLabel} /> : 'Test my original post'}
           </button>
         )}
         {stage === 'attacked' && (
@@ -622,13 +623,13 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
                   ? 'Edit your post below first'
                   : 'Use my edited version'
                 : published
-                  ? 'Rewrite again on-device'
-                  : 'Rewrite on-device with Gemini Nano'}
+                  ? 'Rewrite it again on this device'
+                  : 'Rewrite it on this device'}
           </button>
         )}
         {stage === 'rewritten' && published && (
           <button className="primary" onClick={() => attack(published, true)} disabled={!!busy} aria-busy={busy === 'attack'}>
-            {busy ? <Busy label={busyLabel} /> : 'Attack again'}
+            {busy ? <Busy label={busyLabel} /> : 'Test again'}
           </button>
         )}
         {stage === 'reattacked' && published && (
@@ -773,7 +774,7 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
       <div className="post-head">
         <h2 id="post-title">{postLabel}</h2>
         <span className={`chip ${!published && sentAsIs ? 'asis' : 'private'}`}>
-          {published ? 'released for publication' : sentAsIs ? 'sent as-is to the attacker · your choice' : 'private · stays on this device'}
+          {published ? 'released for publication' : sentAsIs ? 'sent as it is to the AI · your choice' : 'private · stays on this device'}
         </span>
       </div>
       <div className={`sheet-wrap ${working ? 'reading' : ''}`}>
@@ -941,6 +942,14 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
 
   // ── the lineup: ten writers, the attacker's picks, and what it went by ──
   const attacking = busy === 'attack';
+  // Who it took you for: "0/10: about chance" read as a shrug when it had picked F nine times (testers, 22-nov).
+  const mistakenFor = (() => {
+    const n = new Map<string, number>();
+    for (const p of picks) if (p !== SELF_ID && p !== 'none') n.set(p, (n.get(p) ?? 0) + 1);
+    const [id, count] = [...n].sort((a, b) => b[1] - a[1])[0] ?? ['', 0];
+    const letter = seatOf(id);
+    return count >= 3 && letter ? { letter, count } : null;
+  })();
   const resultTone = !final || attacking ? '' : inconclusive || standIn ? 'mute' : exposedNow ? 'bad' : 'good';
   const lineupSection = (
     <section className="section lineup-section" aria-labelledby="lineup-title">
@@ -969,19 +978,29 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
                     ? 'It looked for the sample writer'
                     : exposedNow
                       ? `It picked you ${final!.hits} of ${final!.answered} times`
-                      : `It picked you ${final!.hits} of ${final!.answered} times: about chance`}
+                      : mistakenFor
+                        ? `It picked you ${final!.hits} of ${final!.answered} times: it took you for Writer ${mistakenFor.letter}`
+                        : `It picked you ${final!.hits} of ${final!.answered} times: about chance`}
             </strong>
             {/* The count in words: a tester could not tell whether "2/10" meant it picked her (17-nov). */}
             <p>
               {attacking
-                ? `${picks.length ? `So far it picked ${standIn ? 'the sample writer' : 'you'} ${hits} of ${picks.length} times. ` : ''}Chance level is 1 in 10.`
+                ? `${picks.length ? `So far it picked ${standIn ? 'the sample writer' : 'you'} ${hits} of ${picks.length} times. ` : ''}By pure chance it would be 1 in 10.`
                 : standIn
                   ? // Not a score of you at all: "picked the sample writer 0 of 10 times" read as "safe" to a tester, three rounds running (17-nov).
-                    `Without your own public writing, the attacker looked for the sample writer (it picked her ${final!.hits} of ${final!.answered} times).`
-                  : 'Chance level is 1 in 10.'}
+                    `Without your own public writing, the AI looked for the sample writer (it picked her ${final!.hits} of ${final!.answered} times).`
+                  : !exposedNow && mistakenFor
+                    ? `Writer ${mistakenFor.letter} got ${mistakenFor.count} of ${final!.answered} picks: your rewrite reads like someone else. By pure chance it would be 1 in 10.`
+                    : exposedNow
+                      ? 'By pure chance it would be 1 in 10: it recognised your style.'
+                      : 'By pure chance it would be 1 in 10.'}
               {!attacking && final!.answered < final!.attempts ? ` ${final!.attempts - final!.answered} attempts got no answer (model busy).` : ''}
-              {!attacking && inconclusive ? ' Too few answers came back from the cloud: wait a minute and attack again.' : ''}
+              {!attacking && inconclusive ? ' Too few answers came back from the cloud: wait a minute and test again.' : ''}
               {!attacking && before !== null && stage === 'reattacked' ? ` Before: ${before}/10.` : ''}
+              {/* An AI is not your boss (a tester, 22-nov): the people who know you read the details, not the style. */}
+              {!attacking && stage === 'reattacked' && !exposedNow && !standIn && !inconclusive
+                ? ' People who know you still might: reread names, numbers and dates before you post.'
+                : ''}
             </p>
             <span className="ticks" aria-hidden="true">
               {Array.from({ length: 10 }, (_, i) => (
@@ -1016,7 +1035,7 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
         })}
       </div>
       <p className="glyph-key">
-        Each card draws how often a writer uses the commonest words (“the”, “but”, “I”…) and marks (dashes, brackets) next to the other nine: the habits the attacker can recognise.
+        Each card draws how often a writer uses the commonest words (“the”, “but”, “I”…) and marks (dashes, brackets) next to the other nine: the habits the AI can recognise.
       </p>
 
       {styleGone && !busy && (
@@ -1033,7 +1052,7 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
       )}
 
       {verdict && verdict.reasons.length > 0 && picks.length === verdict.attempts && (
-        <Why summary={reasonsSeat ? `the attacker’s reasons for Writer ${reasonsSeat}` : 'the attacker’s reasons'}>
+        <Why summary={reasonsSeat ? `the AI’s reasons for Writer ${reasonsSeat}` : 'the AI’s reasons'}>
           {reasonsSeat && (
             <p className="hint reasons-whose">
               For its last pick, Writer {reasonsSeat}
@@ -1109,14 +1128,34 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
   const showPost = stage !== 'attacked' || editingByHand;
   const showLineup = stage !== 'draft' && (stage !== 'rewritten' || attacking);
   const verdictFirst = stage === 'attacked' || stage === 'reattacked';
+  // The mascot reacts to the step, and to what is running (Rafa, 22-nov: the app looked dead).
+  const pose: Pose =
+    busy === 'scan'
+      ? 'scan'
+      : busy === 'attack'
+        ? 'think'
+        : busy === 'rewrite'
+          ? 'blur'
+          : stage === 'draft'
+            ? 'wave'
+            : stage === 'scanned'
+              ? 'scan'
+              : stage === 'rewritten'
+                ? 'blur'
+                : exposedNow && !standIn
+                  ? 'alarm'
+                  : 'safe';
 
   return (
     <div className="stage" ref={stageRef}>
       <Stepper steps={steps} current={STAGE_STEP[stage]} busySince={busySince} outcome={outcome} round={rounds} />
       {error && <ErrorNote message={error} />}
       <header className="stage-head">
-        <h1 className="stage-title">{head.title}</h1>
-        <p className="stage-lede">{head.lede}</p>
+        <div className="stage-words">
+          <h1 className="stage-title">{head.title}</h1>
+          <p className="stage-lede">{head.lede}</p>
+        </div>
+        <Mascot pose={pose} className="stage-mascot" />
       </header>
       {verdictFirst && showLineup && lineupSection}
       {showPost && post}

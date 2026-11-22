@@ -57,7 +57,7 @@ export function WorldMap({
   };
   const youSide = a ? side(a, !b || a.x <= b.x) : '';
   const guessSide = b ? side(b, !!a && a.x > b.x) : '';
-  const label = [you && `${youLabel}`, guess && `the attacker’s guess, ${guessLabel}`, distance && `${distance} apart`].filter(Boolean).join('; ');
+  const label = [you && `${youLabel}`, guess && `the AI’s guess, ${guessLabel}`, distance && `${distance} apart`].filter(Boolean).join('; ');
   return (
     <div className="world" role="img" aria-label={label ? `Map: ${label}` : 'Map of the world'}>
       <svg viewBox={`${view.x} ${view.y} ${view.w} ${view.h}`} aria-hidden="true">

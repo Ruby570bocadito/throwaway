@@ -4,29 +4,26 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <script src="/boot.js"></script>
-    <title>Throwaway: let an AI try to unmask you before you post</title>
-    <meta name="description" content="Before you post anonymously, a cloud AI tries to identify you from your writing or your photo. Gemini Nano then fixes it on your device, until the attacker is back to guessing. Built on Firebase AI Logic hybrid inference." />
+    <title>Throwaway: see what gives you away before you post</title>
+    <meta name="description" content="A street sign behind your selfie, the words you always use: Throwaway finds what could identify you in a post or a photo, fixes it on your device with Gemini Nano, then lets an AI try to find you. Free, no account." />
     <meta name="theme-color" content="#f6ecdd" />
     <link rel="icon" href="/brand/favicon-64.png" type="image/png" sizes="64x64" />
     <link rel="icon" href="/brand/favicon-32.png" type="image/png" sizes="32x32" />
     <link rel="apple-touch-icon" href="/brand/apple-touch-icon.png" />
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="Throwaway" />
-    <meta property="og:title" content="Throwaway: before you post anonymously, let an AI try to unmask you" />
-    <meta property="og:description" content="Gemini Nano finds what gives you away and fixes it on your device; a cloud AI attacks only the versions you choose to test. Built on Firebase AI Logic hybrid inference." />
+    <meta property="og:title" content="Throwaway: see what gives you away before you post" />
+    <meta property="og:description" content="Finds what could identify you in a post or a photo, fixes it on your device, then lets an AI try to find you. Free, no account." />
     <meta property="og:url" content="https://throwaway-hybrid.web.app/" />
     <meta property="og:image" content="https://throwaway-hybrid.web.app/og-image.jpg" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
     <meta name="twitter:card" content="summary_large_image" />
+    <link rel="preload" as="image" href="/demo/selfie-800.webp" imagesrcset="/demo/selfie-800.webp 800w, /demo/selfie-1400.webp 1400w" imagesizes="(max-width: 980px) 92vw, 620px" fetchpriority="high" />
     <link rel="stylesheet" href="/src/landing/landing.css" />
   </head>
   <body>
     <a class="skip" href="#main">Skip to content</a>
-
-    <svg class="defs" aria-hidden="true" focusable="false">
-      <symbol id="sil" viewBox="0 0 64 64"><circle cx="32" cy="22" r="11" /><path d="M10 60c2-14 11-21 22-21s20 7 22 21z" /></symbol>
-    </svg>
 
     <header class="nav">
       <div class="wrap">
@@ -35,10 +32,10 @@
           <span class="wordmark">throwaway</span>
         </a>
         <nav aria-label="Sections">
-          <a href="#threats">The threat</a>
           <a href="#how">How it works</a>
+          <a href="#results">Results</a>
           <a href="#privacy">Privacy</a>
-          <a href="#developers">Developers</a>
+          <a href="#faq">FAQ</a>
         </nav>
         <a class="btn small" href="/app/">Open the app</a>
       </div>
@@ -46,413 +43,322 @@
 
     <main id="main">
       <section class="hero">
-        <div class="wrap">
-          <!-- The case file around the headline: what the attacker read in the recorded run. Decoration only. -->
-          <div class="evidence" aria-hidden="true">
-            <div class="ev ev-note">
-              <p><span class="ev-circled">So, honestly,</span> I loved this company…</p>
-              <svg class="ev-ring" viewBox="0 0 200 60" preserveAspectRatio="none"><path pathLength="1" d="M14 34 C 16 10, 176 4, 190 26 C 198 44, 60 58, 22 46 C 6 40, 12 18, 60 12" /></svg>
-              <small>habit · 53× more often than other writers</small>
-            </div>
-            <div class="ev ev-pol">
-              <span class="ev-shot"><svg viewBox="0 0 64 64"><use href="#sil" /></svg></span>
-              <span class="ev-stamp">10/10</span>
-              <small>C · the real author</small>
-            </div>
-            <div class="ev ev-redact">
-              <p>our design team in <span class="ev-bar">the Lisbon office</span></p>
-              <small>detail · found on your device</small>
-            </div>
-            <div class="ev ev-map">
-              <p><s>215 m</s> <span class="ev-arrow">→</span> <strong>10,559 km</strong></p>
-              <small>the photo, after hiding three cells</small>
-            </div>
-          </div>
+        <div class="wrap hero-grid">
           <div class="hero-copy">
-            <p class="eyebrow">Hybrid AI · Firebase AI Logic · Gemini Nano</p>
-            <h1>Before you post anonymously, let an AI try to <span class="marker">unmask you</span>.</h1>
+            <p class="eyebrow"><span class="pulse" aria-hidden="true"></span>For streamers, alt accounts and anonymous reviews</p>
+            <h1>
+              Before you post, see what
+              <span class="scrawl under">gives you away.<svg viewBox="0 0 200 20" preserveAspectRatio="none" aria-hidden="true"><path pathLength="1" d="M4 12 C 40 4, 70 18, 104 10 S 168 4, 196 12" /></svg></span>
+            </h1>
             <p class="lede">
-              Your words give away <em>who</em> you are. Your photos give away <em>where</em> you are. Throwaway attacks both with a cloud AI, then fixes them
-              on your device with Gemini Nano, until the attacker is back to guessing.
+              A street sign behind your selfie. The words you always use. Throwaway finds what could identify you, fixes it on your device, then lets an AI
+              try to find you.
             </p>
             <div class="ctas">
-              <a class="btn primary" href="/app/" data-cta="live">Try it live <span class="arrow" aria-hidden="true">→</span></a>
-              <a class="btn ghost" href="/app/?demo" data-cta="demo">Watch a recorded run</a>
+              <a class="btn primary" href="/app/" data-cta="live">Check a post</a>
+              <a class="btn secondary" href="/app/?photo" data-cta="live">Check a photo</a>
+              <a class="btn demo" href="/app/?demo" data-cta="demo"><svg class="play" viewBox="0 0 20 20" aria-hidden="true"><path d="M6 4.5v11l9-5.5z" /></svg>Watch a real check</a>
             </div>
-            <p class="fine" data-nano>Live needs Chrome on a desktop with Gemini Nano. The recorded run replays a real one, step by step, in any browser.</p>
-          </div>
-
-          <figure class="replay" aria-labelledby="replay-cap">
-            <div class="sheet">
-              <div class="sheet-head"><span class="chip private" data-label>your anonymous post · private</span></div>
-              <div class="post">
-                <p class="before">
-                  <mark class="habit">So, honestly,</mark> I loved this company for <mark class="detail">three years</mark> — but the last
-                  <mark class="detail">six months</mark> have been <mark class="habit">kind of</mark> a mess. <mark class="habit">Anyway</mark>, after the
-                  <mark class="detail">March reorg</mark> our design team in the <mark class="detail">Lisbon office</mark> went from
-                  <mark class="detail">6 people to 2</mark> (and nobody told us why).
-                </p>
-                <p class="after" aria-hidden="true">
-                  An attachment to this organization existed for a period of several years; however, the preceding several months have presented
-                  challenges. Following a restructuring, the design team’s personnel transitioned from numerous individuals to a smaller number, without
-                  explanation.
-                </p>
-              </div>
-            </div>
-            <div class="handoff" aria-hidden="true"><span>only what you choose to test</span></div>
-            <div class="board" aria-hidden="true">
-              <div class="board-head">
-                <span class="chip public">the lineup · what the cloud sees</span>
-                <span class="verdict"><strong class="num">10/10 → 0/10</strong><span class="what">found you, then lost you</span></span>
-              </div>
-              <div class="pols">
-                <span class="pol"><span class="shot"><svg class="sil" viewBox="0 0 64 64"><use href="#sil" /></svg></span><span class="letter">A</span><span class="count" hidden></span></span>
-                <span class="pol"><span class="shot"><svg class="sil" viewBox="0 0 64 64"><use href="#sil" /></svg></span><span class="letter">B</span><span class="count" hidden></span></span>
-                <span class="pol me hot"><span class="shot"><svg class="sil" viewBox="0 0 64 64"><use href="#sil" /></svg></span><span class="you">you</span><span class="letter">C</span><span class="count">10</span></span>
-                <span class="pol"><span class="shot"><svg class="sil" viewBox="0 0 64 64"><use href="#sil" /></svg></span><span class="letter">D</span><span class="count" hidden></span></span>
-                <span class="pol"><span class="shot"><svg class="sil" viewBox="0 0 64 64"><use href="#sil" /></svg></span><span class="letter">E</span><span class="count" hidden></span></span>
-                <span class="pol"><span class="shot"><svg class="sil" viewBox="0 0 64 64"><use href="#sil" /></svg></span><span class="letter">F</span><span class="count" hidden></span></span>
-                <span class="pol"><span class="shot"><svg class="sil" viewBox="0 0 64 64"><use href="#sil" /></svg></span><span class="letter">G</span><span class="count" hidden></span></span>
-                <span class="pol"><span class="shot"><svg class="sil" viewBox="0 0 64 64"><use href="#sil" /></svg></span><span class="letter">H</span><span class="count" hidden></span></span>
-                <span class="pol"><span class="shot"><svg class="sil" viewBox="0 0 64 64"><use href="#sil" /></svg></span><span class="letter">I</span><span class="count" hidden></span></span>
-                <span class="pol"><span class="shot"><svg class="sil" viewBox="0 0 64 64"><use href="#sil" /></svg></span><span class="letter">J</span><span class="count" hidden></span></span>
-              </div>
-            </div>
-            <figcaption id="replay-cap">
-              A recorded run. As posted, a cloud model picked the real author 10 times out of 10. After the rewrite on the device: 0 out of 10.
-            </figcaption>
-          </figure>
-        </div>
-      </section>
-
-      <!-- The measured numbers on a dark band, torn out of the page like a sheet from a case file. -->
-      <div class="band">
-      <svg class="tear tear-top" viewBox="0 0 1200 18" preserveAspectRatio="none" aria-hidden="true"><path d="M0 18 L0 9 L24 12 L46 6 L71 10 L95 4 L122 9 L148 7 L170 12 L197 5 L221 8 L246 3 L272 10 L298 6 L323 11 L349 5 L374 8 L398 3 L425 9 L450 6 L476 12 L501 7 L527 4 L552 10 L578 6 L603 11 L629 5 L654 9 L680 3 L705 8 L731 12 L756 6 L782 9 L807 4 L833 10 L858 7 L884 12 L909 5 L935 8 L960 3 L986 10 L1011 6 L1037 11 L1062 4 L1088 9 L1113 7 L1139 12 L1164 5 L1200 9 L1200 18 Z" /></svg>
-      <section class="stack" aria-label="Built on">
-        <div class="wrap">
-          <span class="stack-label">Built on</span>
-          <ul>
-            <li>Firebase AI Logic</li>
-            <li>Gemini Nano, on your device</li>
-            <li>Gemini, in the cloud</li>
-            <li>Chrome Prompt API</li>
-            <li>Firebase App Check</li>
-            <li>Firebase Hosting</li>
-          </ul>
-        </div>
-      </section>
-
-      <section class="stats" aria-label="Measured in live runs">
-        <div class="wrap">
-          <p class="kicker stats-kicker">Measured in live runs, not claimed</p>
-          <div class="stat-row">
-            <div class="stat reveal">
-              <strong><span class="bad">10/10</span> → <span class="good" data-from="10">0/10</span></strong>
-              <p>times a cloud model picked the real author out of ten writers, before and after the rewrite on the device</p>
-            </div>
-            <div class="stat reveal">
-              <strong><span class="bad">215 m</span> → <span class="good" data-from="0.215">10,559 km</span></strong>
-              <p>how far off its guess of the photo was, before and after hiding three cells on the device</p>
-            </div>
-            <div class="stat reveal">
-              <strong><span data-from="0">6/6</span></strong>
-              <p>claims the rewrite still makes, checked by Gemini Nano on the device</p>
-            </div>
-            <div class="stat reveal">
-              <strong>0 bytes</strong>
-              <p>of your draft sent anywhere to rewrite it. It leaves only for the as-is test, if you choose it</p>
-            </div>
-          </div>
-          <p class="stats-note">
-            Live runs through Firebase AI Logic on 15–16 Nov 2026. Cloud attacker: gemini-3.5-flash-lite.
-            <a href="https://github.com/Ruby570bocadito/throwaway-Firebase-Hackaton#measured-not-claimed">Every measurement</a>
-          </p>
-        </div>
-      </section>
-      <svg class="tear tear-bottom" viewBox="0 0 1200 18" preserveAspectRatio="none" aria-hidden="true"><path d="M0 0 L0 9 L27 6 L52 11 L78 4 L103 8 L129 12 L154 5 L180 9 L205 3 L231 10 L256 7 L282 12 L307 4 L333 8 L358 11 L384 5 L409 9 L435 3 L460 10 L486 6 L511 12 L537 7 L562 4 L588 9 L613 5 L639 11 L664 6 L690 10 L715 3 L741 8 L766 12 L792 5 L817 9 L843 6 L868 11 L894 4 L919 8 L945 12 L970 6 L996 9 L1021 3 L1047 10 L1072 7 L1098 11 L1123 5 L1149 9 L1174 6 L1200 10 L1200 0 Z" /></svg>
-      </div>
-
-      <section id="threats" class="section">
-        <div class="wrap">
-          <div class="section-head">
-            <p class="kicker reveal">The threat</p>
-            <h2 class="reveal">Two ways an anonymous post <span class="scrawl circle">gives you away<svg viewBox="0 0 200 60" preserveAspectRatio="none" aria-hidden="true"><path pathLength="1" d="M14 34 C 16 10, 176 4, 190 26 C 198 44, 60 58, 22 46 C 6 40, 12 18, 60 12" /></svg></span></h2>
-          </div>
-          <div class="threats">
-            <article class="threat taped reveal">
-              <img class="threat-icon" src="/brand/huella-256.webp" width="76" height="76" alt="" />
-              <h3 class="q">Who wrote this?</h3>
-              <p>
-                Your writing is a fingerprint. In 2013, stylometry helped tie <cite>The Cuckoo’s Calling</cite>, signed Robert Galbraith, to J.&nbsp;K. Rowling.
-                The small words you cannot stop using do the same to you.
-              </p>
-              <p class="small">In the demo post, compared with ten writers from the same field:</p>
-              <ul class="habits">
-                <li><code>honestly</code> 53× more often</li>
-                <li><code>basically</code> 40×</li>
-                <li><code>sorry</code> 27×</li>
-                <li><code>so</code> 9×</li>
-                <li><code>anyway</code> 7×</li>
-              </ul>
-              <p>
-                Then there are the details: <mark class="detail">three years</mark>, <mark class="detail">the Lisbon office</mark>,
-                <mark class="detail">6 people to 2</mark>. Your manager needs no AI for those.
-              </p>
-            </article>
-
-            <article class="threat taped reveal" data-photo data-show="asis">
-              <img class="threat-icon" src="/brand/pin-256.webp" width="76" height="76" alt="" />
-              <h3 class="q">Where was this taken?</h3>
-              <p>
-                A street plaque, a house number, a bakery sign through the window. As posted, a cloud model read all three and placed the demo selfie 215
-                metres from the spot. After Gemini Nano found the clues and your device blurred them, it guessed Tokyo.
-              </p>
-              <figure class="polaroid">
-                <div class="scene" role="img" aria-label="Illustrated demo selfie at a window, with a street plaque, a house number and a bakery sign outside">
-                  <p class="scene-fallback">Illustrated demo photo: a selfie at a window, with a street plaque, a house number and a bakery sign outside.</p>
-                  <div class="grid4" aria-hidden="true">
-                    <span></span><span></span><span class="clue m" data-tag="plaque"></span><span></span>
-                    <span></span><span></span><span class="clue m" data-tag="house no."></span><span class="clue m" data-tag="bakery sign"></span>
-                    <span></span><span></span><span></span><span></span>
-                    <span></span><span></span><span></span><span></span>
-                  </div>
-                </div>
-                <figcaption class="pol-foot">
-                  <span class="toggle" role="group" aria-label="Which version the cloud sees">
-                    <button type="button" data-show="asis" aria-pressed="true" disabled>As posted</button>
-                    <button type="button" data-show="masked" aria-pressed="false" disabled>Masked on your device</button>
-                  </span>
-                  <span class="guess" aria-live="polite">Cloud’s guess: <strong>“Carrer de la Llum, 23, Palma”</strong> · 215 m from the spot</span>
-                </figcaption>
-              </figure>
-            </article>
-          </div>
-
-          <div class="who reveal">
-            <h3>Who it is for</h3>
-            <img
-              class="who-art"
-              src="/illus/quien-1400.webp"
-              srcset="/illus/quien-800.webp 800w, /illus/quien-1400.webp 1400w"
-              sizes="(max-width: 1240px) 100vw, 1180px"
-              width="1536"
-              height="1024"
-              loading="lazy"
-              alt="Three people who post anonymously: an employee writing a review late at night, a source handing an envelope to a journalist, and someone posting from an anonymous account."
-            />
-            <ul>
-              <li><strong>Employees</strong> reviewing their own company.</li>
-              <li><strong>Sources and whistleblowers</strong> talking to journalists.</li>
-              <li><strong>Alt accounts</strong> where being identified has a cost: health, sexuality, politics.</li>
-            </ul>
-          </div>
-        </div>
-      </section>
-
-      <section class="section fixes">
-        <div class="wrap">
-          <div class="section-head">
-            <p class="kicker reveal">What people do today</p>
-            <h2 class="reveal">The usual fixes make it <span class="scrawl under">worse<svg viewBox="0 0 200 20" preserveAspectRatio="none" aria-hidden="true"><path pathLength="1" d="M4 12 C 40 4, 70 18, 104 10 S 168 4, 196 12" /></svg></span></h2>
-          </div>
-          <div class="cards three">
-            <div class="card note taped reveal">
-              <h3><span class="struck">Write “weird” on purpose</span></h3>
-              <p>Hard to keep up, and sometimes easier to spot than your normal voice.</p>
-            </div>
-            <div class="card note taped reveal">
-              <h3><span class="struck">Translate it there and back</span></h3>
-              <p>It mangles the text, and nothing tells you whether you are still recognisable.</p>
-            </div>
-            <div class="card note taped reveal">
-              <h3><span class="struck">Ask a chatbot to rewrite it</span></h3>
-              <p>It hands your original to a third party: the one thing you were trying not to do.</p>
-            </div>
-          </div>
-          <p class="punch reveal">Throwaway attacks first, fixes it <span class="marker-soft">on your device</span>, then attacks again to check.</p>
-        </div>
-      </section>
-
-      <section id="how" class="section">
-        <div class="wrap">
-          <div class="section-head">
-            <p class="kicker reveal">How it works</p>
-            <h2 class="reveal">A local defender and a <span class="scrawl circle">cloud attacker<svg viewBox="0 0 200 60" preserveAspectRatio="none" aria-hidden="true"><path pathLength="1" d="M14 34 C 16 10, 176 4, 190 26 C 198 44, 60 58, 22 46 C 6 40, 12 18, 60 12" /></svg></span></h2>
-            <p class="sub reveal">
-              Firebase AI Logic runs Gemini in two places, on purpose. Gemini Nano, on your device, reads your original. Gemini in the cloud only sees what
-              you would post.
+            <p class="promise">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4.5" y="10.5" width="15" height="10" rx="2.5" /><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5" /></svg>
+              <span><strong>Your post and your photo stay on your computer.</strong> Only the fixed version goes to Google’s AI, and only when you test it.</span>
+            </p>
+            <p class="fine" data-nano>
+              Free, no account. The full check runs in Chrome on a computer, with Gemini Nano, a small Google AI that runs on your computer. On a phone:
+              watch a real check, or check a post with fixed rules.
             </p>
           </div>
-          <img
-            class="how-art reveal"
-            src="/illus/defensor-atacante-1400.webp"
-            srcset="/illus/defensor-atacante-800.webp 800w, /illus/defensor-atacante-1400.webp 1400w"
-            sizes="(max-width: 1240px) 100vw, 1100px"
-            width="1536"
-            height="1024"
-            loading="lazy"
-            alt="On the left, your post sits safe on your desk under a glass dome. On the right, a cloud with a magnifying glass studies a board of ten suspects."
-          />
-          <div class="flow reveal">
-            <div class="zone device">
-              <span class="chip private">your device · private</span>
-              <ol>
-                <li data-n="1"><span><strong>Fingerprint.</strong> Burrows’ Delta over the small words you use, in plain JavaScript. 0 bytes sent.</span></li>
-                <li data-n="2">
-                  <span><strong>Find what identifies you.</strong> Gemini Nano with <code>ONLY_ON_DEVICE</code>: names, places, dates and counts in a text; plaques, signs and plates in a photo.</span>
-                </li>
-                <li data-n="4">
-                  <span><strong>Fix it.</strong> Fixed rules generalise the details, then Gemini Nano rewrites your style and checks the meaning. In a photo, the cells with a clue are blurred, around the faces.</span>
-                </li>
-              </ol>
-            </div>
-            <div class="gate">
-              <span class="door"><code>release()</code><span>the only door out</span></span>
-            </div>
-            <div class="zone cloud">
-              <span class="chip public">the cloud · what the world will see</span>
-              <ol>
-                <li data-n="3">
-                  <span><strong>Attack.</strong> Gemini with <code>ONLY_IN_CLOUD</code> gets the post and ten public writers, shuffled every time, and picks the author. It is never told which one is you. For a photo, it guesses where you are.</span>
-                </li>
-                <li data-n="5"><span><strong>Attack again,</strong> until it is back to chance: one in ten, or the wrong place.</span></li>
-              </ol>
-            </div>
-          </div>
 
-          <div class="contract">
-            <div class="term reveal">
-              <code>Private&lt;T&gt;</code>
-              <p>Your draft or photo. Only local models can read it: a cloud call with it does not compile.</p>
+          <figure class="hero-shot" aria-labelledby="hero-cap">
+            <div class="shot" data-phase="found">
+              <img
+                class="shot-img"
+                src="/demo/selfie-800.webp"
+                srcset="/demo/selfie-800.webp 800w, /demo/selfie-1400.webp 1400w"
+                sizes="(max-width: 980px) 92vw, 620px"
+                width="1400"
+                height="933"
+                fetchpriority="high"
+                alt="A smiling selfie at an open window. Across the narrow street behind her: a street-name plaque, a bakery sign and a house number."
+              />
+              <img
+                class="shot-blur"
+                src="/demo/selfie-blurred-800.webp"
+                srcset="/demo/selfie-blurred-800.webp 800w, /demo/selfie-blurred-1400.webp 1400w"
+                sizes="(max-width: 980px) 92vw, 620px"
+                width="1400"
+                height="933"
+                fetchpriority="low"
+                alt=""
+              />
+              <span class="shot-grid" aria-hidden="true"></span>
+              <span class="shot-sweep" aria-hidden="true"></span>
+              <span class="clue clue-street" aria-hidden="true"><i>Street name</i></span>
+              <span class="clue clue-shop" aria-hidden="true"><i>Shop sign</i></span>
+              <span class="clue clue-number" aria-hidden="true"><i>House number</i></span>
+              <span class="face-tag" aria-hidden="true">Your face stays</span>
+              <span class="shot-chip" aria-hidden="true" data-chip>3 clues found on your device</span>
+              <span class="shot-verdict" aria-hidden="true"><small>The AI’s best guess now</small><b>Palma. No street.</b></span>
             </div>
-            <div class="term reveal">
-              <code>release()</code>
-              <p>The only way out. It refuses anything that still carries your original, unless you confirm you would post it as it is.</p>
-            </div>
-            <div class="term reveal">
-              <code>Publishable&lt;T&gt;</code>
-              <p>The only thing a cloud model accepts. A run-time guard checks every payload anyway.</p>
-            </div>
-          </div>
-
-          <figure class="receipt reveal">
-            <figcaption>The route ledger: every step, where it ran, and what left your device</figcaption>
-            <div class="table-scroll">
-              <table>
-                <thead>
-                  <tr><th scope="col">Step</th><th scope="col">Where</th><th scope="col">Bytes out</th></tr>
-                </thead>
-                <tbody>
-                  <tr><td>Fingerprint (Burrows’ Delta)</td><td><span class="route local">local-js</span></td><td>0</td></tr>
-                  <tr><td>Find identifying details</td><td><span class="route device">on-device</span></td><td>0</td></tr>
-                  <tr><td>Attack attempt 1 of 10 · your post as-is, your choice</td><td><span class="route cloud">cloud</span></td><td>4,404</td></tr>
-                  <tr><td>Fixed rules generalised 6 details</td><td><span class="route local">local-js</span></td><td>0</td></tr>
-                  <tr><td>Rewrite on-device</td><td><span class="route device">on-device</span></td><td>0</td></tr>
-                  <tr><td>Meaning check</td><td><span class="route device">on-device</span></td><td>0</td></tr>
-                  <tr><td>Attack attempt 1 of 10 · the rewrite</td><td><span class="route cloud">cloud</span></td><td>4,496</td></tr>
-                  <tr><td>Leak test: the draft pasted into a cloud prompt</td><td><span class="route blocked">blocked</span></td><td>0</td></tr>
-                </tbody>
-              </table>
-            </div>
-            <p class="receipt-note">From the recorded run. Each attack sends the post plus ten public texts. The leak test is a deliberate developer mistake, and the guard stops it.</p>
+            <img class="hero-mascot" src="/mascot/alarm-256.webp" width="237" height="256" alt="" data-mascot />
+            <figcaption id="hero-cap">The demo selfie: three clues around her, found and blurred on the device. Her face stays as it is.</figcaption>
           </figure>
         </div>
       </section>
 
-      <section id="privacy" class="section">
+      <section id="who" class="section who">
         <div class="wrap">
-          <div class="privacy-head">
-            <img class="privacy-mark reveal" src="/brand/mascara-256.webp" width="128" height="128" alt="" />
-            <div class="section-head">
-              <p class="kicker reveal">Privacy</p>
-              <h2 class="reveal">No account. Nothing stored. <span class="scrawl under ok">Nothing to breach.<svg viewBox="0 0 200 20" preserveAspectRatio="none" aria-hidden="true"><path pathLength="1" d="M4 12 C 40 4, 70 18, 104 10 S 168 4, 196 12" /></svg></span></h2>
-            </div>
+          <header class="section-head center">
+            <p class="kicker reveal">Who it’s for</p>
+            <h2 class="reveal">Anyone who posts without wanting to be found</h2>
+          </header>
+          <div class="scenes">
+            <article class="scene-card reveal">
+              <img src="/illus/streamer-800.webp" srcset="/illus/streamer-800.webp 800w, /illus/streamer-1400.webp 1400w" sizes="(max-width: 980px) 92vw, 380px" width="800" height="533" loading="lazy" alt="A streamer at her desk with a microphone and a webcam. Through the window behind her: a street plaque and a shop awning. The paper-ball mascot points a magnifying glass at the window." />
+              <div class="scene-copy">
+                <h3>Streamers</h3>
+                <p>A window behind you, a street sign, the shop across the road: viewers can piece together where you live. Check a frame before it goes out.</p>
+              </div>
+            </article>
+            <article class="scene-card reveal">
+              <img src="/illus/review-800.webp" srcset="/illus/review-800.webp 800w, /illus/review-1400.webp 1400w" sizes="(max-width: 980px) 92vw, 380px" width="800" height="533" loading="lazy" alt="A tired office worker typing at a kitchen table. The paper-ball mascot points at highlighted lines on the laptop screen." />
+              <div class="scene-copy">
+                <h3>Anonymous reviews</h3>
+                <p>Your manager knows how you write. The words you always use, and the details only your team knows, can sign the review for you.</p>
+              </div>
+            </article>
+            <article class="scene-card reveal">
+              <img src="/illus/selfie-800.webp" srcset="/illus/selfie-800.webp 800w, /illus/selfie-1400.webp 1400w" sizes="(max-width: 980px) 92vw, 380px" width="800" height="533" loading="lazy" alt="Someone taking a selfie on a balcony while the paper-ball mascot holds a frosted glass over the house-number plaques on the wall." />
+              <div class="scene-copy">
+                <h3>Selfies and alt accounts</h3>
+                <p>A house number or a street plaque behind you is an address. Throwaway blurs the clue and leaves your face alone.</p>
+              </div>
+            </article>
           </div>
-          <div class="cards three">
-            <div class="card reveal">
-              <h3>No login</h3>
-              <p>A tool for staying anonymous should not know who you are. There is no account to create and nothing to sign in to.</p>
-            </div>
-            <div class="card reveal">
-              <h3>Nothing stored, nothing tracked</h3>
-              <p>Your draft and your photo live in this browser tab and are gone when you close it. No analytics, no cookies of ours, and the fonts are bundled.</p>
-            </div>
-            <div class="card reveal">
-              <h3>Only what you choose to test leaves</h3>
-              <p>The first attack measures your post as you would publish it, after you confirm. Finding clues, rewriting and masking all happen on your device.</p>
-            </div>
+        </div>
+      </section>
+
+      <section id="how" class="section how">
+        <div class="wrap">
+          <header class="section-head center">
+            <p class="kicker reveal">How it works</p>
+            <h2 class="reveal">Three steps. The private ones stay on your computer.</h2>
+          </header>
+          <ol class="steps">
+            <li class="step reveal">
+              <img class="step-art" src="/mascot/scan-256.webp" width="256" height="256" loading="lazy" alt="" />
+              <span class="step-n" aria-hidden="true">1</span>
+              <h3>Find</h3>
+              <p>Paste a post or pick a photo. Gemini Nano, a small AI built into Chrome, looks for what could identify you: the words you always use, names and dates, or a sign behind you.</p>
+              <span class="where device">On your device</span>
+            </li>
+            <li class="step reveal">
+              <img class="step-art" src="/mascot/blur-256.webp" width="187" height="256" loading="lazy" alt="" />
+              <span class="step-n" aria-hidden="true">2</span>
+              <h3>Fix</h3>
+              <p>Your post is rewritten in a plainer style that keeps every point you made. In a photo, the parts with a clue are blurred and your face stays as it is.</p>
+              <span class="where device">On your device</span>
+            </li>
+            <li class="step reveal">
+              <img class="step-art" src="/mascot/safe-256.webp" width="238" height="256" loading="lazy" alt="" />
+              <span class="step-n" aria-hidden="true">3</span>
+              <h3>Test</h3>
+              <p>A bigger AI in the cloud tries to find you, from the fixed version only. If it still can, Throwaway fixes more and tests again.</p>
+              <span class="where cloud">In the cloud · fixed version only</span>
+            </li>
+          </ol>
+        </div>
+      </section>
+
+      <section id="results" class="section results">
+        <div class="wrap">
+          <header class="section-head center">
+            <p class="kicker reveal">Real results</p>
+            <h2 class="reveal">We let an AI try to find us</h2>
+            <p class="sub reveal">
+              Two real checks, before and after the fix. The attacker was Gemini Flash-Lite, in the cloud: ten tries on the post (16 November 2026), one
+              guess on the selfie (22 November 2026).
+            </p>
+          </header>
+
+          <div class="proof">
+            <article class="proof-card photo reveal" aria-labelledby="proof-photo">
+              <h3 id="proof-photo">The selfie</h3>
+              <p class="proof-ask">A selfie at a window, with a street behind her. We asked the AI where it was taken.</p>
+              <div class="compare">
+                <img class="compare-after" src="/demo/selfie-blurred-800.webp" srcset="/demo/selfie-blurred-800.webp 800w, /demo/selfie-blurred-1400.webp 1400w" sizes="(max-width: 980px) 92vw, 560px" width="1400" height="933" loading="lazy" alt="The selfie after Throwaway: the street plaque, the bakery sign and the house number are blurred; her face is not." />
+                <div class="compare-before" aria-hidden="true">
+                  <img src="/demo/selfie-800.webp" srcset="/demo/selfie-800.webp 800w, /demo/selfie-1400.webp 1400w" sizes="(max-width: 980px) 92vw, 560px" width="1400" height="933" loading="lazy" alt="" />
+                </div>
+                <span class="compare-line" aria-hidden="true"><span class="compare-knob"></span></span>
+                <span class="compare-tag before" aria-hidden="true">Original</span>
+                <span class="compare-tag after" aria-hidden="true">Blurred</span>
+                <input class="compare-range" type="range" min="0" max="100" value="50" aria-label="Slide to compare the original photo with the blurred one" hidden />
+              </div>
+              <dl class="verdicts">
+                <div class="v bad">
+                  <dt>Original</dt>
+                  <dd>It read the street plaque, <strong>“Carrer de la Llum”</strong>. A street name and a door number are an address.</dd>
+                </div>
+                <div class="v good">
+                  <dt>Blurred on your device</dt>
+                  <dd>No street left to read. It could only guess the city from the old-town look: <strong>Palma</strong>.</dd>
+                </div>
+              </dl>
+            </article>
+
+            <article class="proof-card text reveal" aria-labelledby="proof-text">
+              <h3 id="proof-text">The anonymous review</h3>
+              <div class="quotes">
+                <figure class="post-quote before">
+                  <figcaption>Original</figcaption>
+                  <p>
+                    “<mark class="habit">So, honestly,</mark> I loved this company for <mark class="detail">three years</mark>, but the last six months have been
+                    <mark class="habit">kind of</mark> a mess. <mark class="habit">Anyway</mark>, after the <mark class="detail">March reorg</mark> our team in the
+                    <mark class="detail">Lisbon office</mark> went from <mark class="detail">6 people to 2</mark>…”
+                  </p>
+                  <p class="mark-key">What gave the author away: <mark class="habit">writing habits</mark> and <mark class="detail">details</mark>.</p>
+                </figure>
+                <figure class="post-quote after">
+                  <figcaption>Rewritten on your device</figcaption>
+                  <p>“An attachment to this organization existed for a period of several years; however, the preceding six months have presented challenges. Following a restructuring, the design team’s personnel transitioned from numerous individuals to a smaller number…”</p>
+                </figure>
+              </div>
+              <p class="proof-ask">The AI got the post and ten writers on the same topic. One of them wrote it. Which one?</p>
+              <div class="lineup" data-phase="before">
+                <div class="lineup-head" aria-hidden="true">
+                  <span class="lineup-chip" data-chip>Original</span>
+                  <span class="tally"><strong class="tally-num">10/10</strong> <span class="tally-what">tries found the real author</span></span>
+                </div>
+                <ol class="writers" aria-label="The ten writers">
+                  <li class="w"><b>A</b></li>
+                  <li class="w"><b>B</b></li>
+                  <li class="w me"><b>C</b><span class="w-you">real author</span></li>
+                  <li class="w"><b>D</b></li>
+                  <li class="w"><b>E</b></li>
+                  <li class="w"><b>F</b></li>
+                  <li class="w"><b>G</b></li>
+                  <li class="w"><b>H</b></li>
+                  <li class="w"><b>I</b></li>
+                  <li class="w"><b>J</b></li>
+                </ol>
+                <p class="glyph-key">Each bar: how often a writer uses a common word like “the”, “and” or “I”. Habits like these are what the AI matches.</p>
+              </div>
+              <dl class="verdicts">
+                <div class="v bad">
+                  <dt>Original</dt>
+                  <dd>It picked the real author <strong>10 times out of 10</strong>, from habits like “So, honestly” and “basically”.</dd>
+                </div>
+                <div class="v good">
+                  <dt>Rewritten on your device</dt>
+                  <dd><strong>0 out of 10.</strong> It mistook the author for writer F nine times, and G once.</dd>
+                </div>
+              </dl>
+              <ul class="facts">
+                <li><strong>All 6</strong> points of the review are still there</li>
+                <li><strong>Nothing</strong> you wrote left the computer to be rewritten</li>
+              </ul>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section id="privacy" class="section privacy">
+        <div class="wrap">
+          <header class="section-head center">
+            <p class="kicker reveal">Privacy, in plain words</p>
+            <h2 class="reveal">What leaves your device, and when</h2>
+          </header>
+          <div class="pcards">
+            <article class="pcard stays reveal">
+              <svg class="pcard-icon" viewBox="0 0 48 48" aria-hidden="true"><rect x="9" y="21" width="30" height="21" rx="5" /><path d="M16 21v-5a8 8 0 0 1 16 0v5" /><circle cx="24" cy="31" r="2.6" /></svg>
+              <h3>Stays on your device</h3>
+              <p>Your draft and your photo. Finding clues, rewriting and blurring all run inside Chrome, on your computer.</p>
+            </article>
+            <article class="pcard leaves reveal">
+              <svg class="pcard-icon" viewBox="0 0 48 48" aria-hidden="true"><path d="M14 34h21a8 8 0 0 0 0-16 11 11 0 0 0-21-2 9 9 0 0 0 0 18z" /><path d="M24 40V26m-5 5 5-5 5 5" /></svg>
+              <h3>Leaves only when you test</h3>
+              <p>The fixed version goes to Gemini, Google’s AI, which tries to find you. Your original goes only if you choose to test it as it is, and you confirm first.</p>
+            </article>
+            <article class="pcard kept reveal">
+              <svg class="pcard-icon" viewBox="0 0 48 48" aria-hidden="true"><path d="M12 15h24l-2.4 25a3 3 0 0 1-3 2.7H17.4a3 3 0 0 1-3-2.7z" /><path d="M9 15h30M19 15v-4h10v4M21 23v12m6-12v12" /></svg>
+              <h3>Kept by us: nothing</h3>
+              <p>No account, no database, no analytics and no cookies of ours. Close the tab and your draft is gone.</p>
+            </article>
           </div>
           <p class="legal reveal">
-            The recorded run makes no requests to third parties. The live mode uses Firebase App Check with reCAPTCHA Enterprise, so only this web app can call
-            the model. This site is protected by reCAPTCHA and the Google <a href="https://policies.google.com/privacy">Privacy Policy</a> and
-            <a href="https://policies.google.com/terms">Terms of Service</a> apply.
+            Why Google reCAPTCHA appears: when you test, it checks that the request comes from this app and not from a bot. It never sees your post or your
+            photo. This site is protected by reCAPTCHA and the Google <a href="https://policies.google.com/privacy">Privacy Policy</a> and
+            <a href="https://policies.google.com/terms">Terms of Service</a> apply; they also cover what Gemini does with a test.
           </p>
         </div>
       </section>
 
-      <section id="developers" class="section">
-        <div class="wrap dev">
-          <div>
-            <p class="kicker reveal">For developers</p>
-            <h2 class="reveal">A threat is four functions</h2>
-            <p class="sub reveal">
-              Throwaway is the reference app of a small TypeScript framework on Firebase AI Logic hybrid inference. You write a threat; the privacy types,
-              the run-time guard and the ledger come with it.
-            </p>
-            <p class="reveal">
-              <code>redTeam(threat, input, kit)</code> runs the loop: attack, fix with the attacker’s feedback, attack again, until the attacker stops finding you. Two threats
-              ship today: who wrote a text, and where a photo was taken.
-            </p>
-            <p class="reveal"><a class="btn ghost" href="https://github.com/Ruby570bocadito/throwaway-Firebase-Hackaton">Read the code on GitHub</a></p>
-          </div>
-          <pre class="code reveal"><code><span class="k">interface</span> <span class="t">Threat</span>&lt;Input, Clue, Verdict&gt; {
-  <span class="c">// on your device</span>
-  findClues(input: <span class="t">Private</span>&lt;Input&gt;, kit): <span class="t">Promise</span>&lt;Clue[]&gt;;
-  sanitize(input: <span class="t">Private</span>&lt;Input&gt;, clues, feedback, kit):
-    <span class="t">Promise</span>&lt;<span class="t">Publishable</span>&lt;Input&gt;&gt;;
-  <span class="c">// in the cloud</span>
-  attack(published: <span class="t">Publishable</span>&lt;Input&gt;, kit): <span class="t">Promise</span>&lt;Verdict&gt;;
-  exposed(verdict: Verdict): <span class="k">boolean</span>;
-}</code></pre>
-        </div>
-      </section>
-
-      <section class="section">
+      <section class="section need">
         <div class="wrap">
-          <div class="section-head">
-            <p class="kicker reveal">Honest limits</p>
-            <h2 class="reveal">What it cannot promise</h2>
-          </div>
-          <ul class="limits taped reveal">
-            <li>Stylometry on short texts is noisy. The local score is a signal, not proof.</li>
-            <li>The meaning check runs on a small local model and is lenient. Read the final text before you post it.</li>
-            <li>Names and places are caught only when Gemini Nano flags them. Counts and dates are always generalised.</li>
-            <li>Blurring hides what a model can read today. Cropping is safer.</li>
-            <li>A provider that sees many attempts could intersect lineups, since you are the one constant. Throwaway limits attempts.</li>
-          </ul>
-        </div>
-      </section>
-
-      <section class="section final">
-        <div class="wrap">
-          <div class="final-stage">
-            <img
-              class="final-art"
-              src="/illus/compartir-1400.webp"
-              srcset="/illus/compartir-800.webp 800w, /illus/compartir-1400.webp 1400w"
-              sizes="(max-width: 1240px) 100vw, 1180px"
-              width="1536"
-              height="1024"
-              loading="lazy"
-              alt=""
-            />
-            <div class="final-copy">
-              <h2 class="reveal">Attack your post before <span class="keep"><span class="scrawl circle">anyone else<svg viewBox="0 0 200 60" preserveAspectRatio="none" aria-hidden="true"><path pathLength="1" d="M14 34 C 16 10, 176 4, 190 26 C 198 44, 60 58, 22 46 C 6 40, 12 18, 60 12" /></svg></span> does.</span></h2>
-              <div class="ctas reveal">
-                <a class="btn primary" href="/app/" data-cta="live">Try it live <span class="arrow" aria-hidden="true">→</span></a>
-                <a class="btn ghost" href="/app/?demo" data-cta="demo">Watch a recorded run</a>
+          <div class="need-card reveal">
+            <img class="need-art" src="/mascot/think-256.webp" width="206" height="256" loading="lazy" alt="" />
+            <div class="need-copy">
+              <h2>What you need</h2>
+              <div class="need-cols">
+                <div>
+                  <h3>On a computer</h3>
+                  <p>Chrome 139 or newer, with Gemini Nano. Chrome downloads it the first time; it needs about 22 GB of free disk.</p>
+                </div>
+                <div>
+                  <h3>On a phone or another browser</h3>
+                  <p>The demo replays a real check, step by step. You can also check a post with fixed rules, and pick the parts of a photo to blur yourself.</p>
+                </div>
               </div>
-              <p class="fine reveal">Live: Chrome 139+ on a desktop with Gemini Nano (about 22 GB of free disk). Recorded run: any browser, any device.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="faq" class="section faq">
+        <div class="wrap faq-wrap">
+          <header class="section-head center">
+            <p class="kicker reveal">Questions</p>
+            <h2 class="reveal">Before you try it</h2>
+          </header>
+          <div class="faq-list reveal">
+            <details>
+              <summary>Is it free? Do I need an account?</summary>
+              <p>It’s free, and there is no account: a tool for staying anonymous shouldn’t know who you are.</p>
+            </details>
+            <details>
+              <summary>Will it blur my face?</summary>
+              <p>No. It blurs the clues around you and leaves your face as it is: the point is to post your photo, minus your address. To hide your face, crop it out before you check the photo.</p>
+            </details>
+            <details>
+              <summary>What exactly leaves my device?</summary>
+              <p>Only what you test: the fixed version, and your original if you choose to test it as it is. It goes to Gemini in Google’s cloud, which tries to find you. Throwaway itself stores nothing.</p>
+            </details>
+            <details>
+              <summary>What is Gemini Nano? Will it download something?</summary>
+              <p>A small AI model from Google, built into Chrome. It runs on your computer, so your draft doesn’t have to go anywhere to be checked or fixed. Chrome downloads it once, when you start your first check, and needs about 22 GB of free disk for it.</p>
+            </details>
+            <details>
+              <summary>Does it work on my phone?</summary>
+              <p>The demo does, and so does checking a post with fixed rules. The full check needs Gemini Nano, which today runs in Chrome on computers.</p>
+            </details>
+            <details>
+              <summary>Can it promise nobody will find me?</summary>
+              <p>No. It lowers the odds against an AI reading your post today. Short posts are hard to judge either way, blurring is weaker than cropping, and the rewrite sounds plainer than you do. Read the result before you post it.</p>
+            </details>
+          </div>
+        </div>
+      </section>
+
+      <section class="final">
+        <div class="wrap">
+          <div class="final-card reveal">
+            <img class="final-mascot" src="/mascot/wave-256.webp" width="256" height="246" loading="lazy" alt="" />
+            <h2>Check yours before you post it.</h2>
+            <div class="ctas">
+              <a class="btn primary" href="/app/" data-cta="live">Check a post</a>
+              <a class="btn secondary" href="/app/?photo" data-cta="live">Check a photo</a>
+              <a class="btn demo" href="/app/?demo" data-cta="demo"><svg class="play" viewBox="0 0 20 20" aria-hidden="true"><path d="M6 4.5v11l9-5.5z" /></svg>Watch a real check</a>
             </div>
           </div>
         </div>
@@ -462,22 +368,19 @@
     <footer class="foot">
       <div class="wrap">
         <div class="foot-brand">
-          <img class="foot-bin" src="/illus/papelera-200.webp" width="88" height="88" alt="" loading="lazy" />
-          <div>
-            <a class="brand" href="/" aria-label="Throwaway, home">
-              <img class="logo-small" src="/brand/bola-128.webp" width="28" height="28" alt="" />
-              <span class="wordmark">throwaway</span>
-            </a>
-            <p class="foot-tag">Write it. Check it. Throw the draft away.</p>
-          </div>
+          <a class="brand" href="/" aria-label="Throwaway, home">
+            <img class="logo-small" src="/brand/bola-128.webp" width="28" height="28" alt="" />
+            <span class="wordmark">throwaway</span>
+          </a>
+          <p class="foot-tag">Write it. Check it. Throw the draft away.</p>
         </div>
         <nav class="foot-links" aria-label="Footer">
           <a href="/app/">Open the app</a>
-          <a href="/app/?demo">Recorded run</a>
-          <a href="https://github.com/Ruby570bocadito/throwaway-Firebase-Hackaton">Source on GitHub</a>
+          <a href="/app/?demo">Demo</a>
           <a href="#privacy">Privacy</a>
+          <a href="https://github.com/Ruby570bocadito/throwaway-Firebase-Hackaton">For developers: the code on GitHub</a>
         </nav>
-        <p class="foot-fine">Built for #BuildHybridAI 2026 · Apache-2.0 · No cookies of ours</p>
+        <p class="foot-fine">Made for #BuildHybridAI 2026 with Firebase AI Logic, Gemini Nano and Gemini · Apache-2.0 · No cookies of ours</p>
       </div>
     </footer>
 

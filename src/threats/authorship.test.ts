@@ -416,6 +416,36 @@ describe('a busy cloud (live run: [500] "This model is currently experiencing hi
     expect(calls).toBe(2);
   });
 
+  it('asks three at a time once the cloud has answered, one at a time before: ten in a row took 10–20 s', async () => {
+    let calls = 0;
+    let inFlight = 0;
+    let most = 0;
+    const slow: ModelBackend = {
+      name: 'cloud',
+      generate: async (parts) => {
+        calls++;
+        most = Math.max(most, ++inFlight);
+        await new Promise((r) => setTimeout(r, 5));
+        inFlight--;
+        return { text: lineupAnswer(parts.map((p) => ('text' in p ? p.text : '')).join('\n'), 'self'), source: 'in_cloud' };
+      },
+    };
+    const ledger = new Ledger();
+    const kit = { local: new LocalModel(slow, ledger), cloud: new CloudModel(slow, ledger), ledger };
+    const seen: number[] = [];
+    const threat = authorshipThreat({
+      selfId: SELF_ID,
+      self: publicData(MARTA_PUBLIC, 'blog'),
+      decoys: DECOYS.map((d) => ({ id: d.id, text: publicData(d.corpus, 'decoy') })),
+      onAttempt: (_id, i) => seen.push(i),
+    });
+    const v = await threat.attack(release('Some text to publish, long enough to be a post.', 'test'), kit);
+    expect(calls).toBe(10);
+    expect(most).toBe(3);
+    expect([...seen].sort((a, b) => a - b)).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]); // one callback per attempt
+    expect(v).toMatchObject({ attempts: 10, answered: 10, hits: 10 });
+  });
+
   it('a cloud that goes down mid-attack: three failures in a row end it, the rest count as no answer', async () => {
     let calls = 0;
     const flaky: ModelBackend = {

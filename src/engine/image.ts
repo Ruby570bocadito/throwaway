@@ -65,8 +65,10 @@ async function decode(png: Uint8Array): Promise<ImageBitmap> {
   return createImageBitmap(new Blob([png.slice()], { type: 'image/png' }));
 }
 
-async function encode(canvas: HTMLCanvasElement): Promise<Uint8Array> {
-  const blob = await new Promise<Blob>((resolve, reject) => canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('encode failed'))), 'image/png'));
+async function encode(canvas: HTMLCanvasElement, type: 'image/png' | 'image/jpeg' = 'image/png'): Promise<Uint8Array> {
+  const blob = await new Promise<Blob>((resolve, reject) =>
+    canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('encode failed'))), type, type === 'image/jpeg' ? 0.85 : undefined),
+  );
   return new Uint8Array(await blob.arrayBuffer());
 }
 
@@ -80,7 +82,7 @@ function canvasFor(img: ImageBitmap) {
 }
 
 export const browserImageOps: ImageOps = {
-  async withGrid(png, n) {
+  async withGrid(png, n, type = 'image/png') {
     const img = await decode(png);
     const { c, ctx } = canvasFor(img);
     const cw = c.width / n;
@@ -110,7 +112,7 @@ export const browserImageOps: ImageOps = {
         ctx.fillStyle = '#fff';
         ctx.fillText(String(r * n + k + 1), x, y + 1);
       }
-    return encode(c);
+    return encode(c, type);
   },
 
   async size(png) {
@@ -164,24 +166,6 @@ export const browserImageOps: ImageOps = {
     } finally {
       img.close();
     }
-  },
-
-  async maskCells(png, cells, n) {
-    const img = await decode(png);
-    const { c, ctx } = canvasFor(img);
-    const small = document.createElement('canvas');
-    const sctx = small.getContext('2d')!;
-    for (const cell of cells) {
-      const { x, y, w, h } = cellRect(cell, n, c.width, c.height);
-      // Heavy pixelation: 10 blocks across the cell, then upscale without smoothing.
-      small.width = 10;
-      small.height = Math.max(1, Math.round((10 * h) / w));
-      sctx.imageSmoothingEnabled = true;
-      sctx.drawImage(c, x, y, w, h, 0, 0, small.width, small.height);
-      ctx.imageSmoothingEnabled = false;
-      ctx.drawImage(small, 0, 0, small.width, small.height, x, y, w, h);
-    }
-    return encode(c);
   },
 };
 

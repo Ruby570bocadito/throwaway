@@ -1,4 +1,5 @@
-// Landing page script. No React and no Firebase: the page already reads on its own, this only adds motion and the photo demo.
+// Landing page script. No React and no Firebase: the page already reads on its own; this adds the motion (the photo being
+// checked in the hero, the lineup replaying the measured run, the before-and-after slider) and fits the buttons to this browser.
 import { deviceModelStatus } from '../framework/device';
 
 declare global {
@@ -6,34 +7,38 @@ declare global {
     __landing?: boolean;
   }
 }
-window.__landing = true; // tells the fallback in index.html that this script ran
+window.__landing = true; // tells the fallback in boot.js that this script ran
 
-const GRID = 4; // the photo threat's grid (src/threats/location.ts)
 const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+/**
+ * Each writer's glyph in the demo lineup, seats A to J (you are C): how often they use the twelve commonest function words
+ * and five punctuation habits, against the other nine, in standard deviations. Computed once from src/demo/scenario.ts with
+ * the app's own stylometry (src/ui/glyphs.ts), so the landing page draws the same cards as the app without loading the texts.
+ */
+const GLYPHS: number[][] = [
+  [-0.7, -0.7, 0.7, -1.1, -0.2, 0.1, 0.8, 0.2, 1.7, 0.6, -0.6, -0.8, -0.3, -0.3, 2, 0, -0.3],
+  [-0.5, 1.8, 1, 0, -0.1, -0.5, -0.6, 2, -1.2, -0.9, -0.6, -0.8, -0.3, -0.3, -0.3, 0, -0.3],
+  [-0.1, 0.5, 0.2, 1.3, 0.1, 0.7, -0.1, 0.3, -0.7, 0.7, 1.5, -0.3, 2, 2, -0.3, 0, -0.3],
+  [1.2, 0.8, -1.2, -1.1, -1, -0.5, 2, 0, 1.2, -0.9, -0.6, 2, -0.3, -0.3, -0.3, 0, -0.3],
+  [-0.1, 0.2, -0.3, -0.2, 0.5, -0.5, -0.6, -0.8, -1.2, 1.9, -0.6, 0.5, -0.3, -0.3, -0.3, 0, -0.3],
+  [2, -0.8, -0.3, -1.1, -1, -0.5, -0.6, -0.8, 0.1, -0.9, 2, -0.8, -0.3, -0.3, -0.3, 0, -0.3],
+  [-1.3, -1.8, 2, 0, -1, -0.5, -0.6, 0.3, 0.4, 0.7, -0.6, 0.7, -0.3, -0.3, -0.3, 0, -0.3],
+  [-0.5, -0.6, -1.2, 2, 0.8, -0.5, 0.2, -0.8, -1.2, 0.8, -0.6, -0.8, -0.3, -0.3, -0.3, 0, -0.3],
+  [-0.9, 0.9, 0.4, -0.3, -0.4, 2, -0.6, 0, 0, -0.9, 0.6, 0.3, -0.3, -0.3, -0.3, 0, -0.3],
+  [0.7, -0.3, -1.2, 0.2, 2, -0.5, -0.6, -0.8, 0.8, -0.9, -0.6, -0.8, -0.3, -0.3, -0.3, 0, 2],
+];
 
 revealOnScroll();
 followSections();
 void adaptToThisBrowser();
 linkManifestAndWorker();
-const replayFigure = document.querySelector<HTMLElement>('.replay');
-if (replayFigure && !reduceMotion) replay(replayFigure);
-const photoCard = document.querySelector<HTMLElement>('[data-photo]');
-// Drawing and blurring the scene takes a few hundred ms of main thread: do it when the card is near, not at load
-// (Lighthouse, 16-nov: 740 ms of blocking time on the landing page, almost all of it this).
-if (photoCard) whenNear(photoCard, () => void photoDemo(photoCard));
-
-function whenNear(el: Element, run: () => void) {
-  if (!('IntersectionObserver' in window)) return run();
-  const io = new IntersectionObserver(
-    (entries) => {
-      if (!entries.some((e) => e.isIntersecting)) return;
-      io.disconnect();
-      run();
-    },
-    { rootMargin: '600px 0px' },
-  );
-  io.observe(el);
-}
+const shot = document.querySelector<HTMLElement>('.hero-shot');
+if (shot) heroShot(shot);
+const lineup = document.querySelector<HTMLElement>('.lineup');
+if (lineup) lineupReplay(lineup);
+const compareBox = document.querySelector<HTMLElement>('.compare');
+if (compareBox) compareSlider(compareBox);
 
 function revealOnScroll() {
   const items = [...document.querySelectorAll<HTMLElement>('.reveal')];
@@ -47,40 +52,11 @@ function revealOnScroll() {
         if (!e.isIntersecting) continue;
         e.target.classList.add('in');
         io.unobserve(e.target);
-        if (!reduceMotion) for (const n of e.target.querySelectorAll<HTMLElement>('[data-from]')) countTo(n);
       }
     },
     { rootMargin: '0px 0px -8% 0px' },
   );
   for (const el of items) io.observe(el);
-}
-
-/**
- * A measured number replays its own measurement as it comes into view: 10/10 counts down to 0/10, 215 m grows to 10,559 km.
- * The HTML already holds the final value (it reads without JavaScript); the span keeps that width while it counts.
- */
-function countTo(el: HTMLElement) {
-  const final = el.textContent ?? '';
-  const from = Number(el.dataset.from);
-  const frac = final.match(/^(\d+)\/(\d+)$/);
-  const km = final.match(/^(~?)([\d.,]+) km$/);
-  if (!Number.isFinite(from) || (!frac && !km)) return;
-  const to = frac ? Number(frac[1]) : Number(km![2].replace(/,/g, ''));
-  const show = (v: number) => (frac ? `${Math.round(v)}/${frac[2]}` : v < 1 ? `${Math.round(v * 1000)} m` : `${Math.round(v)} km`);
-  // Distances span orders of magnitude: count them on a log scale.
-  const f = km ? Math.log10 : (x: number) => x;
-  const g = km ? (y: number) => 10 ** y : (y: number) => y;
-  el.style.minWidth = `${el.getBoundingClientRect().width}px`;
-  const t0 = performance.now();
-  const ms = 1300;
-  const tick = (now: number) => {
-    const t = Math.min(1, (now - t0) / ms);
-    const eased = 1 - (1 - t) ** 3;
-    el.textContent = t < 1 ? show(g(f(from) + (f(to) - f(from)) * eased)) : final;
-    if (t < 1) requestAnimationFrame(tick);
-  };
-  el.textContent = show(from);
-  requestAnimationFrame(tick);
 }
 
 /** The navigation marks the section you are reading. */
@@ -108,54 +84,51 @@ function followSections() {
 function linkManifestAndWorker() {
   // A few seconds after load, when the browser is idle: nothing on screen needs either, and the manifest in the HTML sat on
   // the first paint's critical path (Lighthouse, 16-nov: ~400 ms of simulated LCP on this page).
-  const idle = (fn: () => void) => ('requestIdleCallback' in window ? requestIdleCallback(fn, { timeout: 5000 }) : fn());
-  addEventListener('load', () => setTimeout(() => idle(() => {
-    const manifest = document.createElement('link');
-    manifest.rel = 'manifest';
-    manifest.href = '/manifest.webmanifest';
-    document.head.append(manifest);
-    if (import.meta.env.PROD && 'serviceWorker' in navigator) void navigator.serviceWorker.register('/sw.js').catch(() => undefined);
-  }), 3000));
+  addEventListener('load', () =>
+    setTimeout(
+      () =>
+        whenIdle(() => {
+          const manifest = document.createElement('link');
+          manifest.rel = 'manifest';
+          manifest.href = '/manifest.webmanifest';
+          document.head.append(manifest);
+          if (import.meta.env.PROD && 'serviceWorker' in navigator) void navigator.serviceWorker.register('/sw.js').catch(() => undefined);
+        }),
+      3000,
+    ),
+  );
 }
 
-/** Most visitors have no Gemini Nano: point them at the recorded run first, and say why. */
+function whenIdle(fn: () => void) {
+  if ('requestIdleCallback' in window) requestIdleCallback(fn, { timeout: 5000 });
+  else setTimeout(fn, 200);
+}
+
+/** Most visitors have no Gemini Nano: point them at the demo first, and say what still works here. */
 async function adaptToThisBrowser() {
   const status = await deviceModelStatus();
   if (status === 'unavailable') {
     for (const group of document.querySelectorAll<HTMLElement>('.ctas')) {
-      const live = group.querySelector<HTMLElement>('[data-cta="live"]');
-      const demo = group.querySelector<HTMLElement>('[data-cta="demo"]');
-      if (!live || !demo) continue;
-      // Swap the emphasis, not the order: moving the buttons after the first paint is a layout shift (Lighthouse CLS).
-      live.classList.replace('primary', 'ghost');
-      demo.classList.replace('ghost', 'primary');
+      for (const live of group.querySelectorAll<HTMLElement>('[data-cta="live"]')) live.classList.replace('primary', 'secondary');
+      group.querySelector<HTMLElement>('[data-cta="demo"]')?.classList.replace('demo', 'primary');
     }
   }
   const note = document.querySelector<HTMLElement>('[data-nano]');
   if (!note) return;
+  // Three testers read "your first check starts the download" as a hidden download (22-nov): say what, when and how big.
   note.textContent =
     status === 'available'
-      ? 'Gemini Nano is ready in this browser, so the live run works here. The recorded run works anywhere.'
+      ? 'Free, no account. Gemini Nano, the small Google AI that runs on your computer, is ready in this Chrome: the full check works here.'
       : status === 'downloadable'
-        ? 'This browser can download Gemini Nano: the live run starts the download the first time. The recorded run works anywhere.'
-        : 'This browser has no Gemini Nano, so start with the recorded run: it replays a real one, step by step. The live run needs Chrome on a desktop with Gemini Nano.';
+        ? 'Free, no account. This Chrome can add Gemini Nano, a small Google AI that runs on your computer. Chrome downloads it once, when you start your first check, and needs about 22 GB of free disk.'
+        : 'Free, no account. This browser has no Gemini Nano: watch a real check, or check a post with fixed rules. The full check needs Chrome on a computer.';
 }
 
-/** The hero replays the recorded run: scan on the device, attack (10/10), rewrite on the device, attack again (0/10). */
-function replay(fig: HTMLElement) {
-  const pols = [...fig.querySelectorAll<HTMLElement>('.pol')];
-  const counts = pols.map((p) => p.querySelector<HTMLElement>('.count'));
-  const chip = fig.querySelector<HTMLElement>('[data-label]');
-  const verdict = fig.querySelector<HTMLElement>('.verdict');
-  const num = verdict?.querySelector<HTMLElement>('.num');
-  const what = verdict?.querySelector<HTMLElement>('.what');
-  if (pols.length !== 10 || !chip || !verdict || !num || !what) return;
-
-  // The same seats as the app's lineup: you are C. After the rewrite the attacker picked F nine times and G once.
-  const ME = 2;
-  const AFTER = [5, 5, 6, 5, 5, 5, 5, 5, 5, 5];
-  const tally = pols.map(() => 0);
-
+/**
+ * A pause that stops while `el` is off screen or the tab is hidden, so a loop never runs for nobody. Resolves after `ms`
+ * of visible time.
+ */
+function visibleClock(el: Element) {
   let inView = false;
   let wake: (() => void) | null = null;
   const awake = () => inView && document.visibilityState === 'visible';
@@ -164,13 +137,12 @@ function replay(fig: HTMLElement) {
       inView = entries.some((e) => e.isIntersecting);
       if (awake()) wake?.();
     },
-    { threshold: 0.2 },
-  ).observe(fig);
+    { threshold: 0.25 },
+  ).observe(el);
   document.addEventListener('visibilitychange', () => {
     if (awake()) wake?.();
   });
-  /** A pause that stops while the hero is off screen or the tab is hidden. */
-  const wait = async (ms: number) => {
+  return async (ms: number) => {
     for (let left = ms; left > 0; left -= 100) {
       while (!awake())
         await new Promise<void>((resolve) => {
@@ -182,122 +154,220 @@ function replay(fig: HTMLElement) {
       await new Promise((resolve) => setTimeout(resolve, Math.min(100, left)));
     }
   };
-  const label = (text: string, kind: 'private' | 'asis' | 'public') => {
-    chip.textContent = text;
-    chip.className = `chip ${kind}`;
+}
+
+/** Restart a one-shot CSS animation class (a reflow in between, or the browser keeps the finished one). */
+function replay(el: Element, cls: string) {
+  el.classList.remove(cls);
+  void (el as HTMLElement).offsetWidth;
+  el.classList.add(cls);
+}
+
+type Phase = 'idle' | 'scan' | 'found' | 'blur' | 'safe';
+
+/** The hero: the demo selfie is checked in front of you, with the mascot reacting to each step. */
+function heroShot(fig: HTMLElement) {
+  const box = fig.querySelector<HTMLElement>('.shot');
+  const chip = fig.querySelector<HTMLElement>('[data-chip]');
+  const mascot = fig.querySelector<HTMLImageElement>('[data-mascot]');
+  if (!box || !chip || !mascot) return;
+  const POSE: Record<Phase, string> = { idle: 'wave', scan: 'scan', found: 'alarm', blur: 'blur', safe: 'safe' };
+  const CHIP: Record<Phase, string> = {
+    idle: 'Your photo, on your device',
+    scan: 'Looking for clues on your device…',
+    found: '3 clues found on your device',
+    blur: 'Blurred on your device',
+    safe: 'Tested by an AI in the cloud',
   };
-  const say = (kind: '' | 'bad' | 'good', score: string, words: string) => {
-    verdict.className = kind ? `verdict ${kind}` : 'verdict';
-    num.textContent = score;
-    what.textContent = words;
+  const show = (phase: Phase) => {
+    box.dataset.phase = phase;
+    chip.textContent = CHIP[phase];
+    const src = `/mascot/${POSE[phase]}-256.webp`;
+    if (!mascot.src.endsWith(src)) {
+      mascot.src = src;
+      if (!reduceMotion) replay(mascot, 'hop');
+    }
   };
-  /** The final count lands like a stamp (restarting the animation needs a reflow in between). */
-  const stamp = () => {
-    num.classList.remove('stamp');
-    void num.offsetWidth;
-    num.classList.add('stamp');
+  if (reduceMotion) {
+    show('blur'); // the outcome, still: clues blurred, the face left as it is
+    return;
+  }
+  // The other poses and the blurred photo, before the loop needs them.
+  addEventListener('load', () =>
+    whenIdle(() => {
+      for (const p of Object.values(POSE)) new Image().src = `/mascot/${p}-256.webp`;
+    }),
+  );
+  const wait = visibleClock(box);
+  const STEPS: [Phase, number][] = [
+    ['idle', 1300],
+    ['scan', 2100],
+    ['found', 2600],
+    ['blur', 2600],
+    ['safe', 3400],
+  ];
+  void (async () => {
+    await wait(600);
+    for (;;) {
+      for (const [phase, ms] of STEPS) {
+        show(phase);
+        await wait(ms);
+      }
+    }
+  })();
+}
+
+/** The lineup replays the measured run: as posted the attacker picks the real author ten times, after the rewrite never. */
+function lineupReplay(root: HTMLElement) {
+  const cards = [...root.querySelectorAll<HTMLElement>('.w')];
+  const chip = root.querySelector<HTMLElement>('[data-chip]');
+  const num = root.querySelector<HTMLElement>('.tally-num');
+  const what = root.querySelector<HTMLElement>('.tally-what');
+  const before = document.querySelector<HTMLElement>('.post-quote.before');
+  const after = document.querySelector<HTMLElement>('.post-quote.after');
+  if (cards.length !== 10 || !chip || !num || !what) return;
+  cards.forEach((card, k) => card.querySelector('b')?.after(glyph(GLYPHS[k])));
+
+  const ME = 2; // C, as in the app
+  const AFTER = [5, 5, 6, 5, 5, 5, 5, 5, 5, 5]; // after the rewrite: F nine times, G once (16-nov run)
+  const tally = cards.map(() => 0);
+  const badge = (k: number) => {
+    let b = cards[k].querySelector<HTMLElement>('.w-count');
+    if (!b) {
+      b = document.createElement('span');
+      b.className = 'w-count';
+      cards[k].append(b);
+    }
+    return b;
   };
   const clear = () => {
-    num.classList.remove('stamp');
     tally.fill(0);
-    for (const c of counts) if (c) c.hidden = true;
-    for (const p of pols) p.classList.remove('pointed', 'hot');
+    for (const c of cards) {
+      c.querySelector('.w-count')?.remove();
+      c.classList.remove('pointed', 'found');
+    }
   };
   const pick = (k: number) => {
-    pols.forEach((p, j) => p.classList.toggle('pointed', j === k));
+    cards.forEach((c, j) => c.classList.toggle('pointed', j === k));
     tally[k]++;
-    const c = counts[k];
-    if (c) {
-      c.textContent = String(tally[k]);
-      c.hidden = false;
-    }
-    if (k === ME) pols[k].classList.toggle('hot', tally[k] >= 3);
+    const b = badge(k);
+    b.textContent = String(tally[k]);
+    replay(b, 'w-count');
+    if (k === ME) cards[k].classList.toggle('found', tally[k] >= 3);
+  };
+  const say = (phase: 'before' | 'after', label: string, score: string) => {
+    root.dataset.phase = phase;
+    chip.textContent = label;
+    num.textContent = score;
+    what.textContent = 'tries found the real author';
+    // the version the attacker is reading stands out
+    before?.classList.toggle('live', phase === 'before');
+    after?.classList.toggle('live', phase === 'after');
   };
 
-  fig.classList.add('is-animated');
+  if (reduceMotion) {
+    // Still: the original's run, which the verdicts under the lineup then compare with the rewrite.
+    say('before', 'Original', '10/10');
+    for (let i = 0; i < 10; i++) pick(ME);
+    cards[ME].classList.remove('pointed');
+    return;
+  }
+  const wait = visibleClock(root);
+  before?.parentElement?.classList.add('replaying');
   void (async () => {
     for (;;) {
-      fig.classList.remove('p-scan', 'p-strike', 'p-rewrite');
       clear();
-      label('your anonymous post · private', 'private');
-      say('', '—', 'nobody has looked yet');
-      await wait(1200);
-
-      fig.classList.add('p-scan');
-      label('scanned on your device · 0 bytes sent', 'private');
-      await wait(2200);
-
-      label('sent as-is to the attacker · your choice', 'asis');
+      say('before', 'Original', '0/0');
+      await wait(900);
       for (let i = 1; i <= 10; i++) {
         pick(ME);
-        say('bad', `${i}/${i}`, 'the attacker found you');
-        await wait(200);
+        num.textContent = `${i}/${i}`;
+        await wait(260);
       }
-      pols[ME].classList.remove('pointed');
-      stamp();
-      await wait(1800);
+      cards[ME].classList.remove('pointed');
+      replay(num, 'stamp');
+      await wait(2200);
 
-      fig.classList.add('p-strike');
-      label('rewritten on your device · Gemini Nano', 'private');
-      await wait(1200);
-      fig.classList.add('p-rewrite');
-      await wait(1600);
-
+      say('after', 'Rewritten on your device', '0/0');
       clear();
-      label('released for publication', 'public');
+      await wait(1500);
       for (let i = 1; i <= 10; i++) {
         pick(AFTER[i - 1]);
-        say('', `0/${i}`, 'looking for you…');
-        await wait(200);
+        num.textContent = `0/${i}`;
+        await wait(260);
       }
-      for (const p of pols) p.classList.remove('pointed');
-      say('good', '0/10', 'you are one of ten');
-      stamp();
+      for (const c of cards) c.classList.remove('pointed');
+      replay(num, 'stamp');
       await wait(3800);
     }
   })();
 }
 
-/** The photo card: the real demo scene, and the same blurring the app runs on your device. */
-async function photoDemo(card: HTMLElement) {
-  const scene = card.querySelector<HTMLElement>('.scene');
-  const guess = card.querySelector<HTMLElement>('.guess');
-  const buttons = [...card.querySelectorAll<HTMLButtonElement>('button[data-show]')];
-  if (!scene || !guess) return;
-  let urls: { asis: string; masked: string };
-  let size: [number, number];
-  try {
-    // Loaded only now, near the card: none of it is needed to paint the top of the page.
-    const [{ SCENE_H, SCENE_SVG, SCENE_W }, { browserImageOps, cellRect, svgToPng }] = await Promise.all([import('../demo/photo'), import('../engine/image')]);
-    size = [SCENE_W, SCENE_H];
-    const png = await svgToPng(SCENE_SVG, SCENE_W, SCENE_H);
-    // The cells the app hides in the recorded run: the street plaque, the house number and the bakery sign, which Gemini
-    // Nano read up close. The poster and the orange tree are left: nothing to read, and a tree says the city at most.
-    const hidden = [3, 7, 8].map((cell) => ({ rect: cellRect(cell, GRID, SCENE_W, SCENE_H), style: 'blur' as const, cell, what: '' }));
-    const masked = await browserImageOps.paint(png, hidden);
-    const toUrl = (bytes: Uint8Array) => URL.createObjectURL(new Blob([bytes.slice()], { type: 'image/png' }));
-    urls = { asis: toUrl(png), masked: toUrl(masked) };
-  } catch {
-    return; // the text around the card already tells the story
-  }
-  const img = new Image(...size);
-  img.alt = '';
-  img.decoding = 'async';
-  img.src = urls.asis;
-  scene.querySelector('.scene-fallback')?.remove();
-  scene.prepend(img);
-  scene.classList.add('ready');
+function glyph(values: number[]): SVGSVGElement {
+  const NS = 'http://www.w3.org/2000/svg';
+  const w = values.length * 4;
+  const svg = document.createElementNS(NS, 'svg');
+  svg.setAttribute('viewBox', `0 0 ${w} 24`);
+  svg.setAttribute('preserveAspectRatio', 'none');
+  svg.setAttribute('aria-hidden', 'true');
+  const line = document.createElementNS(NS, 'line');
+  line.setAttribute('x1', '0');
+  line.setAttribute('y1', '12');
+  line.setAttribute('x2', String(w));
+  line.setAttribute('y2', '12');
+  svg.append(line);
+  values.forEach((z, i) => {
+    const r = document.createElementNS(NS, 'rect');
+    r.setAttribute('x', String(i * 4 + 0.6));
+    r.setAttribute('width', '2.8');
+    r.setAttribute('y', String(z > 0 ? 12 - z * 5 : 12));
+    r.setAttribute('height', String(Math.max(0.8, Math.abs(z) * 5)));
+    svg.append(r);
+  });
+  return svg;
+}
 
-  const show = (which: 'asis' | 'masked') => {
-    card.dataset.show = which;
-    img.src = urls[which];
-    for (const b of buttons) b.setAttribute('aria-pressed', String(b.dataset.show === which));
-    const place = document.createElement('strong');
-    place.textContent = which === 'asis' ? '“Carrer de la Llum, 23, Palma”' : '“Tokyo, Japan”';
-    guess.replaceChildren('Cloud’s guess: ', place, which === 'asis' ? ' · 215 m from the spot' : ' · 10,559 km off');
-  };
-  for (const b of buttons) {
-    b.disabled = false;
-    b.addEventListener('click', () => show(b.dataset.show === 'masked' ? 'masked' : 'asis'));
-  }
+/** Before and after: drag (or use the arrow keys) to compare the selfie as posted with the blurred one. */
+function compareSlider(box: HTMLElement) {
+  const range = box.querySelector<HTMLInputElement>('.compare-range');
+  if (!range) return;
+  range.hidden = false;
+  const set = (v: number) => box.style.setProperty('--pos', `${v}%`);
+  let touched = false;
+  range.addEventListener('input', () => {
+    touched = true;
+    set(Number(range.value));
+  });
+  if (reduceMotion || !('IntersectionObserver' in window)) return;
+  // Once, as it comes into view: a nudge that shows it moves, and both sides of the line.
+  const io = new IntersectionObserver(
+    (entries) => {
+      if (!entries.some((e) => e.isIntersecting)) return;
+      io.disconnect();
+      const keys: [number, number][] = [
+        [0, 50],
+        [0.32, 22],
+        [0.72, 78],
+        [1, 50],
+      ];
+      const ms = 2800;
+      let t0 = 0;
+      const ease = (t: number) => (t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2);
+      const tick = (now: number) => {
+        if (touched) return;
+        t0 ||= now;
+        const t = Math.min(1, (now - t0) / ms);
+        const k = keys.findIndex(([at]) => at >= t);
+        const [a, va] = keys[Math.max(0, k - 1)];
+        const [b, vb] = keys[Math.max(1, k)];
+        const v = va + (vb - va) * ease(b > a ? (t - a) / (b - a) : 1);
+        set(v);
+        range.value = String(Math.round(v));
+        if (t < 1) requestAnimationFrame(tick);
+      };
+      setTimeout(() => requestAnimationFrame(tick), 500);
+    },
+    { threshold: 0.6 },
+  );
+  io.observe(box);
 }

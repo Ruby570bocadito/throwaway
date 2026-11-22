@@ -8,6 +8,7 @@ import { TextLab } from './labs/TextLab';
 const loadPhotoLab = () => import('./labs/PhotoLab');
 const PhotoLab = lazy(() => loadPhotoLab().then((m) => ({ default: m.PhotoLab })));
 import { Logo } from './ui/Logo';
+import { preloadMascot } from './ui/Mascot';
 import { LedgerSummary, LedgerTable } from './ui/Ledger';
 import type { KeptTexts, LabProps } from './ui/shared';
 
@@ -70,8 +71,12 @@ export default function App() {
     window.addEventListener('focus', lookAgain);
     // Fetch the photo lab once the page has settled and the browser is idle (or as soon as someone reaches for its tab).
     const t = setTimeout(() => {
-      if ('requestIdleCallback' in window) requestIdleCallback(() => void loadPhotoLab(), { timeout: 4000 });
-      else void loadPhotoLab();
+      const later = () => {
+        void loadPhotoLab();
+        preloadMascot();
+      };
+      if ('requestIdleCallback' in window) requestIdleCallback(later, { timeout: 4000 });
+      else later();
     }, 3000);
     return () => {
       clearTimeout(t);
@@ -80,7 +85,8 @@ export default function App() {
     };
   }, [kit, checkDevice]);
 
-  const [tab, setTab] = useState<Tab>('text');
+  // "Check a photo" on the landing page opens /app/?photo.
+  const [tab, setTab] = useState<Tab>(() => (new URLSearchParams(location.search).has('photo') ? 'photo' : 'text'));
   const [simulateNoNano, setSimulateNoNano] = useState(false);
   // Live on a device without Gemini Nano (e.g. most Android phones): degrade, never fall back to the cloud with private data.
   const degraded = simulateNoNano || (live && device === 'unavailable');
@@ -203,7 +209,7 @@ export default function App() {
               aria-label={`Receipt: ${shortBytes(sentOut)} sent to the cloud, ${statusText}`}
             >
               <i className="dot" aria-hidden="true" />
-              <span className="receipt-word">Sent</span>
+              <span className="receipt-word">Sent to the cloud</span>
               <span className="receipt-num">{shortBytes(sentOut)}</span>
             </button>
             <Menu

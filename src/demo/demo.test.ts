@@ -123,7 +123,6 @@ describe('recorded text run (v5, 16-nov)', () => {
 describe('recorded photo run (15/16-nov)', () => {
   const fakeOps: ImageOps = {
     withGrid: async (png) => new Uint8Array([...png, 250]),
-    maskCells: async (png, cells) => new Uint8Array([...png, 251, ...cells]),
   size: async () => ({ width: 400, height: 300 }),
   faces: async () => [],
   crop: async (png, r) => new Uint8Array([...png.slice(0, 8), 252, r.x % 251, r.y % 251]),

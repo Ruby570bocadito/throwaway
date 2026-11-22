@@ -27,11 +27,17 @@ button {
   transition: background-color var(--t-1) var(--curve), border-color var(--t-1) var(--curve), color var(--t-1) var(--curve), box-shadow var(--t-1) var(--curve), opacity var(--t-1);
 }
 button:hover:not(:disabled) { background: var(--c-accent-2); }
-button:active:not(:disabled) { background: #111827; }
+button:active:not(:disabled) { background: var(--c-ink); }
 button:disabled { opacity: 0.45; cursor: not-allowed; }
 /* the step that is running stays readable: it is progress, not a dead button */
 button[aria-busy='true']:disabled { opacity: 1; cursor: progress; }
 button.ghost, button.mini { border-color: var(--c-line-2); background: var(--c-surface); color: var(--c-text); }
+/* the next step: navy ink with the illustrations' peach shadow, like the landing page's buttons (22-nov) */
+button.primary, a.button-link { border: 2px solid var(--c-accent); border-radius: var(--rad-pill); box-shadow: var(--drop); transition: transform var(--t-1) var(--curve), box-shadow var(--t-1) var(--curve), background-color var(--t-1) var(--curve), opacity var(--t-1); }
+button.primary:hover:not(:disabled), a.button-link:hover { transform: translate(-1px, -1px); box-shadow: 5px 5px 0 var(--c-peach-2); }
+button.primary:active:not(:disabled) { transform: translate(2px, 2px); box-shadow: 1px 1px 0 var(--c-peach-2); }
+button.primary:disabled { box-shadow: none; }
+button.ghost { border-width: 1.5px; border-radius: var(--rad-pill); }
 button.ghost:hover:not(:disabled), button.mini:hover:not(:disabled) { border-color: var(--c-accent); background: var(--c-surface); color: var(--c-accent); }
 button.ghost:active:not(:disabled), button.mini:active:not(:disabled) { background: var(--c-accent-soft); }
 button.mini { min-height: 32px; padding: 0 var(--sp-3); font-size: var(--fs-14); }
@@ -45,7 +51,7 @@ a.button-link:hover { background: var(--c-accent-2); color: #fff; }
 .spinner { display: inline-block; flex: none; width: 1em; height: 1em; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: spin 0.8s linear infinite; }
 
 /* ── the top bar: brand, what to check, the receipt's count, settings ── */
-.topbar { position: sticky; top: 0; z-index: 30; border-bottom: 1px solid var(--c-line); background: rgba(245, 245, 242, 0.88); -webkit-backdrop-filter: saturate(1.4) blur(10px); backdrop-filter: saturate(1.4) blur(10px); }
+.topbar { position: sticky; top: 0; z-index: 30; border-bottom: 1px solid var(--c-line); background: rgba(246, 236, 221, 0.9); -webkit-backdrop-filter: saturate(1.4) blur(10px); backdrop-filter: saturate(1.4) blur(10px); }
 .topbar-inner { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2) var(--sp-5); max-width: 1168px; min-height: 60px; margin: 0 auto; padding: var(--sp-2) var(--sp-5); }
 .brand { display: inline-flex; align-items: center; gap: var(--sp-2); border-radius: var(--rad-sm); color: var(--c-ink); text-decoration: none; }
 .brand:hover { color: var(--c-ink); }
@@ -54,7 +60,7 @@ a.button-link:hover { background: var(--c-accent-2); color: #fff; }
 .seg { display: inline-flex; gap: 2px; padding: 3px; border: 1px solid var(--c-line); border-radius: var(--rad-md); background: var(--c-surface-2); }
 .seg button { min-height: 34px; padding: 0 var(--sp-3); border: 0; border-radius: 7px; background: transparent; color: var(--c-muted); font-size: var(--fs-14); }
 .seg button:hover:not(:disabled) { background: transparent; color: var(--c-ink); }
-.seg button[aria-pressed='true'] { background: var(--c-surface); color: var(--c-ink); box-shadow: var(--elev-1), 0 0 0 1px var(--c-line); }
+.seg button[aria-pressed='true'] { background: var(--c-surface); color: var(--c-ink); box-shadow: 0 0 0 1.5px var(--c-accent), 2px 2px 0 var(--c-peach-2); }
 .seg button svg { flex: none; }
 .topbar-end { display: flex; align-items: center; gap: var(--sp-2); margin-left: auto; }
 .mode-badge { display: inline-flex; align-items: center; gap: 6px; padding: 0 var(--sp-2); color: var(--c-muted); font: 500 var(--fs-12)/1 var(--f-ui); white-space: nowrap; }
@@ -136,7 +142,15 @@ a.menu-item:hover { background: var(--c-surface-2); color: var(--c-ink); }
 
 /* ── a step: its title, one sentence, then what it is about ── */
 .stage { scroll-margin-top: 80px; }
-.stage-head { margin: 0 0 var(--sp-5); }
+.stage-head { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-4); margin: 0 0 var(--sp-5); }
+.stage-words { min-width: 0; }
+/* the mascot reacts to each step: it hops in on every change of pose, and bobs while the cloud AI thinks */
+.stage-mascot { flex: none; width: 96px; height: 96px; object-fit: contain; object-position: center bottom; filter: drop-shadow(0 4px 6px rgba(78, 94, 128, 0.16)); animation: mascot-in 0.6s cubic-bezier(0.34, 1.4, 0.64, 1) both; }
+.stage-mascot[data-pose='think'], .stage-mascot[data-pose='scan'] { animation: mascot-in 0.6s cubic-bezier(0.34, 1.4, 0.64, 1) both, bob 1.6s ease-in-out 0.6s infinite alternate; }
+.stage-mascot[data-pose='safe'] { animation: mascot-in 0.6s cubic-bezier(0.34, 1.4, 0.64, 1) both, cheer 0.9s ease-in-out 0.6s 2; }
+@keyframes mascot-in { from { opacity: 0; transform: translateY(14px) rotate(-10deg) scale(0.85); } 60% { opacity: 1; transform: translateY(-6px) rotate(4deg) scale(1.04); } to { opacity: 1; transform: none; } }
+@keyframes bob { from { transform: translateY(0); } to { transform: translateY(-6px) rotate(-2deg); } }
+@keyframes cheer { 0%, 100% { transform: none; } 30% { transform: translateY(-10px) rotate(-6deg); } 60% { transform: translateY(-4px) rotate(5deg); } }
 .stage-title { font: 500 var(--fs-32)/1.15 var(--f-display); letter-spacing: -0.02em; text-wrap: balance; }
 .stage-lede { max-width: 62ch; margin-top: var(--sp-2); color: var(--c-muted); }
 .marker { padding: 0 2px; background: linear-gradient(var(--c-peach), var(--c-peach)) no-repeat 0 86% / 100% 0.42em; -webkit-box-decoration-break: clone; box-decoration-break: clone; }
@@ -357,7 +371,7 @@ dialog.sheet {
   border: 0; border-left: 1px solid var(--c-line); background: var(--c-surface); color: var(--c-text); box-shadow: var(--elev-3);
 }
 dialog.sheet[open] { animation: sheet-in var(--t-3) var(--curve); }
-dialog.sheet::backdrop { background: rgba(22, 24, 29, 0.32); animation: fade-in var(--t-3) var(--curve); }
+dialog.sheet::backdrop { background: rgba(35, 42, 61, 0.32); animation: fade-in var(--t-3) var(--curve); }
 .sheet-body { display: grid; align-content: start; gap: var(--sp-4); height: 100%; padding: var(--sp-5); overflow: auto; overscroll-behavior: contain; }
 .sheet-head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--sp-3); }
 .sheet-head h2 { margin-bottom: var(--sp-2); font: 500 var(--fs-24)/1.2 var(--f-display); letter-spacing: -0.01em; }
@@ -499,6 +513,8 @@ dialog.sheet::backdrop { background: rgba(22, 24, 29, 0.32); animation: fade-in 
 
 /* ── narrower screens ── */
 @media (max-width: 720px) {
+  .stage-mascot { width: 68px; height: 68px; }
+  .stage-head { align-items: flex-start; }
   .topbar-inner { gap: var(--sp-2) var(--sp-3); padding: var(--sp-2) var(--sp-4); }
   .seg { order: 3; flex: 1 1 100%; }
   .seg button { flex: 1 1 0; padding: 0 var(--sp-2); }

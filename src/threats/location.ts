@@ -26,10 +26,8 @@ export interface MaskRegion {
 }
 
 export interface ImageOps {
-  /** Draws the numbered grid on a copy (set-of-mark prompting), so models can point at cells. */
-  withGrid(png: Uint8Array, n: number): Promise<Uint8Array>;
-  /** Pixelates whole cells: the cells a person picks by hand, without a local model. */
-  maskCells(png: Uint8Array, cells: number[], n: number): Promise<Uint8Array>;
+  /** Draws the numbered grid on a copy (set-of-mark prompting), so models can point at cells: PNG, or JPEG for the cloud. */
+  withGrid(png: Uint8Array, n: number, type?: 'image/png' | 'image/jpeg'): Promise<Uint8Array>;
   /** The photo's size in pixels. */
   size(png: Uint8Array): Promise<{ width: number; height: number }>;
   /** A part of the photo, as PNG: one cell, for Gemini Nano to read. */
@@ -464,8 +462,8 @@ export function locationThreat(o: LocationOptions): Threat<Uint8Array, PhotoClue
   const safeRadiusKm = o.safeRadiusKm ?? 50;
   const streetRadiusKm = o.streetRadiusKm ?? 1;
   let photoSize: { width: number; height: number } | null = null;
-  /** The faces of this photo, found once. */
-  let faces: Rect[] | null = null;
+  /** The faces of this photo, found once: the search starts with the scan, so blurring does not wait for it. */
+  let faces: Promise<Rect[]> | null = null;
   /** Cells already hidden: hiding them again adds nothing. */
   const hiddenCells = new Set<number>();
 
@@ -474,21 +472,23 @@ export function locationThreat(o: LocationOptions): Threat<Uint8Array, PhotoClue
    * were missed faces in 4 of 7 photos; the detector boxes each face. If it cannot run, the photo is still masked, and the
    * ledger says faces were not protected.
    */
-  async function facesIn(png: Uint8Array, kit: Kit): Promise<Rect[]> {
-    if (faces) return faces;
-    const t0 = performance.now();
-    const op = 'Find faces (MediaPipe, on the device)';
-    try {
-      faces = await o.ops.faces(png);
-      threat.faces = faces;
-      const n = faces.length;
-      kit.ledger.add({ op, route: 'local-js', ms: Math.round(performance.now() - t0), bytesOut: 0, note: n ? `${n} ${n === 1 ? 'face' : 'faces'} · never hidden` : 'no face found' });
-      return faces;
-    } catch (e) {
-      const why = String((e as Error)?.message ?? e).slice(0, 80);
-      kit.ledger.add({ op, route: 'local-js', ms: Math.round(performance.now() - t0), bytesOut: 0, note: `could not run (${why}) · faces not protected` });
-      return [];
-    }
+  function facesIn(png: Uint8Array, kit: Kit): Promise<Rect[]> {
+    faces ??= (async () => {
+      const t0 = performance.now();
+      const op = 'Find faces (MediaPipe, on the device)';
+      try {
+        const found = await o.ops.faces(png);
+        threat.faces = found;
+        const n = found.length;
+        kit.ledger.add({ op, route: 'local-js', ms: Math.round(performance.now() - t0), bytesOut: 0, note: n ? `${n} ${n === 1 ? 'face' : 'faces'} · never hidden` : 'no face found' });
+        return found;
+      } catch (e) {
+        const why = String((e as Error)?.message ?? e).slice(0, 80);
+        kit.ledger.add({ op, route: 'local-js', ms: Math.round(performance.now() - t0), bytesOut: 0, note: `could not run (${why}) · faces not protected` });
+        return [];
+      }
+    })();
+    return faces;
   }
 
   /**
@@ -549,6 +549,8 @@ export function locationThreat(o: LocationOptions): Threat<Uint8Array, PhotoClue
     faces: [] as Rect[],
 
     async findClues(input: Private<Uint8Array>, kit: Kit): Promise<PhotoClue[]> {
+      // The faces are looked for on the CPU while Gemini Nano scans on the GPU: blurring then does not wait for them.
+      void facesIn(Private.openLocally(input), kit);
       // The grid copy is derived from the private photo, so it is private too.
       const gridded = new Private(await o.ops.withGrid(Private.openLocally(input), GRID), 'photo with grid');
       const scans = Math.max(1, o.scans ?? 2);
@@ -769,7 +771,9 @@ export function locationThreat(o: LocationOptions): Threat<Uint8Array, PhotoClue
 
     async attack(published: Publishable<Uint8Array>, kit: Kit): Promise<LocationVerdict> {
       // The overlay is derived from the released photo only; it inherits the user's as-is confirmation if there was one.
-      const gridded = release(await o.ops.withGrid(published.value, GRID), 'grid overlay of a released photo', {
+      // JPEG, not PNG: a phone photo went up as 1–2 MB of PNG for each attack; as JPEG it is about a tenth, and the grid and
+      // its numbers read the same.
+      const gridded = release(await o.ops.withGrid(published.value, GRID, 'image/jpeg'), 'grid overlay of a released photo', {
         userConfirmedAsIs: published.confirmedAsIs,
       });
       const ask = (op: string) =>
@@ -782,7 +786,7 @@ export function locationThreat(o: LocationOptions): Threat<Uint8Array, PhotoClue
               'Give your best guess as a place name and coordinates. ' +
               'Return JSON {"place":"best guess","lat":<number>,"lon":<number>,"radiusKm":<number, radius of your uncertainty>,"confidence":"low|medium|high",' +
               '"clues":[{"cell":<number>,"kind":"...","what":"what in that cell helped you"}]}.',
-            { image: gridded, mime: 'image/png' },
+            { image: gridded, mime: 'image/jpeg' },
           ],
           { json: true, schema: GEO_SCHEMA, op },
         );
