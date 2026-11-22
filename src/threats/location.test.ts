@@ -167,6 +167,21 @@ describe('location threat on the demo scene', () => {
     expect(ledger.all[0].op).toBe('Hide 2 cells you chose, around the faces');
   });
 
+  it('shows a hidden cell again with a tap, and hides another, painted again from the original', async () => {
+    const ledger = new Ledger();
+    const kit = { local: new LocalModel(demoBackends().local, ledger), cloud: new CloudModel(demoBackends().cloud, ledger), ledger };
+    const t = locationThreat({ ops: fakeOps });
+    await t.hideCells(secret(PHOTO, 'photo'), [3, 7], kit);
+    expect(t.masked).toEqual([3, 7]);
+    await t.toggleCells(secret(PHOTO, 'photo'), [7, 5], kit);
+    expect(t.masked).toEqual([3, 5]);
+    expect(t.maskedShare).toBeCloseTo(2 / 16, 3);
+    expect(ledger.all[0].op).toBe('Hide cell 5 and show cell 7 again, around the faces');
+    // Every cell shown again would release the original: refused, with what to do instead.
+    await expect(t.toggleCells(secret(PHOTO, 'photo'), [3, 5], kit)).rejects.toThrow(/attack it as it is/);
+    expect(t.masked).toEqual([3, 5]);
+  });
+
   it('still masks when the face detector cannot run, and says faces were not protected', async () => {
     const ledger = new Ledger();
     const kit = { local: new LocalModel(demoBackends().local, ledger), cloud: new CloudModel(demoBackends().cloud, ledger), ledger };
@@ -185,6 +200,10 @@ describe('location threat on the demo scene', () => {
     expect(t1.tier({ ...tokyo, radiusKm: 0.3 })).toBe('street'); // a sure street-level claim
     expect(t1.exposed({ ...tokyo, radiusKm: 0.3 })).toBe(true);
     expect(t1.exposed({ ...tokyo, confidence: 'low' })).toBe(false); // an unsure claim is not exposure
+    // …but without your location, a city it names is not called safe either: "Madrid, low confidence" was close (live, 22-nov).
+    expect(t1.tier({ ...tokyo, confidence: 'low', radiusKm: 50 })).toBe('city');
+    expect(t1.tier({ ...tokyo, confidence: 'low', radiusKm: 2000 })).toBe('safe'); // a country or more: not your city
+    expect(t2.tier({ ...tokyo, confidence: 'low', radiusKm: 50, errorKm: distanceKm(tokyo, DEMO_TRUTH) })).toBe('safe'); // checked: far off
     expect(t2.exposed({ ...tokyo, errorKm: distanceKm(tokyo, DEMO_TRUTH) })).toBe(false); // it is 10,000+ km off
   });
 

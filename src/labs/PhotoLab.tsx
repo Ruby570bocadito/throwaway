@@ -1,14 +1,15 @@
-import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { markDeviceError, PrivacyViolation, release, secret, type Private, type Publishable } from '../framework';
 import { browserImageOps, normalizeToPng, svgToPng } from '../engine/image';
 import { DEMO_TRUTH, SCENE_H, SCENE_SVG, SCENE_W } from '../demo/photo';
 import { GRID, isIdentifier, locationThreat, type LocationVerdict, type PhotoClue } from '../threats/location';
-import { Radar } from '../ui/Radar';
+import { WorldMap, type MapPoint } from '../ui/WorldMap';
+import { Why } from '../ui/Why';
 import { ErrorNote, formatKm, friendlyError, type LabProps } from '../ui/shared';
 import { Stepper, type StepDef } from '../ui/Stepper';
 import { WorkLog, type PlanStep } from '../ui/WorkLog';
-import { useAnimatedNumber, useReducedMotion } from '../ui/motion';
+import { useAnimatedNumber, useReducedMotion, withTransition } from '../ui/motion';
 import { useCloudBusy } from '../ui/busy';
 
 type Stage = 'loading' | 'photo' | 'scanned' | 'attacked' | 'masked' | 'safe';
@@ -20,9 +21,12 @@ const SCAN_PLAN: PlanStep[] = [
   // Then each cell said to show something readable is read up close (see readCell in threats/location.ts).
   { match: /^Read the text in cell/, label: 'Read each clue up close', route: 'on-device', slow: true, optional: true },
 ];
-/** Time between two cells pixelating, one after another. */
+/** Time between two cells blurring, one after another. */
 const PIX_STAGGER = 170;
 const at = (i: number) => ({ '--i': i }) as CSSProperties;
+const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+const capital = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+const reducedMotion = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 // The demo's "real location" is the scene's, not the visitor's: said so on screen (a tester took it for a leak, 16-nov).
 const SCENE_TRUTH = 'Palma (where the demo scene is set)';
 
@@ -52,7 +56,7 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak, recorded, 
   // "Attack it as I would post it" sends the photo as it is: the user's choice, and the chip says so.
   const [sentAsIs, setSentAsIs] = useState(false);
   const [busy, setBusy] = useState('');
-  // While the attack waits on a busy cloud model, the dock says so (a retry, or a switch to a backup model).
+  // While the attack waits on a busy cloud model, the actions say so (a retry, or a switch to a backup model).
   const [busyNote, clearBusyNote] = useCloudBusy(kit.cloud, busy === 'attack');
   const [busySince, setBusySince] = useState<number | null>(null);
   const started = (stage !== 'loading' && stage !== 'photo') || busy !== '';
@@ -60,16 +64,35 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak, recorded, 
   const [download, setDownload] = useState<number | null>(null);
   const [rounds, setRounds] = useState(1);
   const [error, setError] = useState('');
-  // Newly masked cells pixelate one after another over the photo; then the masked photo itself is shown.
+  // Newly blurred cells appear one after another over the photo; then the blurred photo itself is shown.
   const [reveal, setReveal] = useState<{ fresh: number[]; all: number[]; settled: boolean } | null>(null);
+  // Before and after: how much of the original shows, from the left (0: the blurred photo only).
+  const [compare, setCompare] = useState(0);
   const reduceMotion = useReducedMotion();
   const privatePhoto = useRef<Private<Uint8Array> | null>(null);
   const acted = useRef(false);
-  // The user's real location: private, only used on the device to score each attack. In the demo it is the scene's.
+  // The user's real location: private, only used on the device to score each attack and to put "you" on the map. In the
+  // demo it is the scene's.
   const [source, setSource] = useState<'demo' | 'own'>('demo');
   const [truthLabel, setTruthLabel] = useState(SCENE_TRUTH);
+  const [truthPoint, setTruthPoint] = useState<MapPoint | null>(DEMO_TRUTH);
   const [threat, setThreat] = useState(() => locationThreat({ ops: browserImageOps, truth: secret(DEMO_TRUTH, 'your real location') }));
   const fileInput = useRef<HTMLInputElement>(null);
+
+  // One step at a time, as for a post: the new step replaces the last one where the browser can (View Transitions), with
+  // what it brings set in the same go, and its title comes into view.
+  const go = (next: Stage, also?: () => void): Promise<void> =>
+    withTransition(() => {
+      also?.();
+      setStage(next);
+    });
+  const stageRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = stageRef.current;
+    if (!acted.current || !el) return;
+    const top = el.getBoundingClientRect().top;
+    if (top < 64 || top > innerHeight / 2) el.scrollIntoView({ block: 'start', behavior: reducedMotion() ? 'auto' : 'smooth' });
+  }, [stage, history.length]);
 
   /**
    * Testing and recording: `#truth=<lat>,<lon>` in the address sets your real location for an own photo, so a demo can
@@ -93,12 +116,14 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak, recorded, 
       const hashTruth = truthFromHash();
       if (hashTruth) {
         setTruthLabel('set in the page address (#truth), for testing or recording');
+        setTruthPoint(hashTruth);
         setThreat(locationThreat({ ops: browserImageOps, truth: secret(hashTruth, 'your real location') }));
         kit.ledger.add({ op: 'Read your location from #truth (for local scoring only)', route: 'local-js', ms: 0, bytesOut: 0 });
         return;
       }
       // Without a location the attack is scored on the attacker's claimed precision, until the user shares one.
       setTruthLabel('not set — tap “Use my location” for a real score');
+      setTruthPoint(null);
       setThreat(locationThreat({ ops: browserImageOps }));
     } catch (e) {
       // The engine's own messages are already plain sentences for the user ("That file is not an image…").
@@ -110,9 +135,10 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak, recorded, 
     if (!navigator.geolocation) return setError('This browser cannot share a location.');
     navigator.geolocation.getCurrentPosition(
       (pos) => {
-        const truth = secret({ lat: pos.coords.latitude, lon: pos.coords.longitude }, 'your real location');
+        const here = { lat: pos.coords.latitude, lon: pos.coords.longitude };
         setTruthLabel(`from this browser, ±${Math.round(pos.coords.accuracy)} m`);
-        setThreat(locationThreat({ ops: browserImageOps, truth }));
+        setTruthPoint(here);
+        setThreat(locationThreat({ ops: browserImageOps, truth: secret(here, 'your real location') }));
         kit.ledger.add({ op: 'Read your location (for local scoring only)', route: 'local-js', ms: 0, bytesOut: 0 });
       },
       (err) => setError(`Location not available: ${err.message}`),
@@ -143,7 +169,7 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak, recorded, 
     return () => registerLeak(null);
   }, [kit, original, registerLeak]);
 
-  // After an action, hand keyboard focus to the next one (only if it was in the dock, so nothing else is taken away).
+  // After an action, hand keyboard focus to the next one (only if it was in the actions, so nothing else is taken away).
   useEffect(() => {
     if (!dock || busy || !acted.current) return;
     const active = document.activeElement;
@@ -151,7 +177,7 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak, recorded, 
     dock.querySelector<HTMLElement>('button:not(:disabled), a[href]')?.focus({ preventScroll: true });
   }, [stage, busy, dock]);
 
-  // When the last cell has pixelated, show the masked photo itself; the cut-outs go once it has loaded (or after 800 ms).
+  // When the last cell has blurred, show the blurred photo itself; the cut-outs go once it has loaded (or after 800 ms).
   useEffect(() => {
     if (!reveal) return;
     const t = setTimeout(
@@ -164,8 +190,8 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak, recorded, 
   const orig = useObjectUrl(original);
   const pub = useObjectUrl(published ? published.value : null);
   const publishedUrl = pub.current ? pub.url : null;
-  // While the cells pixelate, the original sits underneath and every masked cell is drawn over it, cut from the masked
-  // photo: what is on screen is the masked photo throughout, gaining one cell at a time.
+  // While the cells blur, the original sits underneath and every blurred cell is drawn over it, cut from the blurred
+  // photo: what is on screen is the blurred photo throughout, gaining one cell at a time.
   const pixelating = !!reveal && pub.current;
   const baseUrl = pixelating && !reveal.settled ? orig.url : published ? (pub.url ?? orig.url) : orig.url;
 
@@ -175,12 +201,14 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak, recorded, 
   const city = tier === 'city';
   const level = safe ? 'good' : city ? 'warn' : 'bad';
   const reason = verdict ? threat.exposureReason(verdict) : null;
-  // What the radar plots: how far off the guess landed, measured on the device; its own precision claim only when there is
-  // no real location to measure from. Showing the claim (500 m) next to the measured miss (215 m) read as a contradiction
-  // to two testers (17-nov).
+  // How far off the guess landed, measured on the device; its own precision claim only when there is no real location to
+  // measure from. Showing the claim (500 m) next to the measured miss (215 m) read as a contradiction (17-nov).
   const shownKm = (v: LocationVerdict) => v.errorKm ?? v.radiusKm;
   const km = verdict ? shownKm(verdict) : null;
-  const kmShown = useAnimatedNumber(km ?? 0.001, { duration: 1100, log: true });
+  const kmShown = useAnimatedNumber(km ?? 0.001, { duration: 700, log: true });
+  // A place it names, with no real location to measure it against: it may be right, and nothing here can tell (live, 22-nov:
+  // "Madrid, low confidence" was close, and the app called it too unsure to find you).
+  const unmeasured = !!verdict && verdict.errorKm === null && verdict.lat !== null;
   const verdictTitle = !verdict
     ? ''
     : reason === 'readable'
@@ -189,21 +217,23 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak, recorded, 
         ? city
           ? `It knows your city: ~${formatKm(verdict.errorKm!)} off`
           : `Found you: ~${formatKm(verdict.errorKm!)} away`
-        : reason === 'precise'
-          ? city
-            ? `It can tell your city: within ~${formatKm(verdict.radiusKm)}`
-            : `It can place you within ~${formatKm(verdict.radiusKm)}`
-          : verdict.errorKm !== null
-            ? `Off by ~${formatKm(verdict.errorKm)}`
-            : verdict.lat === null
-              ? 'It could not place you'
-              : 'Unsure where you are';
+        : reason === 'precise' && !city
+          ? `It can place you within ~${formatKm(verdict.radiusKm)}`
+          : unmeasured
+            ? city
+              ? 'It may know your city'
+              : `It says “${verdict.place}”`
+            : verdict.errorKm !== null
+              ? `Off by ~${formatKm(verdict.errorKm)}`
+              : 'It could not place you';
   const verdictHeadline = !verdict
     ? ''
     : reason === 'readable'
       ? 'It read an address: anyone can look it up'
       : city
-        ? 'It knows your city, not your street'
+        ? unmeasured
+          ? 'It names a city, and nothing here can check it'
+          : 'It knows your city, not your street'
         : reason
           ? 'The attacker found you'
           : verdict.errorKm !== null
@@ -216,10 +246,12 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak, recorded, 
     : reason === 'readable'
       ? `Street names, house numbers and plates can be searched by a person even if the AI picked the wrong city${
           verdict.errorKm !== null ? ` (it was ${formatKm(verdict.errorKm)} off)` : ''
-        }. Mask them.`
-      : city
-        ? `${verdict.errorKm !== null ? 'Distance from where you really are, computed on your device' : 'The attacker’s own precision claim'}. Its confidence: ${verdict.confidence}. Fine if your city is no secret. If it is, crop the photo or post another one: masking cells rarely hides a city.`
-        : verdict.errorKm !== null
+        }.`
+      : unmeasured
+        ? `Without your real location this device cannot tell how close that is: it claims ±${formatKm(verdict.radiusKm)}, with ${verdict.confidence} confidence. For a real score, start over and tap “Use my location” (it stays on this device).`
+        : city
+          ? `Distance from where you really are, computed on your device. Its confidence: ${verdict.confidence}. If your city is a secret, crop the photo or post another one: blurring cells rarely hides a city.`
+          : verdict.errorKm !== null
           ? `Distance from where you really are, computed on your device. Its confidence: ${verdict.confidence}. Within ${formatKm(1)} it would know your street; within ${formatKm(50)}, your city.`
           : verdict.lat === null
             ? `It gave no place and no coordinates. Its confidence: ${verdict.confidence}.`
@@ -267,26 +299,30 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak, recorded, 
       privatePhoto.current = secret(original!, 'your photo');
       if (degraded) {
         kit.ledger.add({ op: 'Find location clues', route: 'skipped', ms: 0, bytesOut: 0, note: 'no local model: you tap the cells to mask' });
+        await go('scanned');
       } else {
         await prepare();
-        setClues(await threat.findClues(privatePhoto.current, kit));
+        const found = await threat.findClues(privatePhoto.current, kit);
+        await go('scanned', () => setClues(found));
       }
-      setStage('scanned');
     });
 
   const attack = (target: Publishable<Uint8Array>, after: boolean) =>
     run('attack', async () => {
       clearBusyNote();
+      // The map is where the attack shows: bring it into view as it starts.
+      requestAnimationFrame(() => document.getElementById('map-title')?.scrollIntoView({ block: 'nearest', behavior: reducedMotion() ? 'auto' : 'smooth' }));
       const v = await threat.attack(target, kit);
-      setVerdict(v);
-      setHistory((h) => [...h, shownKm(v)]);
-      // No local model: the user masks by hand, so start from the cells the attacker says it used (review, 16-nov).
-      if (degraded && threat.tier(v) !== 'safe') {
-        const used = v.clues.map((c) => Number(c.cell)).filter((c) => Number.isInteger(c) && c >= 1 && c <= GRID * GRID);
-        setManual((m) => [...new Set([...m, ...used])].filter((c) => !threat.masked.includes(c)));
-      }
-      if (after && threat.exposed(v)) setRounds((r) => r + 1);
-      setStage(threat.exposed(v) ? 'attacked' : 'safe');
+      await go(threat.exposed(v) ? 'attacked' : 'safe', () => {
+        setVerdict(v);
+        setHistory((h) => [...h, shownKm(v)]);
+        // No local model: the user blurs by hand, so start from the cells the attacker says it used (review, 16-nov).
+        if (degraded && threat.tier(v) !== 'safe') {
+          const used = v.clues.map((c) => Number(c.cell)).filter((c) => Number.isInteger(c) && c >= 1 && c <= GRID * GRID);
+          setManual((m) => [...new Set([...m, ...used])].filter((c) => !threat.masked.includes(c)));
+        }
+        if (after && threat.exposed(v)) setRounds((r) => r + 1);
+      });
     });
 
   const attackAsIs = () => {
@@ -297,17 +333,29 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak, recorded, 
   const mask = () =>
     run('mask', async () => {
       const before = [...threat.masked];
+      let next: Publishable<Uint8Array>;
       if (degraded) {
         // The cells you picked, hidden around the faces like the ones Gemini Nano finds.
-        setPublished(await threat.hideCells(privatePhoto.current!, manual, kit));
-        setManual([]);
+        next = await threat.hideCells(privatePhoto.current!, manual, kit);
       } else {
         await prepare();
-        setPublished(await threat.sanitize(privatePhoto.current!, clues, verdict, kit));
+        next = await threat.sanitize(privatePhoto.current!, clues, verdict, kit);
       }
       const fresh = threat.masked.filter((c) => !before.includes(c));
-      if (!reduceMotion && fresh.length) setReveal({ fresh, all: [...threat.masked], settled: false });
-      setStage('masked');
+      await go('masked', () => {
+        setPublished(next);
+        setManual([]);
+        setCompare(0);
+        if (!reduceMotion && fresh.length) setReveal({ fresh, all: [...threat.masked], settled: false });
+      });
+    });
+
+  // One tap per cell once the photo is blurred: blur it, or show it again (21-nov plan). Painted again on the device.
+  const toggle = (cell: number) =>
+    run('toggle', async () => {
+      const next = await threat.toggleCells(privatePhoto.current!, [cell], kit);
+      setReveal(null);
+      setPublished(next);
     });
 
   const clueAt = (cell: number) => clues.find((c) => c.cell === cell && !threat.masked.includes(c.cell));
@@ -315,32 +363,100 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak, recorded, 
   // Cells are chosen once the attacker has seen the photo as it is: chosen before, they were ignored by that first attack,
   // and a tester could not tell which step came first (17-nov).
   const canPick = degraded && stage === 'attacked';
+  // Blurred and not attacked again yet: every cell can be blurred or shown again with a tap.
+  const canToggle = stage === 'masked' && !!published;
   const staleVerdict = stage === 'masked' && !busy && !!verdict;
   // The budget is spent and the attacker only points at what is not an identifier: another round would add nothing.
   const budgetFull = !degraded && !!published && threat.maskedShare >= threat.maxShare - 0.005 && !(verdict?.clues ?? []).some((c) => isIdentifier(c));
   const chosen = manual.filter((c) => !threat.masked.includes(c)).sort((x, y) => x - y);
   const maskLabel = !chosen.length
-    ? 'Tap the cells to mask'
+    ? 'Tap the cells to blur'
     : chosen.length > 6
-      ? `Mask these ${chosen.length} cells`
-      : `Mask cell${chosen.length > 1 ? 's' : ''} ${chosen.join(', ')}`;
+      ? `Blur these ${chosen.length} cells`
+      : `Blur cell${chosen.length > 1 ? 's' : ''} ${chosen.join(', ')}`;
   const visibleClues = clues.filter((c) => !threat.masked.includes(c.cell));
+  const share = Math.round(threat.maskedShare * 100);
 
   const steps: StepDef[] = [
     { label: 'Scan', where: degraded ? 'no local model' : 'on your device' },
     { label: 'Attack', where: 'in the cloud' },
-    { label: 'Mask', where: degraded ? 'you choose cells' : 'on your device' },
+    { label: 'Blur', where: degraded ? 'you choose cells' : 'on your device' },
     { label: 'Attack again', where: 'in the cloud' },
   ];
   const working = !degraded && busy === 'scan';
+  const attacking = busy === 'attack';
   const busyLabel =
-    busy === 'scan' ? (degraded ? 'Scanning…' : 'Looking at your photo on this device…') : busy === 'attack' ? 'Attacking…' : busy === 'mask' ? 'Masking on your device…' : '';
+    busy === 'scan'
+      ? degraded
+        ? 'Scanning…'
+        : 'Looking at your photo on this device…'
+      : attacking
+        ? 'Attacking…'
+        : busy === 'mask'
+          ? 'Blurring on your device…'
+          : busy === 'toggle'
+            ? 'Blurring again…'
+            : '';
   const busyContent = (
     <>
       <span className="spinner" aria-hidden="true" />
       {busyLabel}
     </>
   );
+
+  // ── what this step says: a title and one sentence ──
+  const head: { title: ReactNode; lede: string } =
+    stage === 'loading' || stage === 'photo'
+      ? {
+          title: (
+            <>
+              Before you post a photo, let an AI try to <span className="marker">place it</span>.
+            </>
+          ),
+          lede: recorded
+            ? 'A recorded run: Gemini Nano’s answers on this demo photo were recorded in Chrome, and replay here.'
+            : degraded
+              ? 'The attacker looks first, then you tap the cells to blur. Nothing leaves this device until you choose to test it.'
+              : 'Throwaway looks for clues on this device first: street names, house numbers, plates, signs. Nothing leaves it until you choose to test it.',
+        }
+      : stage === 'scanned'
+        ? {
+            title: degraded
+              ? 'First, see what the attacker finds'
+              : visibleClues.length
+                ? `${capital(plural(visibleClues.length, 'clue'))} could place this photo`
+                : 'Nothing obvious places this photo',
+            // Your own photo with no location yet: ask now, before the attack, or the guess cannot be measured at all.
+            lede: !truthPoint
+              ? 'Share your location before the attack, so this device can measure how close the guess lands: it never leaves this device.'
+              : degraded
+                ? 'A cloud AI looks at the photo as it is and says where it was taken; then you choose what to blur.'
+                : 'Found on this device. Next, a cloud AI tries to say where it was taken.',
+          }
+        : stage === 'attacked'
+          ? {
+              title: verdictTitle,
+              lede: budgetFull
+                ? 'It can still find you, and blurring more would ruin the photo. Crop it, or post another one.'
+                : degraded
+                  ? 'Tap the cells to blur: the ones it used are selected. They are blurred on this device, around the faces.'
+                  : published
+                    ? 'Next, Throwaway blurs what the attacker used, on this device and around the faces.'
+                    : 'Next, Throwaway blurs the clues on this device: street names, numbers, plates and signs first, never a face, and at most a quarter of the photo.',
+            }
+          : stage === 'masked'
+            ? {
+                title: 'Blurred on your device',
+                lede: `${share}% of the photo, around the faces. Tap a cell to blur it or show it again, then attack it again.`,
+              }
+            : {
+                title: city && !unmeasured && published ? 'Your street is hidden, your city is not' : verdictTitle,
+                lede: !city
+                  ? `${capital(published ? 'after blurring, ' : 'as it is, ')}${missed}.`
+                  : unmeasured
+                    ? `It says “${verdict?.place}”, and without your location this device cannot check how close that is. Blur the clues anyway, or start over and share your location.`
+                    : `It can still tell your city (“${verdict?.place}”): fine if that is no secret.`,
+              };
 
   const actions = (
     <>
@@ -357,7 +473,7 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak, recorded, 
           Sends this photo, as it is, to a cloud AI (again if the model is busy), as if you had posted it: the only step that sends your original.
         </p>
       )}
-      {!busy && stage === 'masked' && <p className="dock-note">Sends only the masked photo, never the original.</p>}
+      {!busy && stage === 'masked' && <p className="dock-note">Sends only the blurred photo, never the original.</p>}
       <div className="dock-row">
         {stage === 'photo' && (
           <button className="primary" onClick={scan} disabled={!!busy} aria-busy={busy === 'scan'}>
@@ -365,59 +481,240 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak, recorded, 
           </button>
         )}
         {stage === 'scanned' && (
-          <button className="danger" onClick={attackAsIs} disabled={!!busy} aria-busy={busy === 'attack'}>
+          <button className="primary" onClick={attackAsIs} disabled={!!busy} aria-busy={attacking}>
             {busy ? busyContent : 'Attack it as I would post it'}
           </button>
         )}
-        {stage === 'attacked' &&
-          (budgetFull ? (
-            <p className="outcome bad" role="status">
-              It can still find you, and masking more would ruin the photo. Crop it, or post another one.
-            </p>
-          ) : (
-            <button className="safe" onClick={mask} disabled={!!busy || (degraded && chosen.length === 0)} aria-busy={busy === 'mask'}>
-              {busy ? busyContent : degraded ? maskLabel : published ? 'Mask what the attacker used' : 'Mask clues on-device'}
-            </button>
-          ))}
+        {stage === 'scanned' && !truthPoint && !busy && (
+          <button className="ghost" onClick={useMyLocation}>
+            Use my location first
+          </button>
+        )}
+        {stage === 'attacked' && !budgetFull && (
+          <button className="primary" onClick={mask} disabled={!!busy || (degraded && chosen.length === 0)} aria-busy={busy === 'mask'}>
+            {busy ? busyContent : degraded ? maskLabel : published ? 'Blur what the attacker used' : 'Blur the clues on this device'}
+          </button>
+        )}
         {stage === 'masked' && published && (
-          <button className="danger" onClick={() => attack(published, true)} disabled={!!busy} aria-busy={busy === 'attack'}>
+          <button className="primary" onClick={() => attack(published, true)} disabled={!!busy} aria-busy={attacking}>
             {busy ? busyContent : 'Attack again'}
           </button>
         )}
-        {stage === 'safe' &&
-          (city ? (
-            <>
-              <p className="outcome warn" role="status">
-                Your street is hidden. It can still tell your city (“{verdict?.place}”): fine if that is no secret.
-              </p>
-              <button className="ghost" onClick={() => setStage('attacked')} disabled={!!busy}>
-                Mask more anyway
-              </button>
-              {published && publishedUrl && (
-                <a className="button-link" href={publishedUrl} download="throwaway-photo.png">
-                  Download the masked photo
-                </a>
-              )}
-            </>
-          ) : (
-            <>
-              <p className="outcome" role="status">
-                {published ? 'After masking, ' : 'As it is, '}
-                {missed}.
-              </p>
-              {published && publishedUrl && (
-                <a className="button-link" href={publishedUrl} download="throwaway-photo.png">
-                  Download the masked photo
-                </a>
-              )}
-            </>
-          ))}
+        {stage === 'safe' && published && publishedUrl && (
+          <a className="button-link" href={publishedUrl} download="throwaway-photo.png">
+            Download the blurred photo
+          </a>
+        )}
+        {stage === 'safe' && city && (
+          <button className="ghost" onClick={() => setStage('attacked')} disabled={!!busy}>
+            {published ? 'Blur more anyway' : 'Blur the clues anyway'}
+          </button>
+        )}
       </div>
     </>
   );
 
+  // ── your photo, with the cells the clues are in ──
+  const showCells = stage !== 'loading' && stage !== 'photo';
+  const comparing = !!published && compare > 0 && !pixelating;
+  const photo = (
+    <section className="post panel photo-panel" aria-labelledby="photo-title">
+      <div className="post-head">
+        <h2 id="photo-title">{published ? 'The version you would post' : 'Your photo'}</h2>
+        <span className={`chip ${!published && sentAsIs ? 'asis' : 'private'}`}>
+          {published ? 'released for publication' : sentAsIs ? 'sent as-is to the attacker · your choice' : 'private · stays on this device'}
+        </span>
+      </div>
+      <div className={`photo ${working ? 'scanning' : ''}`}>
+        {baseUrl ? (
+          <img
+            src={baseUrl}
+            width={SCENE_W}
+            height={SCENE_H}
+            alt={source === 'demo' ? 'Selfie at home with the street visible through the window' : 'Your photo'}
+            onLoad={() => reveal?.settled && setReveal(null)}
+          />
+        ) : (
+          <div className="photo-loading">
+            <span className="spinner" aria-hidden="true" /> Drawing the demo photo on this device…
+          </div>
+        )}
+        {/* Before and after: the original shows from the left up to the line, the blurred photo after it. */}
+        {comparing && orig.url && (
+          <>
+            <img className="photo-before" src={orig.url} alt="" aria-hidden="true" style={{ clipPath: `inset(0 ${100 - compare}% 0 0)` }} />
+            <span className="photo-divider" style={{ left: `${compare}%` }} aria-hidden="true" />
+          </>
+        )}
+        {showCells && (
+          <div className="cells" style={{ gridTemplateColumns: `repeat(${GRID}, 1fr)` }}>
+            {Array.from({ length: GRID * GRID }, (_, i) => i + 1).map((cell) => {
+              const c = clueAt(cell);
+              const a = attackerAt(cell);
+              const isMasked = threat.masked.includes(cell);
+              const picked = manual.includes(cell);
+              const fresh = pixelating ? reveal.fresh.indexOf(cell) : -1;
+              const r = Math.floor((cell - 1) / GRID);
+              const k = (cell - 1) % GRID;
+              const order = c ? visibleClues.indexOf(c) : a ? (verdict?.clues.indexOf(a) ?? 0) : 0;
+              // The last blurred cell stays: showing it would leave the original, which is never released.
+              const active = (canPick && !isMasked) || (canToggle && !busy && !(isMasked && threat.masked.length === 1));
+              return (
+                <button
+                  key={cell}
+                  className={`cell ${c ? 'clue' : ''} ${a && !safe ? 'attacker' : ''} ${isMasked ? 'masked' : ''} ${fresh >= 0 ? 'fresh' : ''} ${picked && !isMasked && canPick ? 'picked' : ''}`}
+                  style={at(fresh >= 0 ? fresh : order)}
+                  disabled={!active}
+                  onClick={() => (canToggle ? toggle(cell) : setManual((m) => (m.includes(cell) ? m.filter((x) => x !== cell) : [...m, cell])))}
+                  aria-label={`Cell ${cell}${c ? `: ${c.what}` : ''}${a && !safe ? ', used by the attacker' : ''}${isMasked ? ', blurred' : ''}${
+                    canToggle ? (isMasked ? '. Show it again' : '. Blur it') : ''
+                  }`}
+                  aria-pressed={canPick && !isMasked ? picked : canToggle ? isMasked : undefined}
+                >
+                  {pixelating && reveal.all.includes(cell) && publishedUrl && (
+                    <span
+                      className={`pix ${fresh >= 0 ? 'fresh' : ''}`}
+                      aria-hidden="true"
+                      style={{
+                        backgroundImage: `url(${publishedUrl})`,
+                        backgroundSize: `${GRID * 100}% ${GRID * 100}%`,
+                        backgroundPosition: `${(k / (GRID - 1)) * 100}% ${(r / (GRID - 1)) * 100}%`,
+                      }}
+                    />
+                  )}
+                  <span className="n">{cell}</span>
+                  {c && <span className="tag">{c.kind}</span>}
+                  {!c && a && !safe && <span className="tag atk">used by attacker</span>}
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+      {published && (
+        <label className="compare-range">
+          <span>Blurred</span>
+          <input type="range" min={0} max={100} value={compare} onChange={(e) => setCompare(Number(e.target.value))} aria-label="Show the original from the left, to compare" />
+          <span>Original</span>
+        </label>
+      )}
+
+      {stage === 'photo' && !recorded && (
+        <div className="tools">
+          <span className="hint">
+            {source === 'demo' ? 'Demo photo: a selfie at home, a street through the window (an illustration).' : 'Your photo, read and stripped of its location data on this device.'}
+          </span>
+          <span className="tools-end">
+            <button className="mini" onClick={() => fileInput.current?.click()}>
+              Use my own photo
+            </button>
+            <button className="mini" onClick={useMyLocation}>
+              Use my location
+            </button>
+          </span>
+          <input ref={fileInput} type="file" accept="image/jpeg,image/png,image/webp" hidden onChange={(e) => e.target.files?.[0] && loadOwnPhoto(e.target.files[0])} />
+        </div>
+      )}
+      {stage === 'photo' && recorded && (
+        <div className="tools">
+          <span className="hint">The demo photo is fixed in a recorded run.</span>
+          <a className="hint-link" href={location.pathname}>
+            Check your own photo, live
+          </a>
+        </div>
+      )}
+      {/* Where "you" are on the map, and where it comes from: the scene's place in the demo (a tester took it for a leak). */}
+      <p className="hint truth-note">
+        {truthLabel === SCENE_TRUTH ? 'Where the scene really is (Palma) stays on this device, to score each guess.' : `Your real location, known only to this device: ${truthLabel}.`}
+      </p>
+
+      {showCells && (
+        <p className="legend" aria-hidden="true">
+          {visibleClues.length > 0 && <span className="key clue">Clue found on your device</span>}
+          {!!verdict && !safe && verdict.clues.some((c) => !threat.masked.includes(c.cell)) && <span className="key atk">Used by the attacker</span>}
+          {threat.masked.length > 0 && <span className="key blur">Blurred</span>}
+        </p>
+      )}
+
+      {showCells && !degraded && (
+        <Why summary={threat.masked.length ? `${share}% blurred, in cells ${threat.masked.join(', ')}` : plural(visibleClues.length, 'clue') + ' found on your device'}>
+          {visibleClues.length === 0 ? (
+            <p className="good">{threat.masked.length ? 'Every clue found on your device is blurred.' : 'None found.'}</p>
+          ) : (
+            <div>
+              <h3>Location clues found on your device</h3>
+              {visibleClues.map((c, i) => (
+                <div key={`${c.cell}-${i}`} className="finding content" style={at(i)}>
+                  <code>cell {c.cell}</code> <span>{c.what}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {threat.leftVisible.length > 0 && (
+            <p className="hint">
+              Left visible: nothing on a person is blurred, and blurring covers at most a quarter of the photo, plus any street name, house number or plate.
+            </p>
+          )}
+        </Why>
+      )}
+    </section>
+  );
+
+  // ── the attacker: where it guessed, on a map; how far off; what it went by ──
+  const guess = verdict && verdict.lat !== null && verdict.lon !== null ? { lat: verdict.lat, lon: verdict.lon } : null;
+  const attacker = (attacking || verdict) && (
+    <section className="section map-section" aria-labelledby="map-title">
+      <div className="section-head">
+        <h2 id="map-title">The attacker’s guess</h2>
+        <span className="chip public">what the cloud sees</span>
+      </div>
+      <p className="section-note">A cloud geolocation AI sees only the version you would post. Your device measures how far off it lands.</p>
+      {/* Blurred but not attacked again: the last guess is about the photo before, and looked current to a judge (17-nov). */}
+      {staleVerdict && <p className="notice slim">Before blurring. Attack again to see where it guesses with the blurred photo.</p>}
+      <div className={staleVerdict ? 'stale' : undefined}>
+        <div className={`result ${attacking ? '' : level}`} aria-live="polite">
+          <div key={history.length} className={`result-num km ${attacking ? '' : 'land'}`}>
+            {attacking ? <span className="spinner" aria-hidden="true" /> : formatKm(kmShown)}
+          </div>
+          <div className="result-text">
+            <strong>{attacking ? 'The attacker is looking at your photo' : verdictHeadline}</strong>
+            <p>
+              {attacking ? 'A cloud AI guesses where it was taken, from what it sees.' : `Guess: ${verdict!.place}. ${verdictDetail}`}
+              {!attacking && history.length > 1 ? ` Before blurring: ${formatKm(history[0])}.` : ''}
+            </p>
+          </div>
+        </div>
+        <WorldMap
+          you={truthPoint}
+          youLabel={source === 'demo' ? 'The scene' : 'You'}
+          guess={attacking ? null : guess}
+          guessLabel={verdict?.place ?? ''}
+          distance={!attacking && verdict && verdict.errorKm !== null ? formatKm(verdict.errorKm) : undefined}
+          level={level}
+        />
+        {!attacking && verdict && verdict.clues.length > 0 && (
+          <Why summary={safe ? 'what the attacker went by, and still missed' : 'what the attacker used'}>
+            {/* Why blurring stops with these cells still visible: a judge read them as a loop that gave up (17-nov). */}
+            {safe && <p className="hint">Not blurred, because they did not help it find you. Blurring stops here.</p>}
+            <ul className="reasons">
+              {/* A cell can hold several clues: keyed by cell alone, React kept a stale item on screen (live, 16-nov). */}
+              {verdict.clues.map((c, i) => (
+                <li key={`${c.cell}-${i}`}>
+                  Cell {c.cell}: {c.what}
+                </li>
+              ))}
+            </ul>
+          </Why>
+        )}
+      </div>
+    </section>
+  );
+
+  // The verdict first once there is one; the photo first before, and while it is being blurred.
+  const verdictFirst = stage === 'attacked' || stage === 'safe';
+
   return (
-    <>
+    <div className="stage" ref={stageRef}>
       <Stepper
         steps={steps}
         current={STAGE_STEP[stage]}
@@ -427,194 +724,14 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak, recorded, 
         round={rounds}
       />
       {error && <ErrorNote message={error} />}
-      <section className="card draft" aria-labelledby="photo-title">
-        <div className="card-head">
-          <div>
-            <p className="kicker">Your device</p>
-            <h2 id="photo-title">Your photo</h2>
-          </div>
-          <span className={`chip ${!published && sentAsIs ? 'asis' : 'private'}`}>
-            {published ? 'released for publication' : sentAsIs ? 'sent as-is to the attacker · your choice' : 'private · stays on this device'}
-          </span>
-        </div>
-        <p className="context">
-          {source === 'demo' ? 'About to post a selfie from home · illustrated scene, fictional street in Palma' : 'Your photo · decoded and EXIF-stripped on this device'}
-          {' · '}
-          <span className="private-note">
-            {truthLabel === SCENE_TRUTH
-              ? 'where the scene really is stays on this device, to score each guess'
-              : `your real location, known only to this device: ${truthLabel}`}
-          </span>
-        </p>
-        {stage === 'photo' && recorded && (
-          <p className="hint">
-            Recorded run: the demo photo is fixed, because the attacks were recorded for it. To check your own photo,{' '}
-            <a href={location.pathname}>open the live version</a>.
-          </p>
-        )}
-        {stage === 'photo' && !recorded && (
-          <div className="photo-tools">
-            <button className="mini" onClick={() => fileInput.current?.click()}>
-              Use my own photo
-            </button>
-            <button className="mini" onClick={useMyLocation}>
-              Use my location (stays on this device)
-            </button>
-            <input
-              ref={fileInput}
-              type="file"
-              accept="image/jpeg,image/png,image/webp"
-              hidden
-              onChange={(e) => e.target.files?.[0] && loadOwnPhoto(e.target.files[0])}
-            />
-          </div>
-        )}
-        <div className={`photo ${working ? 'scanning' : ''}`}>
-          {baseUrl ? (
-            <img
-              src={baseUrl}
-              width={SCENE_W}
-              height={SCENE_H}
-              alt="Selfie at home with the street visible through the window"
-              onLoad={() => reveal?.settled && setReveal(null)}
-            />
-          ) : (
-            <div className="photo-loading">
-              <span className="spinner" aria-hidden="true" /> Drawing the demo photo on this device…
-            </div>
-          )}
-          {stage !== 'loading' && stage !== 'photo' && (
-            <div className="cells" style={{ gridTemplateColumns: `repeat(${GRID}, 1fr)` }}>
-              {Array.from({ length: GRID * GRID }, (_, i) => i + 1).map((cell) => {
-                const c = clueAt(cell);
-                const a = attackerAt(cell);
-                const isMasked = threat.masked.includes(cell);
-                const picked = manual.includes(cell);
-                const fresh = pixelating ? reveal.fresh.indexOf(cell) : -1;
-                const r = Math.floor((cell - 1) / GRID);
-                const k = (cell - 1) % GRID;
-                const order = c ? visibleClues.indexOf(c) : a ? (verdict?.clues.indexOf(a) ?? 0) : 0;
-                return (
-                  <button
-                    key={cell}
-                    className={`cell ${c ? 'clue' : ''} ${a && !safe ? 'attacker' : ''} ${isMasked ? 'masked' : ''} ${fresh >= 0 ? 'fresh' : ''} ${picked && !isMasked && canPick ? 'picked' : ''}`}
-                    style={at(fresh >= 0 ? fresh : order)}
-                    disabled={!canPick || isMasked}
-                    onClick={() => setManual((m) => (m.includes(cell) ? m.filter((x) => x !== cell) : [...m, cell]))}
-                    aria-label={`Cell ${cell}${c ? `: ${c.what}` : ''}${a && !safe ? ', used by the attacker' : ''}${isMasked ? ', masked' : ''}`}
-                    aria-pressed={canPick && !isMasked ? picked : undefined}
-                  >
-                    {pixelating && reveal.all.includes(cell) && publishedUrl && (
-                      <span
-                        className={`pix ${fresh >= 0 ? 'fresh' : ''}`}
-                        aria-hidden="true"
-                        style={{
-                          backgroundImage: `url(${publishedUrl})`,
-                          backgroundSize: `${GRID * 100}% ${GRID * 100}%`,
-                          backgroundPosition: `${(k / (GRID - 1)) * 100}% ${(r / (GRID - 1)) * 100}%`,
-                        }}
-                      />
-                    )}
-                    <span className="n">{cell}</span>
-                    {c && <span className="tag">{c.kind}</span>}
-                    {!c && a && !safe && <span className="tag atk">used by attacker</span>}
-                  </button>
-                );
-              })}
-            </div>
-          )}
-        </div>
-
-        {stage !== 'loading' && stage !== 'photo' && (
-          <div className="findings one">
-            <div className="finding-col">
-              <h3>
-                {!degraded
-                  ? 'Location clues found on your device'
-                  : canPick || stage === 'masked' || stage === 'safe'
-                    ? 'No local model: tap the cells you want to mask'
-                    : 'No local model: first see what the attacker finds, then tap the cells to mask'}
-              </h3>
-              {canPick && verdict && chosen.length > 0 && (
-                <p className="hint">Already selected: the cells the attacker used. Tap a cell to add or remove it; “Mask” blurs them on this device, around the faces.</p>
-              )}
-              {visibleClues.length === 0 && !degraded ? (
-                <p className="good rise">
-                  {threat.masked.length ? `Hidden on this device: ${Math.round(threat.maskedShare * 100)}% of the photo, in cells ${threat.masked.join(', ')}.` : 'None found.'}
-                </p>
-              ) : (
-                visibleClues.map((c, i) => (
-                  <div key={`${c.cell}-${i}`} className="finding content rise" style={at(i)}>
-                    <code>cell {c.cell}</code> <span>{c.what}</span>
-                  </div>
-                ))
-              )}
-              {!degraded && threat.leftVisible.length > 0 && (
-                <p className="hint">
-                  Left visible: nothing on a person is hidden, and masking covers at most a quarter of the photo, plus any street name, house number or
-                  plate.
-                </p>
-              )}
-            </div>
-          </div>
-        )}
-      </section>
-
-      <section className="card lineup" aria-labelledby="map-title">
-        <div className="card-head">
-          <div>
-            <p className="kicker">The cloud</p>
-            <h2 id="map-title">The attacker’s map</h2>
-          </div>
-          <span className="chip public">what the cloud sees</span>
-        </div>
-        <p className="context">A cloud geolocation AI sees only the version you would post, and guesses where you are. Your device scores the guess.</p>
-        {/* Masked but not attacked yet: the last guess is about the photo before masking, and looked current to a judge (17-nov). */}
-        {staleVerdict && <p className="hint stale-note">Before masking. Attack again to see where it guesses with the masked photo.</p>}
-        <div className={staleVerdict ? 'stale' : undefined}>
-        <Radar km={km} title={verdictTitle} subtitle={verdict ? `Guess: ${verdict.place}` : ''} level={level} history={history} scanning={busy === 'attack'} />
-        <p className="sr-only" aria-live="polite">
-          {busy === 'attack'
-            ? 'The attacker is looking at your photo.'
-            : verdict
-              ? `${verdictHeadline}. ${reason === 'readable' ? `Its guess: ${verdict.place}` : verdictTitle}.`
-              : ''}
-        </p>
-        {verdict && (
-          <>
-            <div className={`score stack-sm ${level}`}>
-              <div key={history.length} className={`big small stamp ${level}`}>
-                {formatKm(kmShown)}
-              </div>
-              <div>
-                <strong>{verdictHeadline}</strong>
-                <p>
-                  {verdictDetail}
-                  {history.length > 1 ? ` Before masking: ${formatKm(history[0])}.` : ''}
-                </p>
-              </div>
-            </div>
-            {verdict.clues.length > 0 && (
-              <div className="reasons-box rise" key={`r${history.length}`}>
-                <h3>{safe ? 'What the attacker went by, and still missed' : 'What the attacker used'}</h3>
-                {/* Why masking stops with these cells still visible: a judge read them as a loop that gave up (17-nov). */}
-                {safe && <p className="hint">Not masked, because they did not help it find you. Masking stops here.</p>}
-                <ul className="reasons">
-                  {/* A cell can hold several clues: keyed by cell alone, React kept a stale item on screen (live, 16-nov). */}
-                  {verdict.clues.map((c, i) => (
-                    <li key={`${c.cell}-${i}`} className="rise" style={at(i + 1)}>
-                      Cell {c.cell}: {c.what}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </>
-        )}
-        </div>
-      </section>
-
+      <header className="stage-head">
+        <h1 className="stage-title">{head.title}</h1>
+        <p className="stage-lede">{head.lede}</p>
+      </header>
+      {verdictFirst && attacker}
+      {photo}
+      {!verdictFirst && attacker}
       {dock && createPortal(actions, dock)}
-    </>
+    </div>
   );
 }

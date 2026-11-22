@@ -17,6 +17,9 @@ type Device = 'checking' | 'available' | 'downloadable' | 'unavailable';
 // Without Chrome's Prompt API the answer is known before the first paint, so the degraded notice never pushes the page down.
 const firstDeviceGuess = (): Device => ('LanguageModel' in globalThis ? 'checking' : 'unavailable');
 
+/** Bytes, short: the top bar has room for "220 KB", not "220,502 bytes" (the receipt has the exact count). */
+const shortBytes = (n: number) => (n < 1000 ? `${n} B` : n < 1_000_000 ? `${Math.round(n / 1000)} KB` : `${(n / 1_000_000).toFixed(1)} MB`);
+
 export default function App() {
   const ledger = useMemo(() => new Ledger(), []);
   const { live, kit, backends } = useMemo(() => buildKit(ledger), [ledger]);
@@ -87,8 +90,8 @@ export default function App() {
   const registerLeak = useCallback((fn: (() => Promise<string>) | null) => {
     leakFn.current = fn;
   }, []);
-  // The dock at the bottom of the screen: each lab renders its next action there (a portal), next to "Start over". The
-  // element exists from the first render, so the labs can portal into it at once (state set from a ref would render twice).
+  // Each lab renders its next action into this element (a portal), at the end of the step, next to "Start over". It
+  // exists from the first render, so the labs can portal into it at once (state set from a ref would render twice).
   const [dock] = useState(() => {
     const el = document.createElement('div');
     el.className = 'dock-slot';
@@ -129,6 +132,10 @@ export default function App() {
     }
   };
 
+  // The receipt: a sheet over the page, opened from its count in the top bar (it was a card under everything, 21-nov plan).
+  const sheet = useRef<HTMLDialogElement>(null);
+  const receiptButton = useRef<HTMLButtonElement>(null);
+
   const blocked = entries.filter((e) => e.route === 'blocked' && e.op.startsWith('Leak')).length;
   const sentAsIs = entries.some((e) => e.note?.includes('sent as-is by your choice'));
   const sentOut = entries.reduce((a, e) => a + e.bytesOut, 0);
@@ -136,6 +143,12 @@ export default function App() {
   const asIsBytes = entries.filter((e) => e.note?.includes('sent as-is by your choice')).reduce((a, e) => a + e.bytesOut, 0);
   const releasedBytes = sentOut - asIsBytes;
   const fmt = (n: number) => n.toLocaleString('en-US');
+  const status = blocked ? 'blocked' : sentAsIs ? 'asis' : 'private';
+  const statusText = blocked
+    ? `${blocked} leak attempt${blocked > 1 ? 's' : ''} blocked`
+    : sentAsIs
+      ? 'original sent only for your as-is test'
+      : 'original never left the device';
   const labProps: LabProps = {
     kit,
     localBackend: backends.local as LabProps['localBackend'],
@@ -154,113 +167,81 @@ export default function App() {
 
   return (
     <div className="app">
-      <header className="appbar">
-        <a className="brand" href="/" aria-label="Throwaway home: what it is and how it works">
-          <Logo size={36} />
-          <span className="wordmark">throwaway</span>
-        </a>
-        <span className={`mode ${live ? 'live' : 'demo'}`}>
-          <i className="dot" aria-hidden="true" />
-          {live ? (
-            <>
-              Live<span className="mode-more"> · Firebase AI Logic</span>
-            </>
-          ) : (
-            'Recorded run'
-          )}
-        </span>
-        <nav className="appnav" aria-label="Mode and help">
-          {live ? (
-            <a href="?demo">Replay a recorded run</a>
-          ) : (
-            isConfigured() && <a href={location.pathname}>Go live</a>
-          )}
-          <a href="/#how">How it works</a>
-        </nav>
-      </header>
-
-      <div className="intro">
-        <h1>
-          Before you post anonymously, let an AI try to <span className="marker">unmask you</span>.
-        </h1>
-        <div className="device-row">
-          <span className={`nano ${degraded || device !== 'available' ? 'warn' : 'ok'}`}>
-            <i className="dot" aria-hidden="true" />
-            Gemini Nano: {nano}
-          </span>
-          <label className="switch">
-            <input
-              type="checkbox"
-              role="switch"
-              checked={simulateNoNano}
+      <header className="topbar">
+        <div className="topbar-inner">
+          <a className="brand" href="/" aria-label="Throwaway home: what it is and how it works">
+            <Logo size={28} />
+            <span className="wordmark">throwaway</span>
+          </a>
+          <nav className="seg" aria-label="What to check">
+            <button aria-pressed={tab === 'text'} onClick={() => switchTab('text')} disabled={deviceBusy} title={held}>
+              <TextIcon />
+              Who wrote this?
+            </button>
+            <button
+              aria-pressed={tab === 'photo'}
+              onClick={() => switchTab('photo')}
               disabled={deviceBusy}
               title={held}
-              onChange={(e) => {
-                setSimulateNoNano(e.target.checked);
+              onPointerEnter={() => void loadPhotoLab()}
+              onFocus={() => void loadPhotoLab()}
+            >
+              <PinIcon />
+              Where was it taken?
+            </button>
+          </nav>
+          <div className="topbar-end">
+            <span className={`mode-badge ${live ? 'live' : 'demo'}`}>
+              <i className="dot" aria-hidden="true" />
+              {live ? 'Live' : 'Recorded run'}
+            </span>
+            <button
+              ref={receiptButton}
+              className={`receipt-button ${status}`}
+              onClick={() => sheet.current?.showModal()}
+              aria-haspopup="dialog"
+              aria-label={`Receipt: ${shortBytes(sentOut)} sent to the cloud, ${statusText}`}
+            >
+              <i className="dot" aria-hidden="true" />
+              <span className="receipt-word">Sent</span>
+              <span className="receipt-num">{shortBytes(sentOut)}</span>
+            </button>
+            <Menu
+              live={live}
+              nano={nano}
+              degraded={degraded}
+              device={device}
+              simulateNoNano={simulateNoNano}
+              held={held}
+              deviceBusy={deviceBusy}
+              onSimulate={(on) => {
+                setSimulateNoNano(on);
                 reset();
               }}
             />
-            <span className="switch-track" aria-hidden="true" />
-            Try it without Gemini Nano
-          </label>
+          </div>
         </div>
-      </div>
+      </header>
 
-      <nav className="tabs" aria-label="Threats">
-        <button
-          className={tab === 'text' ? 'on' : ''}
-          aria-pressed={tab === 'text'}
-          aria-label="Who wrote this? Text, stylometry"
-          onClick={() => switchTab('text')}
-          disabled={deviceBusy}
-          title={held}
-        >
-          <img src="/brand/huella-72.webp" width="36" height="36" alt="" />
-          <span className="tab-text">
-            <span className="tab-q">Who wrote this?</span>
-            <span className="tab-s">Text · stylometry</span>
-          </span>
-        </button>
-        <button
-          className={tab === 'photo' ? 'on' : ''}
-          aria-pressed={tab === 'photo'}
-          aria-label="Where was this taken? Photo, geolocation"
-          onClick={() => switchTab('photo')}
-          disabled={deviceBusy}
-          title={held}
-          onPointerEnter={() => void loadPhotoLab()}
-          onFocus={() => void loadPhotoLab()}
-        >
-          <img src="/brand/pin-72.webp" width="36" height="36" alt="" />
-          <span className="tab-text">
-            <span className="tab-q">Where was this taken?</span>
-            <span className="tab-s">Photo · geolocation</span>
-          </span>
-        </button>
-        <span className="tabs-note">Same framework, different attacker.</span>
-      </nav>
-
-      {degraded && (
-        <div className="banner">
-          {/* Says what still runs and what does not: "will not analyse" next to a scan button confused two testers (16-nov). */}
-          <p>
-            {/* What "local model" means, in a sentence: a tester did not know what Gemini Nano was (17-nov). */}
-            <strong>No on-device AI here.</strong> Gemini Nano, the AI built into Chrome on some computers, is not available in this browser.{' '}
-            {tab === 'text'
-              ? 'Throwaway can still check your writing habits, counts, dates and capitalised names, and generalise some of them, but it cannot rewrite your style: you do that.'
-              : 'Throwaway cannot look for clues in your photo: tap the cells you want to mask.'}{' '}
-            Nothing goes to the cloud unless you choose to test it.
-            {live && !simulateNoNano && (
-              <>
-                {' '}
-                To see the full on-device flow, <a href="?demo">replay a run recorded with Gemini Nano</a>.
-              </>
-            )}
+      <main className={`main ${tab}-lab`}>
+        {degraded && (
+          // What still runs and what does not: "will not analyse" next to a scan button confused two testers (16-nov).
+          <p className="notice mode-note">
+            <span>
+              <strong>No on-device AI here.</strong>{' '}
+              {tab === 'text'
+                ? 'Throwaway checks your habits, counts, dates and capitalised names with fixed rules; you rewrite the style.'
+                : 'Throwaway cannot look for clues in your photo: you tap the cells to hide.'}{' '}
+              Nothing goes to the cloud unless you choose to test it.
+              {live && !simulateNoNano && (
+                <>
+                  {' '}
+                  <a href="?demo">Replay a run recorded with Gemini Nano</a>.
+                </>
+              )}
+            </span>
           </p>
-        </div>
-      )}
-
-      <main className="grid">
+        )}
         {tab === 'text' ? (
           <TextLab key={labKey} {...labProps} />
         ) : (
@@ -275,67 +256,183 @@ export default function App() {
           </Suspense>
         )}
 
-        <div className="dock" role="region" aria-label="Next step">
-          <div className="dock-inner">
-            <div className="dock-host" ref={mountDock} />
-            <button className="ghost restart" onClick={reset} aria-label="Start over" disabled={deviceBusy} title={held}>
-              <span aria-hidden="true">↺</span>
-              <span className="restart-label">Start over</span>
-            </button>
-          </div>
+        <div className="actions" role="region" aria-label="Next step">
+          <div className="dock-host" ref={mountDock} />
+          <button className="ghost restart" onClick={reset} disabled={deviceBusy} title={held}>
+            <RestartIcon />
+            <span className="restart-label">Start over</span>
+          </button>
         </div>
+      </main>
 
-        <section className="card ledger" aria-labelledby="ledger-title">
-          <div className="card-head">
+      <dialog
+        ref={sheet}
+        className="sheet"
+        aria-labelledby="ledger-title"
+        onClose={() => receiptButton.current?.focus()}
+        onClick={(e) => e.target === e.currentTarget && sheet.current?.close()}
+      >
+        <div className="sheet-body">
+          <header className="sheet-head">
             <div>
-              <p className="kicker">Receipt · route ledger</p>
               <h2 id="ledger-title">What left your device</h2>
+              <span className={`chip ${status}`}>{statusText}</span>
             </div>
-            <span className={`chip ${blocked ? 'blocked' : sentAsIs ? 'asis' : 'private'}`}>
-              {blocked ? `${blocked} leak attempt${blocked > 1 ? 's' : ''} blocked` : sentAsIs ? 'original sent only for your as-is test' : 'original never left the device'}
-            </span>
-          </div>
+            <button className="icon-button" onClick={() => sheet.current?.close()} aria-label="Close the receipt">
+              <CloseIcon />
+            </button>
+          </header>
           <LedgerSummary entries={entries} />
           {/* "· recorded" on every model step read as a fake to a judge, without a word on what is replayed (17-nov). */}
           {!live && (
-            <p className="hint ledger-note">
-              Recorded run: Gemini’s answers are replayed from real runs in Chrome (15–16 November). The fingerprint, the fixed rules, the privacy
-              guard, the shuffled lineups and this receipt run live, in this tab.
+            <p className="hint">
+              Recorded run: Gemini’s answers are replayed from real runs in Chrome (15–16 November). The fingerprint, the fixed rules, the privacy guard,
+              the shuffled lineups and this receipt run live, in this tab.
             </p>
           )}
-          {/* A proof for developers and judges, not a step for someone checking a post (review, 16-nov). */}
-          <details className="devtools">
-            <summary>For developers: try to break it</summary>
-            <p id="leak-help" className="hint">
-              Simulates a developer mistake: the private original pushed into a cloud call. The framework refuses it, and the attempt shows up in the ledger.
-            </p>
-            <button className="mini" onClick={async () => setLeakMsg(leakFn.current ? await leakFn.current() : 'Nothing to leak yet.')} aria-describedby="leak-help">
-              Try to leak the original
-            </button>
-            {leakMsg && (
-              <p className={`leak ${leakMsg.startsWith('Blocked') ? 'good' : 'bad'}`} role="status">
-                {leakMsg}
-              </p>
-            )}
-          </details>
           {entries.length === 0 ? (
             <div className="ledger-empty">
-              <img src="/brand/mascara-112.webp" width="56" height="56" alt="" loading="lazy" />
+              <img src="/brand/mascara-112.webp" width="48" height="48" alt="" loading="lazy" />
               <p>Nothing has run yet. Every step will show up here: where it ran, how long it took and how many bytes left your device.</p>
             </div>
           ) : (
             <LedgerTable entries={entries} />
           )}
           <p className="total">
-            Sent to the cloud: {sentOut.toLocaleString('en-US')} bytes —{' '}
+            Sent to the cloud: {fmt(sentOut)} bytes,{' '}
             {sentAsIs
-              ? `${fmt(asIsBytes)} for the as-is test of your original that you chose${releasedBytes > 0 ? `, and ${fmt(releasedBytes)} for the version you released` : ''}.${
+              ? `${fmt(asIsBytes)} for the as-is test of your original that you chose${releasedBytes > 0 ? ` and ${fmt(releasedBytes)} for the version you released` : ''}.${
                   tab === 'text' ? ' Each attack also sends the public texts of the other writers.' : ''
                 } Without that choice, private originals cannot reach a cloud model: the types forbid it and a run-time guard blocks it.`
               : 'only what you released for publication, plus public data. Private originals cannot reach a cloud model: the types forbid it and a run-time guard blocks it.'}
           </p>
-        </section>
-      </main>
+          {/* A proof for developers and judges, not a step for someone checking a post (review, 16-nov). */}
+          <details className="disclosure devtools">
+            <summary>For developers: try to break it</summary>
+            <div className="disclosure-body">
+              <p id="leak-help" className="hint">
+                Simulates a developer mistake: the private original pushed into a cloud call. The framework refuses it, and the attempt shows up in this
+                receipt.
+              </p>
+              <button className="mini" onClick={async () => setLeakMsg(leakFn.current ? await leakFn.current() : 'Nothing to leak yet.')} aria-describedby="leak-help">
+                Try to leak the original
+              </button>
+              {leakMsg && (
+                <p className={`leak ${leakMsg.startsWith('Blocked') ? 'good' : 'bad'}`} role="status">
+                  {leakMsg}
+                </p>
+              )}
+            </div>
+          </details>
+        </div>
+      </dialog>
     </div>
   );
 }
+
+/** Settings and help, out of the way: the mode, Gemini Nano, the switch to test without it (21-nov plan: a menu). */
+function Menu({
+  live,
+  nano,
+  degraded,
+  device,
+  simulateNoNano,
+  held,
+  deviceBusy,
+  onSimulate,
+}: {
+  live: boolean;
+  nano: string;
+  degraded: boolean;
+  device: Device;
+  simulateNoNano: boolean;
+  held?: string;
+  deviceBusy: boolean;
+  onSimulate: (on: boolean) => void;
+}) {
+  const menu = useRef<HTMLDetailsElement>(null);
+  useEffect(() => {
+    const away = (e: PointerEvent) => {
+      if (menu.current?.open && !menu.current.contains(e.target as Node)) menu.current.open = false;
+    };
+    const escape = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || !menu.current?.open) return;
+      menu.current.open = false;
+      menu.current.querySelector('summary')?.focus();
+    };
+    document.addEventListener('pointerdown', away);
+    document.addEventListener('keydown', escape);
+    return () => {
+      document.removeEventListener('pointerdown', away);
+      document.removeEventListener('keydown', escape);
+    };
+  }, []);
+  return (
+    <details className="menu" ref={menu}>
+      <summary aria-label="Settings and help">
+        <DotsIcon />
+      </summary>
+      <div className="menu-panel">
+        <p className={`menu-status ${live ? 'live' : 'demo'}`}>
+          <i className="dot" aria-hidden="true" />
+          {live ? 'Live · Firebase AI Logic' : 'Recorded run: replayed answers'}
+        </p>
+        {live ? (
+          <a className="menu-item" href="?demo">
+            Replay a recorded run
+          </a>
+        ) : (
+          isConfigured() && (
+            <a className="menu-item" href={location.pathname}>
+              Go live
+            </a>
+          )
+        )}
+        <div className="menu-sep" />
+        <p className={`menu-status ${degraded || device !== 'available' ? 'warn' : 'ok'}`}>
+          <i className="dot" aria-hidden="true" />
+          Gemini Nano: {nano}
+        </p>
+        <label className="switch menu-item">
+          <input type="checkbox" role="switch" checked={simulateNoNano} disabled={deviceBusy} title={held} onChange={(e) => onSimulate(e.target.checked)} />
+          <span className="switch-track" aria-hidden="true" />
+          Try it without Gemini Nano
+        </label>
+        <div className="menu-sep" />
+        <a className="menu-item" href="/#how">
+          How it works
+        </a>
+      </div>
+    </details>
+  );
+}
+
+const icon = { width: 16, height: 16, viewBox: '0 0 16 16', fill: 'none', stroke: 'currentColor', strokeWidth: 1.5, strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': true } as const;
+const TextIcon = () => (
+  <svg {...icon}>
+    <path d="M3 4h10M3 8h10M3 12h6" />
+  </svg>
+);
+const PinIcon = () => (
+  <svg {...icon}>
+    <path d="M8 14s4.5-4.1 4.5-7.6a4.5 4.5 0 0 0-9 0C3.5 9.9 8 14 8 14z" />
+    <circle cx="8" cy="6.4" r="1.6" />
+  </svg>
+);
+const RestartIcon = () => (
+  <svg {...icon}>
+    <path d="M3 8a5 5 0 1 0 1.5-3.6M3 2.5v2.8h2.8" />
+  </svg>
+);
+const CloseIcon = () => (
+  <svg {...icon}>
+    <path d="M4 4l8 8M12 4l-8 8" />
+  </svg>
+);
+const DotsIcon = () => (
+  <svg {...icon} stroke="none" fill="currentColor">
+    <circle cx="3.5" cy="8" r="1.4" />
+    <circle cx="8" cy="8" r="1.4" />
+    <circle cx="12.5" cy="8" r="1.4" />
+  </svg>
+);

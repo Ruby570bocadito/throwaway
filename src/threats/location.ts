@@ -433,10 +433,14 @@ const rankOf = (c: PhotoClue) => {
  */
 export type ExposureReason = 'readable' | 'near' | 'precise';
 
+/** Without your real location, a guess this tight (a city, a region) may be right, and nothing can check it. */
+const UNCHECKED_CITY_KM = 250;
+
 /**
  * Red, amber or green, for the user:
  *  - 'street' (red): an identifier anyone can look up, or a guess within `streetRadiusKm` of you.
- *  - 'city' (amber): it knows your city, not your street. Fine unless your city is the secret.
+ *  - 'city' (amber): it knows your city, not your street. Fine unless your city is the secret. Without your real
+ *    location, also any city it names: it may be right, and nothing on the device can tell.
  *  - 'safe' (green): the wrong place, or too unsure to say.
  * Only red keeps the red-team loop going. Measured with realistic test photos (16-nov): masking cells took the attacker
  * from your address to your city, but a scene full of local cues still says "Lisbon" with half of it masked, and a
@@ -453,6 +457,7 @@ export function locationThreat(o: LocationOptions): Threat<Uint8Array, PhotoClue
   maxShare: number;
   faces: Rect[];
   hideCells(input: Private<Uint8Array>, cells: number[], kit: Kit): Promise<Publishable<Uint8Array>>;
+  toggleCells(input: Private<Uint8Array>, cells: number[], kit: Kit): Promise<Publishable<Uint8Array>>;
   exposureReason(v: LocationVerdict): ExposureReason | null;
   tier(v: LocationVerdict): LocationTier;
 } {
@@ -735,6 +740,33 @@ export function locationThreat(o: LocationOptions): Threat<Uint8Array, PhotoClue
       return hide(png, fresh, [], kit, `Hide ${chosen.length} ${chosen.length === 1 ? 'cell' : 'cells'} you chose, around the faces`);
     },
 
+    /**
+     * One tap per cell on a photo already masked: a hidden cell is shown again, any other is hidden (around the faces), and
+     * the mask is painted again from the private original. Masking could not be undone before (21-nov plan).
+     */
+    async toggleCells(input: Private<Uint8Array>, cells: number[], kit: Kit): Promise<Publishable<Uint8Array>> {
+      const png = Private.openLocally(input);
+      photoSize ??= await o.ops.size(png);
+      const whole = { x: 0, y: 0, w: photoSize.width, h: photoSize.height };
+      const chosen = [...new Set(cells)].filter(validCell);
+      const show = chosen.filter((c) => threat.masked.includes(c) || hiddenCells.has(c));
+      const add = chosen.filter((c) => !show.includes(c));
+      const kept = threat.regions.filter((g) => !show.includes(g.cell));
+      // Showing every cell again would leave the original, which release() rightly refuses: say what to do instead.
+      if (!kept.length && !add.length) throw new Error('Nothing would stay hidden: if you would post the photo as it is, attack it as it is');
+      const around = await facesIn(png, kit);
+      threat.regions = kept;
+      for (const c of show) hiddenCells.delete(c);
+      const fresh: MaskRegion[] = [];
+      for (const cell of add) {
+        fresh.push(...cutAround(gridSquare(cell, GRID, whole), around).map((rect) => ({ rect, style: 'blur' as const, cell, what: 'chosen by you' })));
+        hiddenCells.add(cell);
+      }
+      const did = [add.length && `hide ${add.length === 1 ? `cell ${add[0]}` : `${add.length} cells`}`, show.length && `show ${show.length === 1 ? `cell ${show[0]}` : `${show.length} cells`} again`].filter(Boolean);
+      const op = `${did.join(' and ').replace(/^./, (ch) => ch.toUpperCase())}, around the faces`;
+      return hide(png, fresh, threat.leftVisible.filter((c) => !hiddenCells.has(c.cell)), kit, op);
+    },
+
     async attack(published: Publishable<Uint8Array>, kit: Kit): Promise<LocationVerdict> {
       // The overlay is derived from the released photo only; it inherits the user's as-is confirmation if there was one.
       const gridded = release(await o.ops.withGrid(published.value, GRID), 'grid overlay of a released photo', {
@@ -800,7 +832,9 @@ export function locationThreat(o: LocationOptions): Threat<Uint8Array, PhotoClue
 
     tier(v: LocationVerdict): LocationTier {
       const reason = threat.exposureReason(v);
-      if (!reason) return 'safe';
+      // Without your real location, a city it names cannot be checked against where you are: however unsure it says it
+      // is, that is never called safe (live, 22-nov: "Madrid, Spain, low confidence" was close, and the app said safe).
+      if (!reason) return !o.truth && v.lat !== null && v.radiusKm <= UNCHECKED_CITY_KM ? 'city' : 'safe';
       if (reason === 'readable') return 'street';
       const km = reason === 'near' ? (v.errorKm as number) : v.radiusKm;
       return km < streetRadiusKm ? 'street' : 'city';

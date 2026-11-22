@@ -1,6 +1,34 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { flushSync } from 'react-dom';
 
 const REDUCE = '(prefers-reduced-motion: reduce)';
+
+/**
+ * A step changes as a View Transition where the browser can, at once where it cannot. A page that draws no frames (a
+ * window behind others, a hidden pane) never runs the transition's update: a scan sat on "Scanning…" for good (22-nov). So
+ * the change is applied after a second anyway, once. Resolves when the change is on the page.
+ */
+export function withTransition(update: () => void): Promise<void> {
+  let done = false;
+  const once = () => {
+    if (done) return;
+    done = true;
+    update();
+  };
+  const doc = document as Document & { startViewTransition?: (cb: () => void) => { updateCallbackDone?: Promise<void> } };
+  if (!doc.startViewTransition || document.visibilityState !== 'visible' || matchMedia(REDUCE).matches) {
+    once();
+    return Promise.resolve();
+  }
+  const t = doc.startViewTransition(() => flushSync(once));
+  const late = new Promise<void>((resolve) =>
+    setTimeout(() => {
+      once();
+      resolve();
+    }, 1000),
+  );
+  return Promise.race([(t.updateCallbackDone ?? Promise.resolve()).catch(() => undefined), late]);
+}
 const subscribe = (cb: () => void) => {
   const m = matchMedia(REDUCE);
   m.addEventListener('change', cb);

@@ -1,4 +1,17 @@
-/* Design tokens shared by the app (/app/) and the landing page (/). Paper and marker. */
+/*
+ * Design tokens. The product tokens (--c-*, --f-*, --fs-*, --sp-*, --rad-*, --elev-*, --t-*) style the app (/app/), a
+ * clean product UI since 21-nov; the paper-and-marker tokens below them still style the landing page (/) until it moves.
+ */
+
+/* Inter's metrics on Arial, so the app does not reflow when Inter arrives. */
+@font-face {
+  font-family: 'Inter Fallback';
+  src: local('Arial'), local('ArialMT');
+  size-adjust: 107.1%;
+  ascent-override: 90.4%;
+  descent-override: 22.5%;
+  line-gap-override: 0%;
+}
 
 /*
  * Metric-matched fallbacks: while the bundled fonts load, text is set in a local font scaled to the same width and line
@@ -60,6 +73,65 @@
 }
 
 :root {
+  /* ── product ── colour: one accent (navy); peach marks; red and green say how a result came out */
+  --c-bg: #f5f5f2;
+  --c-surface: #ffffff;
+  --c-surface-2: #f9f9f7;
+  --c-line: #e5e3de;
+  --c-line-2: #d1cec6;
+  --c-ink: #16181d;
+  --c-text: #33363d;
+  --c-muted: #686d76;
+  --c-accent: #243049;
+  --c-accent-2: #1a2336;
+  --c-accent-soft: #e8ebf2;
+  --c-peach: #ffd9b8;
+  --c-peach-2: #f3b789;
+  --c-red: #b4382b;
+  --c-red-soft: #fbe9e6;
+  --c-red-line: #efc3bb;
+  --c-green: #22704a;
+  --c-green-soft: #e4f2ea;
+  --c-green-line: #b9dcc7;
+  --c-amber: #8a5a0f;
+  --c-amber-soft: #fbf0dc;
+  --c-amber-line: #ecd6a8;
+  /* type: Inter for the interface, Eczar for headlines and a result's number, mono for bytes and code */
+  --f-ui: 'Inter Variable', 'Inter Fallback', system-ui, sans-serif;
+  --f-display: 'Eczar', 'Eczar Fallback', Georgia, serif;
+  --f-mono: 'JetBrains Mono', 'JetBrains Mono Fallback', ui-monospace, monospace;
+  --fs-12: 12px;
+  --fs-14: 14px;
+  --fs-16: 16px;
+  --fs-20: 20px;
+  --fs-24: 24px;
+  --fs-32: 32px;
+  --fs-48: 48px;
+  --fs-72: 72px;
+  /* space, on a 4 px grid */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 24px;
+  --sp-6: 32px;
+  --sp-7: 48px;
+  --sp-8: 64px;
+  --rad-sm: 6px;
+  --rad-md: 10px;
+  --rad-lg: 14px;
+  --rad-pill: 999px;
+  --elev-1: 0 1px 2px rgba(22, 24, 29, 0.05);
+  --elev-2: 0 1px 2px rgba(22, 24, 29, 0.04), 0 6px 20px rgba(22, 24, 29, 0.07);
+  --elev-3: 0 18px 48px rgba(22, 24, 29, 0.18);
+  --ring: 0 0 0 3px rgba(36, 48, 73, 0.2);
+  /* motion: one curve, 150–250 ms, no bounce */
+  --curve: cubic-bezier(0.2, 0, 0, 1);
+  --t-1: 150ms;
+  --t-2: 200ms;
+  --t-3: 250ms;
+
+  /* ── landing page (paper and marker) ── */
   --bg: #f6ecdd;
   --paper: #fffaf2;
   --paper-2: #fbf3e8;

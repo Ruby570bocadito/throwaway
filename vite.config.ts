@@ -11,7 +11,7 @@ const mediapipeVersion: string = JSON.parse(readFileSync(new URL('./node_modules
  */
 function preloadFonts(): Plugin {
   const landing = /^assets\/(eczar-latin-(500|600)|work-sans-latin-400|jetbrains-mono-latin-400)-normal-[\w-]+\.woff2$/
-  const app = /^assets\/(eczar-latin-(500|600)|work-sans-latin-(400|600)|jetbrains-mono-latin-400)-normal-[\w-]+\.woff2$/
+  const app = /^assets\/(eczar-latin-(500|600)|inter-latin-wght|jetbrains-mono-latin-400)-normal-[\w-]+\.woff2$/
   return {
     name: 'preload-fonts',
     apply: 'build',
