@@ -1,3 +1,11 @@
+import { count as counted, tr } from '../i18n';
+
+/** The labels a lab puts on your seat, in the reader's language (a label already translated is shown as it is). */
+const SEAT = new Map([
+  ['You', tr('You', 'Tú')],
+  ['Sample', tr('Sample', 'Ejemplo')],
+]);
+
 export function WriterCard({
   letter,
   glyph,
@@ -17,7 +25,9 @@ export function WriterCard({
   /** Your seat, picked often enough to call it found. */
   found: boolean;
 }) {
-  const label = `Writer ${letter}${you ? `, ${you.toLowerCase()}` : ''}${count ? `, picked ${count} ${count === 1 ? 'time' : 'times'}` : ''}`;
+  const seat = you && (SEAT.get(you) ?? you);
+  const times = counted(count, ['time', 'times'], ['vez', 'veces']);
+  const label = `${tr(`Writer ${letter}`, `Persona ${letter}`)}${seat ? `, ${seat.toLowerCase()}` : ''}${count ? tr(`, picked ${times}`, `, elegida ${times}`) : ''}`;
   return (
     <div role="listitem" aria-label={label} className={`writer${you ? ' you' : ''}${pointed ? ' pointed' : ''}${count ? ' picked' : ''}${found ? ' found' : ''}`}>
       <span className="writer-letter" aria-hidden="true">
@@ -31,7 +41,7 @@ export function WriterCard({
       </svg>
       {you && (
         <span className="writer-you" aria-hidden="true">
-          {you}
+          {seat}
         </span>
       )}
       {count > 0 && (

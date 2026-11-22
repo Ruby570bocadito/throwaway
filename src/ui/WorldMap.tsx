@@ -1,3 +1,4 @@
+import { tr } from '../i18n';
 import { LAND } from './worldLand';
 
 export interface MapPoint {
@@ -57,9 +58,15 @@ export function WorldMap({
   };
   const youSide = a ? side(a, !b || a.x <= b.x) : '';
   const guessSide = b ? side(b, !!a && a.x > b.x) : '';
-  const label = [you && `${youLabel}`, guess && `the AI’s guess, ${guessLabel}`, distance && `${distance} apart`].filter(Boolean).join('; ');
+  const label = [
+    you && `${youLabel}`,
+    guess && tr(`the AI’s guess, ${guessLabel}`, `lo que adivina la IA, ${guessLabel}`),
+    distance && tr(`${distance} apart`, `a ${distance} de distancia`),
+  ]
+    .filter(Boolean)
+    .join('; ');
   return (
-    <div className="world" role="img" aria-label={label ? `Map: ${label}` : 'Map of the world'}>
+    <div className="world" role="img" aria-label={label ? tr(`Map: ${label}`, `Mapa: ${label}`) : tr('Map of the world', 'Mapa del mundo')}>
       <svg viewBox={`${view.x} ${view.y} ${view.w} ${view.h}`} aria-hidden="true">
         <rect className="world-sea" x="0" y="0" width="360" height="180" />
         <path className="world-land" d={LAND} />

@@ -70,6 +70,39 @@ const V3_LEFT = ['three years', 'March', 'Lisbon office', 'six individuals to tw
 const V3_RULED =
   "The tenure with the organization spanned several years. Recent organizational changes, implemented recently, significantly altered the structure of the design team located in the office. The team's size reduced from several individuals to a few. A key directive arose to implement a migration within this diminished team structure, maintaining the original project timeline. Management communicated the direction, yet feedback mechanisms appeared ineffective. The situation presents challenges for those in design roles.";
 
+// Five of eight testers would not post the neutral rewrite ("an HR memo", 22-nov): the tone is an option, measured live first.
+describe('the rewrite keeps your tone when asked (22-nov)', () => {
+  const rewritePrompt = async (tone?: 'plain' | 'yours') => {
+    const prompts: string[] = [];
+    const nano = nanoScript((prompt) => {
+      prompts.push(prompt);
+      if (prompt.startsWith('Rewrite the DRAFT')) return { rewrite: REWRITE };
+      if (prompt.startsWith('Compare the ORIGINAL')) return { claims: [{ claim: 'Team was cut', kept: true }] };
+      return {};
+    });
+    const ledger = new Ledger();
+    const kit = { local: new LocalModel(nano, ledger), cloud: new CloudModel(nano, ledger), ledger };
+    const threat = authorshipThreat({
+      selfId: SELF_ID,
+      self: publicData(MARTA_PUBLIC, 'blog'),
+      decoys: DECOYS.map((d) => ({ id: d.id, text: publicData(d.corpus, 'decoy') })),
+      tone,
+    });
+    await threat.sanitize(secret(DRAFT, 'draft'), [], null, kit).catch(() => undefined);
+    return prompts.find((p) => p.startsWith('Rewrite the DRAFT')) ?? '';
+  };
+
+  it('asks for a neutral register by default, and for the draft’s own tone with tone: yours', async () => {
+    const plain = await rewritePrompt();
+    expect(plain).toContain('Use a neutral, plain register');
+    const yours = await rewritePrompt('yours');
+    expect(yours).toContain('Keep the tone of the DRAFT');
+    expect(yours).not.toContain('neutral, plain register');
+    // The recorded demo finds its answer by this start (src/demo/recorded.ts).
+    expect(yours.startsWith('Rewrite the DRAFT')).toBe(true);
+  });
+});
+
 describe('deterministic helpers', () => {
   const text = 'My tenure was three years. The design team was based in the Lisbon office. We shipped the Figma migration.';
   it('isSpecific keeps numbers, dates and proper nouns', () => {

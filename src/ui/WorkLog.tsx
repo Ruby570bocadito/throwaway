@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { Ledger, LedgerEntry, Route } from '../framework';
+import { tr } from '../i18n';
+import { opText } from './Ledger';
 import { formatSeconds, useElapsed } from './motion';
 
 /** One expected sub-step of a long action, recognised by the ledger entry it leaves when it finishes. */
@@ -22,7 +24,13 @@ interface Row {
   slow?: boolean;
 }
 
-const WHERE: Record<Route, string> = { 'on-device': 'Gemini Nano', 'local-js': 'plain JavaScript', cloud: 'cloud', blocked: 'blocked', skipped: 'not run: no local model' };
+const WHERE: Record<Route, string> = {
+  'on-device': 'Gemini Nano',
+  'local-js': tr('plain JavaScript', 'solo JavaScript'),
+  cloud: tr('cloud', 'nube'),
+  blocked: tr('blocked', 'bloqueado'),
+  skipped: tr('not run: no local model', 'sin hacer: no hay modelo local'),
+};
 
 /**
  * Honest progress for the long on-device steps: what has finished (read from the ledger, with its real duration), what is
@@ -60,7 +68,7 @@ export function WorkLog({
   done.forEach((e, n) => {
     const k = plan.findIndex((s, i) => i >= cursor && s.match.test(e.op));
     if (k === -1) {
-      rows.push({ key: `x${n}`, label: e.op, route: e.route, state: 'done', ms: e.ms });
+      rows.push({ key: `x${n}`, label: opText(e.op), route: e.route, state: 'done', ms: e.ms });
       return;
     }
     rows.push({ key: `p${k}`, label: plan[k].label, route: e.route, state: 'done', ms: e.ms });
@@ -85,16 +93,16 @@ export function WorkLog({
         <strong>{title}</strong>
         <span className="worklog-time">{formatSeconds(elapsed)}</span>
       </div>
-      <ol aria-label="Steps">
+      <ol aria-label={tr('Steps', 'Pasos')}>
         {download !== null && (
           <li className={download >= 1 ? 'done' : 'now'}>
             <span className="wl-mark" aria-hidden="true">{download >= 1 ? '✓' : <span className="spinner" />}</span>
-            <span className="wl-label">Download Gemini Nano, the first time only</span>
+            <span className="wl-label">{tr('Download Gemini Nano, the first time only', 'Descargar Gemini Nano, solo la primera vez')}</span>
             <span className="wl-meta">
               <span className="wl-bar" aria-hidden="true">
                 <i style={{ transform: `scaleX(${Math.min(1, download)})` }} />
               </span>
-              {Math.round(Math.min(1, download) * 100)}%
+              {tr(`${Math.round(Math.min(1, download) * 100)}%`, `${Math.round(Math.min(1, download) * 100)}\u00a0%`)}
             </span>
           </li>
         )}
@@ -115,8 +123,14 @@ export function WorkLog({
       {now?.slow && (
         <p className="worklog-note">
           {recorded
-            ? 'Recorded run: the answer is replayed in about a second. Live, Gemini Nano takes 15–40 s for this step on a laptop.'
-            : 'Gemini Nano runs on this device: 15–40 s for this step on a laptop. Nothing is sent while it works.'}
+            ? tr(
+                'Recorded run: the answer is replayed in about a second. Live, Gemini Nano takes 15–40 s for this step on a laptop.',
+                'Revisión grabada: la respuesta se reproduce en un segundo, más o menos. En vivo, Gemini Nano tarda entre 15 y 40 s en este paso en un portátil.',
+              )
+            : tr(
+                'Gemini Nano runs on this device: 15–40 s for this step on a laptop. Nothing is sent while it works.',
+                'Gemini Nano funciona en este dispositivo: tarda entre 15 y 40 s en este paso en un portátil. No se envía nada mientras trabaja.',
+              )}
         </p>
       )}
     </div>

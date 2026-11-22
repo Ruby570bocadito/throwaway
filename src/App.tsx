@@ -2,6 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } fro
 import './App.css';
 import { clearTaint, Ledger, type LedgerEntry } from './framework';
 import { deviceModelStatus } from './framework/device';
+import { count, lang, num, setLang, tr } from './i18n';
 import { buildKit, isConfigured } from './kit';
 import { TextLab } from './labs/TextLab';
 // The photo lab is not on screen at first: it loads after the first paint, before anyone can click its tab.
@@ -19,7 +20,15 @@ type Device = 'checking' | 'available' | 'downloadable' | 'unavailable';
 const firstDeviceGuess = (): Device => ('LanguageModel' in globalThis ? 'checking' : 'unavailable');
 
 /** Bytes, short: the top bar has room for "220 KB", not "220,502 bytes" (the receipt has the exact count). */
-const shortBytes = (n: number) => (n < 1000 ? `${n} B` : n < 1_000_000 ? `${Math.round(n / 1000)} KB` : `${(n / 1_000_000).toFixed(1)} MB`);
+const shortBytes = (n: number) => (n < 1000 ? `${n} B` : n < 1_000_000 ? `${Math.round(n / 1000)} KB` : `${num(n / 1_000_000, 1)} MB`);
+
+/** What Chrome says about Gemini Nano, in the menu. */
+const DEVICE_WORD: Record<Device, string> = {
+  checking: tr('checking', 'comprobando'),
+  available: tr('available', 'disponible'),
+  downloadable: tr('downloadable', 'se puede descargar'),
+  unavailable: tr('unavailable', 'no disponible'),
+};
 
 export default function App() {
   const ledger = useMemo(() => new Ledger(), []);
@@ -148,13 +157,13 @@ export default function App() {
   // Split by version: two testers read "your original" in the total as if it had left again after their edit (17-nov).
   const asIsBytes = entries.filter((e) => e.note?.includes('sent as-is by your choice')).reduce((a, e) => a + e.bytesOut, 0);
   const releasedBytes = sentOut - asIsBytes;
-  const fmt = (n: number) => n.toLocaleString('en-US');
+  const fmt = (n: number) => num(n);
   const status = blocked ? 'blocked' : sentAsIs ? 'asis' : 'private';
   const statusText = blocked
-    ? `${blocked} leak attempt${blocked > 1 ? 's' : ''} blocked`
+    ? count(blocked, ['leak attempt blocked', 'leak attempts blocked'], ['intento de filtración bloqueado', 'intentos de filtración bloqueados'])
     : sentAsIs
-      ? 'original sent only for your as-is test'
-      : 'original never left the device';
+      ? tr('original sent only for your as-is test', 'el original solo se ha enviado para tu prueba tal cual')
+      : tr('original never left the device', 'el original no ha salido del dispositivo');
   const labProps: LabProps = {
     kit,
     localBackend: backends.local as LabProps['localBackend'],
@@ -167,22 +176,22 @@ export default function App() {
     addWriting,
     onStarted,
   };
-  const held = deviceBusy ? 'Gemini Nano is finishing a step on your device' : undefined;
+  const held = deviceBusy ? tr('Gemini Nano is finishing a step on your device', 'Gemini Nano está terminando un paso en tu dispositivo') : undefined;
   // "off (simulated)" meant nothing to a tester (17-nov).
-  const nano = simulateNoNano ? 'off for this test' : device;
+  const nano = simulateNoNano ? tr('off for this test', 'desactivado para esta prueba') : DEVICE_WORD[device];
 
   return (
     <div className="app">
       <header className="topbar">
         <div className="topbar-inner">
-          <a className="brand" href="/" aria-label="Throwaway home: what it is and how it works">
+          <a className="brand" href="/" aria-label={tr('Throwaway home: what it is and how it works', 'Inicio de Throwaway: qué es y cómo funciona')}>
             <Logo size={28} />
             <span className="wordmark">throwaway</span>
           </a>
-          <nav className="seg" aria-label="What to check">
+          <nav className="seg" aria-label={tr('What to check', 'Qué revisar')}>
             <button aria-pressed={tab === 'text'} onClick={() => switchTab('text')} disabled={deviceBusy} title={held}>
               <TextIcon />
-              Who wrote this?
+              {tr('Check a post', 'Revisar un post')}
             </button>
             <button
               aria-pressed={tab === 'photo'}
@@ -193,28 +202,49 @@ export default function App() {
               onFocus={() => void loadPhotoLab()}
             >
               <PinIcon />
-              Where was it taken?
+              {tr('Check a photo', 'Revisar una foto')}
             </button>
           </nav>
           <div className="topbar-end">
             {/* "Recorded run" left two testers asking whether the AI was real (22-nov). */}
             <span
               className={`mode-badge ${live ? 'live' : 'demo'}`}
-              title={live ? 'Live: Gemini Nano on this device, Gemini in the cloud' : 'A real run in Chrome, replayed: the AI answers were recorded on 15–16 November; everything else runs live in this tab'}
+              title={
+                live
+                  ? tr('Live: Gemini Nano on this device, Gemini in the cloud', 'En vivo: Gemini Nano en este dispositivo, Gemini en la nube')
+                  : tr(
+                      'A real run in Chrome, replayed: the AI answers were recorded on 15–16 November; everything else runs live in this tab',
+                      'Una revisión real en Chrome, repetida: las respuestas de la IA se grabaron el 15 y el 16 de noviembre; todo lo demás funciona en vivo en esta pestaña',
+                    )
+              }
             >
               <i className="dot" aria-hidden="true" />
-              {live ? 'Live' : 'Demo: a real run, replayed'}
+              {live ? tr('Live', 'En vivo') : tr('Demo: a real run, replayed', 'Demo: una revisión real, repetida')}
             </span>
+            {/* Before anything is sent it says so in words, not "Sent to the cloud 0 B" (22-nov). */}
             <button
               ref={receiptButton}
               className={`receipt-button ${status}`}
               onClick={() => sheet.current?.showModal()}
               aria-haspopup="dialog"
-              aria-label={`Receipt: ${shortBytes(sentOut)} sent to the cloud, ${statusText}`}
+              aria-label={
+                sentOut === 0
+                  ? tr(`Receipt: nothing sent to the cloud yet, ${statusText}`, `Recibo: aún no se ha enviado nada a la nube, ${statusText}`)
+                  : tr(`Receipt: ${shortBytes(sentOut)} sent to the cloud, ${statusText}`, `Recibo: ${shortBytes(sentOut)} enviados a la nube, ${statusText}`)
+              }
             >
               <i className="dot" aria-hidden="true" />
-              <span className="receipt-word">Sent to the cloud</span>
-              <span className="receipt-num">{shortBytes(sentOut)}</span>
+              {sentOut === 0 ? (
+                <>
+                  <span className="receipt-word">{tr('Nothing sent yet', 'Aún no se ha enviado nada')}</span>
+                  <span className="receipt-short">{tr('Nothing sent', 'Nada enviado')}</span>
+                </>
+              ) : (
+                <>
+                  <span className="receipt-word">{tr('Sent to the cloud', 'Enviado a la nube')}</span>
+                  <span className="receipt-num">{shortBytes(sentOut)}</span>
+                </>
+              )}
             </button>
             <Menu
               live={live}
@@ -238,15 +268,21 @@ export default function App() {
           // What still runs and what does not: "will not analyse" next to a scan button confused two testers (16-nov).
           <p className="notice mode-note">
             <span>
-              <strong>No on-device AI here.</strong>{' '}
+              <strong>{tr('No on-device AI here.', 'Sin IA en este dispositivo.')}</strong>{' '}
               {tab === 'text'
-                ? 'Throwaway checks your habits, counts, dates and capitalised names with fixed rules; you rewrite the style.'
-                : 'Throwaway cannot look for clues in your photo: you tap the cells to hide.'}{' '}
-              Nothing goes to the cloud unless you choose to test it.
+                ? tr(
+                    'Throwaway checks your habits, counts, dates and capitalised names with fixed rules; you rewrite the style.',
+                    'Throwaway revisa con reglas fijas tus hábitos, cifras, fechas y nombres con mayúscula; el estilo lo reescribes tú.',
+                  )
+                : tr(
+                    'Throwaway cannot look for clues in your photo: you tap the cells to hide.',
+                    'Throwaway no puede buscar pistas en tu foto: tú tocas las casillas que quieras difuminar.',
+                  )}{' '}
+              {tr('Nothing goes to the cloud unless you choose to test it.', 'No se envía nada a la nube salvo que decidas probarlo.')}
               {live && !simulateNoNano && (
                 <>
                   {' '}
-                  <a href="?demo">Replay a run recorded with Gemini Nano</a>.
+                  <a href="?demo">{tr('Replay a run recorded with Gemini Nano', 'Ver una revisión grabada con Gemini Nano')}</a>.
                 </>
               )}
             </span>
@@ -258,7 +294,7 @@ export default function App() {
           <Suspense
             fallback={
               <p className="lab-loading">
-                <span className="spinner" aria-hidden="true" /> Opening the photo lab…
+                <span className="spinner" aria-hidden="true" /> {tr('Opening the photo check…', 'Abriendo la revisión de fotos…')}
               </p>
             }
           >
@@ -266,11 +302,11 @@ export default function App() {
           </Suspense>
         )}
 
-        <div className="actions" role="region" aria-label="Next step">
+        <div className="actions" role="region" aria-label={tr('Next step', 'Siguiente paso')}>
           <div className="dock-host" ref={mountDock} />
           <button className="ghost restart" onClick={reset} disabled={deviceBusy} title={held}>
             <RestartIcon />
-            <span className="restart-label">Start over</span>
+            <span className="restart-label">{tr('Start over', 'Empezar de nuevo')}</span>
           </button>
         </div>
       </main>
@@ -285,10 +321,10 @@ export default function App() {
         <div className="sheet-body">
           <header className="sheet-head">
             <div>
-              <h2 id="ledger-title">What left your device</h2>
+              <h2 id="ledger-title">{tr('What left your device', 'Qué ha salido de tu dispositivo')}</h2>
               <span className={`chip ${status}`}>{statusText}</span>
             </div>
-            <button className="icon-button" onClick={() => sheet.current?.close()} aria-label="Close the receipt">
+            <button className="icon-button" onClick={() => sheet.current?.close()} aria-label={tr('Close the receipt', 'Cerrar el recibo')}>
               <CloseIcon />
             </button>
           </header>
@@ -296,47 +332,72 @@ export default function App() {
           {/* "· recorded" on every model step read as a fake to a judge, without a word on what is replayed (17-nov). */}
           {!live && (
             <p className="hint">
-              Recorded run: Gemini’s answers are replayed from real runs in Chrome (15–16 November), so nothing leaves this tab; the bytes below are what the
-              real run sent. The fingerprint, the fixed rules, the privacy guard, the shuffled lineups and this receipt run live, in this tab.
+              {tr(
+                'Recorded run: Gemini’s answers are replayed from real runs in Chrome (15–16 November), so nothing leaves this tab; the bytes below are what the real run sent. The fingerprint, the fixed rules, the privacy guard, the shuffled lineups and this receipt run live, in this tab.',
+                'Revisión grabada: las respuestas de Gemini vienen de revisiones reales en Chrome (15 y 16 de noviembre) y se reproducen aquí, así que nada sale de esta pestaña; los bytes de abajo son los que envió la revisión real. La huella de escritura, las reglas fijas, la protección de privacidad, el orden al azar de las personas y este recibo funcionan en vivo, en esta pestaña.',
+              )}
             </p>
           )}
           {entries.length === 0 ? (
             <div className="ledger-empty">
               <img src="/brand/mascara-112.webp" width="48" height="48" alt="" loading="lazy" />
-              <p>Nothing has run yet. Every step will show up here: where it ran, how long it took and how many bytes left your device.</p>
+              <p>
+                {tr(
+                  'Nothing has run yet. Every step will show up here: where it ran, how long it took and how many bytes left your device.',
+                  'Aún no se ha hecho nada. Cada paso aparecerá aquí: dónde se hizo, cuánto tardó y cuántos bytes salieron de tu dispositivo.',
+                )}
+              </p>
             </div>
           ) : (
             <LedgerTable entries={entries} />
           )}
           {/* A replay sends nothing: "sent" next to "nothing is sent" read as a contradiction to a judge (22-nov). */}
           <p className="total">
-            {live ? 'Sent to the cloud' : 'In the real run this replays, sent to the cloud'}: {fmt(sentOut)} bytes,{' '}
+            {live ? tr('Sent to the cloud', 'Enviado a la nube') : tr('In the real run this replays, sent to the cloud', 'En la revisión real que se reproduce aquí, enviado a la nube')}:{' '}
+            {fmt(sentOut)} bytes,{' '}
             {sentAsIs
-              ? `${fmt(asIsBytes)} for the as-is test of your original that you chose${releasedBytes > 0 ? ` and ${fmt(releasedBytes)} for the version you released` : ''}.${
-                  tab === 'text' ? ' Each attack also sends the public texts of the other writers.' : ''
-                } Without that choice, private originals cannot reach a cloud model: the types forbid it and a run-time guard blocks it.`
-              : 'only what you released for publication, plus public data. Private originals cannot reach a cloud model: the types forbid it and a run-time guard blocks it.'}
+              ? tr(
+                  `${fmt(asIsBytes)} for the as-is test of your original that you chose${releasedBytes > 0 ? ` and ${fmt(releasedBytes)} for the version you released` : ''}.${
+                    tab === 'text' ? ' Each attack also sends the public texts of the other writers.' : ''
+                  } Without that choice, private originals cannot reach a cloud model: the types forbid it and a run-time guard blocks it.`,
+                  `${fmt(asIsBytes)} para probar tu original tal cual, por decisión tuya${releasedBytes > 0 ? `, y ${fmt(releasedBytes)} para la versión que publicarías` : ''}.${
+                    tab === 'text' ? ' Cada prueba envía también los textos públicos de las otras personas.' : ''
+                  } Sin esa decisión, los originales privados no pueden llegar a un modelo en la nube: los tipos del código lo prohíben y una protección lo bloquea al ejecutarse.`,
+                )
+              : tr(
+                  'only what you released for publication, plus public data. Private originals cannot reach a cloud model: the types forbid it and a run-time guard blocks it.',
+                  'solo la versión que publicarías, más datos públicos. Los originales privados no pueden llegar a un modelo en la nube: los tipos del código lo prohíben y una protección lo bloquea al ejecutarse.',
+                )}
           </p>
           {/* What happens to it there, in Google's own terms for the free plan (22-nov): the reason the original is never sent. */}
           {live && (
             <p className="hint">
-              Tests run on Gemini’s free plan: Google may use what is sent to improve its products, and people may review it. That is why only the version you
-              would post is sent, never your original.
+              {tr(
+                'Tests run on Gemini’s free plan: Google may use what is sent to improve its products, and people may review it. That is why only the version you would post is sent, never your original.',
+                'Las pruebas usan el plan gratuito de Gemini: Google puede usar lo que se envía para mejorar sus productos, y una persona puede revisarlo. Por eso solo se envía la versión que publicarías, nunca tu original.',
+              )}
             </p>
           )}
           {/* A proof for developers and judges, not a step for someone checking a post (review, 16-nov). */}
           <details className="disclosure devtools">
-            <summary>For developers: try to break it</summary>
+            <summary>{tr('For developers: try to break it', 'Para desarrolladores: intenta romperlo')}</summary>
             <div className="disclosure-body">
               <p id="leak-help" className="hint">
-                Simulates a developer mistake: the private original pushed into a cloud call. The framework refuses it, and the attempt shows up in this
-                receipt.
+                {tr(
+                  'Simulates a developer mistake: the private original pushed into a cloud call. The framework refuses it, and the attempt shows up in this receipt.',
+                  'Simula un error de programación: el original privado metido en una llamada a la nube. Throwaway lo rechaza, y el intento aparece en este recibo.',
+                )}
               </p>
-              <button className="mini" onClick={async () => setLeakMsg(leakFn.current ? await leakFn.current() : 'Nothing to leak yet.')} aria-describedby="leak-help">
-                Try to leak the original
+              <button
+                className="mini"
+                onClick={async () => setLeakMsg(leakFn.current ? await leakFn.current() : tr('Nothing to leak yet.', 'Aún no hay nada que filtrar.'))}
+                aria-describedby="leak-help"
+              >
+                {tr('Try to leak the original', 'Intentar filtrar el original')}
               </button>
+              {/* The labs' blocked message starts with "Blocked", or with "Bloqueado" in Spanish. */}
               {leakMsg && (
-                <p className={`leak ${leakMsg.startsWith('Blocked') ? 'good' : 'bad'}`} role="status">
+                <p className={`leak ${/^(Blocked|Bloqueado)/.test(leakMsg) ? 'good' : 'bad'}`} role="status">
                   {leakMsg}
                 </p>
               )}
@@ -385,24 +446,29 @@ function Menu({
       document.removeEventListener('keydown', escape);
     };
   }, []);
+  // The other language. A link styled like the items around it (a button would take the page's navy button style): a
+  // click switches with setLang, which remembers the choice and reloads the page as it is; a new tab gets it from the address.
+  const other = lang === 'es' ? 'en' : 'es';
+  const otherHref = new URL(location.href);
+  otherHref.searchParams.set('lang', other);
   return (
     <details className="menu" ref={menu}>
-      <summary aria-label="Settings and help">
+      <summary aria-label={tr('Settings and help', 'Ajustes y ayuda')}>
         <DotsIcon />
       </summary>
       <div className="menu-panel">
         <p className={`menu-status ${live ? 'live' : 'demo'}`}>
           <i className="dot" aria-hidden="true" />
-          {live ? 'Live · Firebase AI Logic' : 'Recorded run: replayed answers'}
+          {live ? tr('Live · Firebase AI Logic', 'En vivo · Firebase AI Logic') : tr('Recorded run: replayed answers', 'Revisión grabada: respuestas reproducidas')}
         </p>
         {live ? (
           <a className="menu-item" href="?demo">
-            Replay a recorded run
+            {tr('Replay a recorded run', 'Ver una revisión grabada')}
           </a>
         ) : (
           isConfigured() && (
             <a className="menu-item" href={location.pathname}>
-              Go live
+              {tr('Go live', 'Usar en vivo')}
             </a>
           )
         )}
@@ -414,11 +480,24 @@ function Menu({
         <label className="switch menu-item">
           <input type="checkbox" role="switch" checked={simulateNoNano} disabled={deviceBusy} title={held} onChange={(e) => onSimulate(e.target.checked)} />
           <span className="switch-track" aria-hidden="true" />
-          Try it without Gemini Nano
+          {tr('Try it without Gemini Nano', 'Probar sin Gemini Nano')}
         </label>
         <div className="menu-sep" />
-        <a className="menu-item" href="/#how">
-          How it works
+        <a className="menu-item" href={lang === 'es' ? '/es/#how' : '/#how'}>
+          {tr('How it works', 'Cómo funciona')}
+        </a>
+        <a
+          className="menu-item"
+          href={otherHref.toString()}
+          hrefLang={other}
+          lang={other}
+          onClick={(e) => {
+            if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return; // a new tab or window: the address says it
+            e.preventDefault();
+            setLang(other);
+          }}
+        >
+          {other === 'es' ? 'Español' : 'English'}
         </a>
       </div>
     </details>

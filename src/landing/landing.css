@@ -61,8 +61,10 @@ main { overflow-x: clip; }
 .btn.secondary:hover { background: #fff; }
 .btn { white-space: nowrap; }
 /* the demo: works in any browser, so it is a real button too, quieter than the two checks */
-.btn.demo { border-color: rgba(78, 94, 128, 0.5); background: rgba(255, 250, 242, 0.55); color: var(--navy-ink); }
-.btn.demo:hover { border-color: var(--navy); background: #fff; }
+/* The recorded demo reads as a link beside the two buttons: three equal buttons left testers unsure which was theirs (22-nov).
+   Without Gemini Nano it becomes the main button (landing.ts swaps "demo" for "primary"). */
+.btn.demo { padding-left: 8px; padding-right: 8px; border-color: transparent; background: transparent; color: var(--navy-2); text-decoration: underline; text-decoration-thickness: 1.5px; text-underline-offset: 4px; }
+.btn.demo:hover { border-color: transparent; background: transparent; color: var(--navy-ink); }
 .play { width: 18px; height: 18px; margin-left: -4px; fill: var(--red); }
 .btn.primary .play { fill: #fff; }
 .btn.small { min-height: 40px; padding: 0 18px; background: var(--navy); color: #fff; font-size: 14.5px; box-shadow: 3px 3px 0 var(--peach-3); }
@@ -269,7 +271,13 @@ mark.detail { background-image: linear-gradient(transparent 10%, var(--peach-1) 
 .pcard p { margin-top: 8px; font-size: 16px; }
 /* four ways to check the promises without trusting them */
 .verify { margin-top: 36px; padding: 24px 28px 26px; border: 2px dashed rgba(78, 94, 128, 0.45); border-radius: 22px; background: rgba(255, 255, 255, 0.55); }
-.verify h3 { font: 600 24px/1.15 var(--serif); letter-spacing: -0.015em; }
+.verify h3 { display: inline; font: 600 24px/1.15 var(--serif); letter-spacing: -0.015em; }
+/* Folded: for the sceptical developer and the jury; two non-technical testers found "network" and "developer tools" scary (22-nov). */
+.verify > summary { position: relative; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px; padding-right: 44px; cursor: pointer; list-style: none; }
+.verify > summary::-webkit-details-marker { display: none; }
+.verify > summary::after { content: '+'; position: absolute; right: 0; top: 50%; display: grid; place-items: center; width: 28px; height: 28px; translate: 0 -50%; border-radius: 50%; background: var(--peach-1); color: var(--navy-ink); font: 600 20px/1 var(--ui); transition: rotate 0.3s var(--ease); }
+.verify[open] > summary::after { rotate: 45deg; }
+.verify-hint { color: var(--muted); font-size: 15px; }
 .verify ol { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 32px; margin: 16px 0 0; padding: 0; list-style: none; counter-reset: verify; }
 .verify li { position: relative; padding-left: 38px; font-size: 16px; }
 .verify li::before { counter-increment: verify; content: counter(verify); position: absolute; left: 0; top: 0; display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: var(--navy); color: #fff; font: 600 14px/1 var(--ui); }

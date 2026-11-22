@@ -31,6 +31,7 @@ To fingerprint you rather than the demo writer, paste writing you have already p
 
 - **Live:** [throwaway-hybrid.web.app/app/](https://throwaway-hybrid.web.app/app/). The home page, [throwaway-hybrid.web.app](https://throwaway-hybrid.web.app), explains it in two minutes. Use Chrome 139+ on a desktop with Gemini Nano (Chrome's Prompt API; about 22 GB of free disk, and a GPU with more than 4 GB of VRAM or 16 GB of RAM). If Nano is not available, enable `chrome://flags/#prompt-api-for-gemini-nano-multimodal-input` and restart Chrome. Without a local model, Throwaway does not hand the private steps to the cloud: it switches to a degraded mode where you edit and it attacks.
 - **Recorded run:** [throwaway-hybrid.web.app/app/?demo](https://throwaway-hybrid.web.app/app/?demo) replays a real run recorded in Chrome, through the same framework. It works in any browser.
+- **Languages:** the landing page and the app speak English and Spanish (`/es/`, `?lang=es`, or the app's ⋯ menu). The checks themselves are tuned for posts in English, and the app says so when a post is not.
 
 ### Real or recorded?
 

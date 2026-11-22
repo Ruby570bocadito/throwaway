@@ -42,7 +42,7 @@
           <a href="#faq">Preguntas</a>
         </nav>
         <a class="lang" href="/" hreflang="en" lang="en" data-lang="en" aria-label="EN · English"><span class="lang-long">English</span><span class="lang-short">EN</span></a>
-        <a class="btn small" href="/app/">Abrir la app</a>
+        <a class="btn small" href="/app/?lang=es">Abrir la app</a>
       </div>
     </header>
 
@@ -60,9 +60,9 @@
               dispositivo y luego deja que una IA intente encontrarte.
             </p>
             <div class="ctas">
-              <a class="btn primary" href="/app/" data-cta="live">Revisar un post</a>
-              <a class="btn secondary" href="/app/?photo" data-cta="live">Revisar una foto</a>
-              <a class="btn demo" href="/app/?demo" data-cta="demo"><svg class="play" viewBox="0 0 20 20" aria-hidden="true"><path d="M6 4.5v11l9-5.5z" /></svg>Ver una revisión real</a>
+              <a class="btn primary" href="/app/?lang=es" data-cta="live">Revisar un post</a>
+              <a class="btn secondary" href="/app/?photo&amp;lang=es" data-cta="live">Revisar una foto</a>
+              <a class="btn demo" href="/app/?demo&amp;lang=es" data-cta="demo"><svg class="play" viewBox="0 0 20 20" aria-hidden="true"><path d="M6 4.5v11l9-5.5z" /></svg>Ver una revisión real</a>
             </div>
             <p class="promise">
               <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4.5" y="10.5" width="15" height="10" rx="2.5" /><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5" /></svg>
@@ -70,7 +70,7 @@
             </p>
             <p class="fine" data-nano>
               Gratis y sin cuenta. La revisión completa necesita Chrome en un ordenador, con Gemini Nano, una IA pequeña de Google que funciona dentro del
-              propio ordenador. En el móvil: mira una revisión real, revisa un post con reglas fijas o elige qué difuminar en una foto. La app, de momento, está en inglés.
+              propio ordenador. En el móvil: mira una revisión real, revisa un post con reglas fijas o elige qué difuminar en una foto.
             </p>
           </div>
 
@@ -128,8 +128,8 @@
             <article class="scene-card reveal">
               <img src="/illus/review-800.webp" srcset="/illus/review-640.webp 640w, /illus/review-800.webp 800w, /illus/review-1400.webp 1400w" sizes="(max-width: 980px) 92vw, 380px" width="800" height="533" loading="lazy" alt="Un oficinista cansado escribe en la mesa de la cocina. La mascota de papel señala unas líneas marcadas en la pantalla del portátil." />
               <div class="scene-copy">
-                <h3>Reseñas anónimas</h3>
-                <p>Tu jefe sabe cómo escribes. Las palabras que siempre usas y los detalles que solo conoce tu equipo pueden firmar la reseña por ti.</p>
+                <h3>Posts sobre tu trabajo o tu barrio</h3>
+                <p>Tu jefe, tu hospital o tu ayuntamiento saben cómo escribes. Las palabras que siempre usas y los detalles que solo conocen los tuyos pueden firmar el post por ti.</p>
               </div>
             </article>
             <article class="scene-card reveal">
@@ -181,7 +181,7 @@
             <p class="kicker reveal">Resultados reales</p>
             <h2 class="reveal">Dejamos que una IA intentara encontrarnos</h2>
             <p class="sub reveal">
-              Dos revisiones reales, antes y después del arreglo. La IA atacante era Gemini Flash-Lite, en la nube: diez intentos con el post (16 de noviembre
+              Dos revisiones reales, antes y después del arreglo. La IA que intentó encontrar a la autora fue Gemini Flash-Lite, en la nube: diez intentos con el post (16 de noviembre
               de 2026) y una adivinanza con la selfi (22 de noviembre de 2026).
             </p>
           </header>
@@ -207,7 +207,7 @@
                 </div>
                 <div class="v good">
                   <dt>Difuminada en tu dispositivo</dt>
-                  <dd>Ya no queda calle que leer. Solo pudo adivinar la ciudad por el aspecto del casco antiguo: <strong>Palma</strong>, una ciudad entera, no tu portal.</dd>
+                  <dd>Ya no queda calle que leer. Solo pudo adivinar la ciudad por el aspecto del casco antiguo: <strong>Palma</strong>. Hasta ahí llega el difuminado: si tu ciudad también es un secreto, recorta la foto o elige otra.</dd>
                 </div>
               </dl>
             </article>
@@ -291,15 +291,15 @@
               <p>Sin cuenta, sin base de datos, sin analítica y sin cookies nuestras. Cierra la pestaña y tu borrador desaparece.</p>
             </article>
           </div>
-          <div class="verify reveal">
-            <h3>No te fíes de nuestra palabra</h3>
+          <details class="verify reveal">
+            <summary><h3>No te fíes de nuestra palabra</h3> <span class="verify-hint">Cuatro formas de comprobarlo tú</span></summary>
             <ol>
               <li><strong>Lee el código.</strong> Es abierto, en <a href="https://github.com/Ruby570bocadito/throwaway-Firebase-Hackaton">GitHub</a>.</li>
               <li><strong>Cuenta los bytes.</strong> En la app, el contador de arriba abre un recibo de cada paso y cada byte.</li>
-              <li><strong>Intenta filtrarlo.</strong> Ese recibo tiene un botón que mete tu original en una llamada a la nube. La protección lo bloquea.</li>
+              <li><strong>Intenta filtrarlo.</strong> Ese recibo tiene un botón de prueba que intenta sacar tu original. La protección lo impide.</li>
               <li><strong>Mira la red.</strong> En las herramientas de desarrollo del navegador, tu post o tu foto no aparecen en ninguna petición hasta que pruebas, y entonces solo la versión que publicarías.</li>
             </ol>
-          </div>
+          </details>
           <p class="legal reveal">
             Por qué aparece Google reCAPTCHA: al abrir la app en vivo, comprueba que las peticiones vienen de esta app y no de un bot, con cookies propias de Google.
             Nunca ve tu post ni tu foto. Este sitio está protegido por reCAPTCHA y se aplican la <a href="https://policies.google.com/privacy?hl=es">Política de Privacidad</a>
@@ -342,7 +342,7 @@
             </details>
             <details>
               <summary>¿Me difuminará la cara?</summary>
-              <p>Solo si lo pides. Difumina las pistas a tu alrededor y deja tu cara como está: la idea es publicar tu foto, sin tu dirección. Marca “Blur faces too” y también se difuminan todas las caras que encuentre.</p>
+              <p>Solo si lo pides. Difumina las pistas a tu alrededor y deja tu cara como está: la idea es publicar tu foto, sin tu dirección. Marca “Difuminar también las caras” y se difuminan todas las caras que encuentre.</p>
             </details>
             <details>
               <summary>¿Qué sale exactamente de mi dispositivo?</summary>
@@ -360,15 +360,15 @@
               <summary>¿Qué es Gemini Nano? ¿Se descarga algo?</summary>
               <p>Un modelo de IA pequeño de Google, que viene dentro de Chrome. Funciona en tu ordenador, así que tu borrador no tiene que ir a ninguna parte para revisarlo o arreglarlo. Chrome lo descarga una vez, cuando empiezas tu primera revisión. Pide 22 GB libres en el disco, aunque el modelo ocupa mucho menos, y lo borra solo si quedan menos de 10 GB libres.</p>
             </details>
-            <details>
+            <details open>
               <summary>¿Funciona en el móvil?</summary>
               <p>La demo sí, y también revisar un post con reglas fijas y elegir qué difuminar en una foto. La revisión completa necesita Gemini Nano, que hoy funciona en Chrome en ordenadores.</p>
             </details>
             <details>
               <summary>¿La app está en español?</summary>
-              <p>Todavía no: la app está en inglés. Los pasos son los mismos que aquí: encontrar (Find), probar (Test) y arreglar (Fix o Blur).</p>
+              <p>Sí: la app está en español y en inglés, y cambia de idioma en su menú (⋯). Eso sí, lo que revisa funciona mejor con posts en inglés: en otros idiomas se le escapan cifras, fechas y hábitos, y la reescritura sale en inglés.</p>
             </details>
-            <details>
+            <details open>
               <summary>¿Puede prometer que nadie me encontrará?</summary>
               <p>No. Reduce las probabilidades frente a una IA que lea tu post hoy. Los posts cortos son difíciles de juzgar, difuminar protege menos que recortar, y la reescritura suena más neutra que tú. Lee el resultado antes de publicarlo.</p>
             </details>
@@ -382,9 +382,9 @@
             <img class="final-mascot" src="/mascot/wave-256.webp" width="256" height="246" loading="lazy" alt="" />
             <h2>Revisa el tuyo antes de publicarlo.</h2>
             <div class="ctas">
-              <a class="btn primary" href="/app/" data-cta="live">Revisar un post</a>
-              <a class="btn secondary" href="/app/?photo" data-cta="live">Revisar una foto</a>
-              <a class="btn demo" href="/app/?demo" data-cta="demo"><svg class="play" viewBox="0 0 20 20" aria-hidden="true"><path d="M6 4.5v11l9-5.5z" /></svg>Ver una revisión real</a>
+              <a class="btn primary" href="/app/?lang=es" data-cta="live">Revisar un post</a>
+              <a class="btn secondary" href="/app/?photo&amp;lang=es" data-cta="live">Revisar una foto</a>
+              <a class="btn demo" href="/app/?demo&amp;lang=es" data-cta="demo"><svg class="play" viewBox="0 0 20 20" aria-hidden="true"><path d="M6 4.5v11l9-5.5z" /></svg>Ver una revisión real</a>
             </div>
           </div>
         </div>
@@ -401,13 +401,13 @@
           <p class="foot-tag">Escríbelo. Revísalo. Tira el borrador.</p>
         </div>
         <nav class="foot-links" aria-label="Pie de página">
-          <a href="/app/">Abrir la app</a>
-          <a href="/app/?demo">Demo</a>
+          <a href="/app/?lang=es">Abrir la app</a>
+          <a href="/app/?demo&amp;lang=es">Demo</a>
           <a href="#privacy">Privacidad</a>
           <a href="/" hreflang="en" lang="en" data-lang="en">English</a>
           <a href="https://github.com/Ruby570bocadito/throwaway-Firebase-Hackaton">Para desarrolladores: el código en GitHub</a>
         </nav>
-        <p class="foot-fine">Hecho para #BuildHybridAI 2026 con Firebase AI Logic, Gemini Nano y Gemini · Apache-2.0 · Sin cookies nuestras</p>
+        <p class="foot-fine">Código abierto (Apache-2.0) · Con Firebase AI Logic, Gemini Nano y Gemini</p>
       </div>
     </footer>
 

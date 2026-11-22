@@ -1,3 +1,4 @@
+import { tr } from '../i18n';
 import { formatSeconds, useElapsed } from './motion';
 
 export interface StepDef {
@@ -29,7 +30,7 @@ export function Stepper({
   const elapsed = useElapsed(busySince);
   const over = current >= steps.length;
   return (
-    <ol className={`stepper ${over ? 'over' : ''}`} aria-label="Progress">
+    <ol className={`stepper ${over ? 'over' : ''}`} aria-label={tr('Progress', 'Progreso')}>
       {steps.map((s, i) => {
         const state = skipped.includes(i) ? 'skip' : i < current ? 'done' : i === current ? (busySince !== null ? 'busy' : 'now') : 'todo';
         const end = over && i === steps.length - 1 && outcome ? outcome : '';
@@ -41,14 +42,26 @@ export function Stepper({
             <span className="st-text">
               <span className="st-label">
                 {s.label}
-                {round > 1 && i >= 1 && i === current && <span className="st-round"> · round {round}</span>}
+                {round > 1 && i >= 1 && i === current && <span className="st-round">{tr(` · round ${round}`, ` · ronda ${round}`)}</span>}
               </span>
               <span className="st-where">
-                {state === 'busy' ? `running · ${formatSeconds(elapsed)}` : state === 'skip' ? 'not needed' : s.where}
+                {state === 'busy'
+                  ? tr(`running · ${formatSeconds(elapsed)}`, `en curso · ${formatSeconds(elapsed)}`)
+                  : state === 'skip'
+                    ? tr('not needed', 'no hace falta')
+                    : s.where}
               </span>
             </span>
             <span className="sr-only">
-              {state === 'done' ? ', done' : state === 'busy' ? ', running' : state === 'now' ? ', next' : state === 'skip' ? ', not needed' : ''}
+              {state === 'done'
+                ? tr(', done', ', hecho')
+                : state === 'busy'
+                  ? tr(', running', ', en curso')
+                  : state === 'now'
+                    ? tr(', next', ', siguiente')
+                    : state === 'skip'
+                      ? tr(', not needed', ', no hace falta')
+                      : ''}
             </span>
           </li>
         );

@@ -132,22 +132,22 @@ async function adaptToThisBrowser() {
   const note = document.querySelector<HTMLElement>('[data-nano]');
   if (!note) return;
   // Three testers read "your first check starts the download" as a hidden download (22-nov): say what, when and how big.
-  const appInEnglish = ' La app, de momento, está en inglés.';
+  // The app speaks Spanish too since 22-nov: the note no longer says it is in English.
   note.textContent =
     status === 'available'
       ? tr(
           'Free, no account. Gemini Nano, the small Google AI that runs on your computer, is ready in this Chrome: the full check works here.',
-          'Gratis y sin cuenta. Gemini Nano, la IA pequeña de Google que funciona en tu ordenador, ya está lista en este Chrome: la revisión completa funciona aquí.' + appInEnglish,
+          'Gratis y sin cuenta. Gemini Nano, la IA pequeña de Google que funciona en tu ordenador, ya está lista en este Chrome: la revisión completa funciona aquí.',
         )
       : status === 'downloadable'
         ? tr(
-            'Free, no account. This Chrome can add Gemini Nano, a small Google AI that runs on your computer. Chrome downloads it once, when you start your first check, and needs about 22 GB of free disk.',
-            'Gratis y sin cuenta. Este Chrome puede añadir Gemini Nano, una IA pequeña de Google que funciona en tu ordenador. Chrome la descarga una vez, cuando empiezas tu primera revisión, y necesita unos 22 GB libres en el disco.' + appInEnglish,
+            'Free, no account. This Chrome can add Gemini Nano, a small Google AI that runs on your computer. Chrome downloads it once, when you start your first check; it asks for 22 GB of free disk, though the model itself is much smaller.',
+            'Gratis y sin cuenta. Este Chrome puede añadir Gemini Nano, una IA pequeña de Google que funciona en tu ordenador. Chrome la descarga una vez, cuando empiezas tu primera revisión; pide 22 GB libres en el disco, aunque el modelo ocupa mucho menos.',
           )
         : tr(
             // The photo was missing here, so a phone-only tester did not know what she could do with one (22-nov).
             'Free, no account. This browser has no Gemini Nano: watch a real check, check a post with fixed rules, or pick what to blur in a photo. The full check needs Chrome on a computer.',
-            'Gratis y sin cuenta. Este navegador no tiene Gemini Nano: mira una revisión real, revisa un post con reglas fijas o elige qué difuminar en una foto. La revisión completa necesita Chrome en un ordenador.' + appInEnglish,
+            'Gratis y sin cuenta. Este navegador no tiene Gemini Nano: mira una revisión real, revisa un post con reglas fijas o elige qué difuminar en una foto. La revisión completa necesita Chrome en un ordenador.',
           );
 }
 

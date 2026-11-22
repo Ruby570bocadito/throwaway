@@ -14,3 +14,13 @@ export const FIELD_LABELS: Record<DecoyPackId, string> = {
   education: 'teaching and education',
   retail: 'retail and hospitality',
 };
+
+/** The same, in Spanish ("Las otras nueve escriben sobre sanidad"): the app speaks Spanish since 22-nov. */
+export const FIELD_LABELS_ES: Record<DecoyPackId, string> = {
+  design: 'diseño y producto',
+  technology: 'software y tecnología',
+  healthcare: 'sanidad',
+  finance: 'finanzas y contabilidad',
+  education: 'docencia y educación',
+  retail: 'comercio y hostelería',
+};

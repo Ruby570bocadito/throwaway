@@ -13,22 +13,44 @@ import { WorkLog, type PlanStep } from '../ui/WorkLog';
 import { useAnimatedNumber, useReducedMotion, withTransition } from '../ui/motion';
 import { useCloudBusy } from '../ui/busy';
 import { Mascot, type Pose } from '../ui/Mascot';
+import { count, lang, num, tr } from '../i18n';
 
 type Stage = 'loading' | 'photo' | 'scanned' | 'attacked' | 'masked' | 'safe';
 // Find → Blur → Test (22-nov): the original is never tested by default, so `attacked` (found by a test) leads back to Blur.
 const STAGE_STEP: Record<Stage, number> = { loading: 0, photo: 0, scanned: 1, attacked: 1, masked: 2, safe: 3 };
 // Gemini Nano is asked twice and the answers merged (threats/location.ts).
 const SCAN_PLAN: PlanStep[] = [
-  { match: /^Find location clues \(scan 1/, label: 'Look for location clues · first pass', route: 'on-device', slow: true },
-  { match: /^Find location clues \(scan 2/, label: 'Look again · second pass', route: 'on-device', slow: true },
+  { match: /^Find location clues \(scan 1/, label: tr('Look for location clues · first pass', 'Buscar pistas del lugar · primera pasada'), route: 'on-device', slow: true },
+  { match: /^Find location clues \(scan 2/, label: tr('Look again · second pass', 'Buscar otra vez · segunda pasada'), route: 'on-device', slow: true },
   // Then each cell said to show something readable is read up close (see readCell in threats/location.ts).
-  { match: /^Read the text in cell/, label: 'Read each clue up close', route: 'on-device', slow: true, optional: true },
+  { match: /^Read the text in cell/, label: tr('Read each clue up close', 'Leer cada pista de cerca'), route: 'on-device', slow: true, optional: true },
 ];
 /** Time between two cells blurring, one after another. */
 const PIX_STAGGER = 170;
 const at = (i: number) => ({ '--i': i }) as CSSProperties;
-const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 const capital = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+// The words the models answer with in English (a clue's kind, the guess's confidence) and the guess that names no place,
+// in Spanish on screen only: the code matches the English ones.
+const KIND_ES = new Map([
+  ['text', 'texto'],
+  ['number', 'número'],
+  ['landmark', 'lugar'],
+  ['vegetation', 'vegetación'],
+  ['sign', 'cartel'],
+  ['plate', 'matrícula'],
+  ['architecture', 'arquitectura'],
+  ['face', 'cara'],
+  ['reflection', 'reflejo'],
+  ['other', 'otro'],
+]);
+const kindLabel = (kind: string) => tr(kind, KIND_ES.get(kind) ?? kind);
+const CONFIDENCE_ES = new Map([
+  ['low', 'baja'],
+  ['medium', 'media'],
+  ['high', 'alta'],
+]);
+const confidenceLabel = (c: string) => tr(c, CONFIDENCE_ES.get(c) ?? c);
+const placeLabel = (place: string) => (place === 'unknown' ? tr('unknown', 'desconocido') : place);
 const reducedMotion = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 // The demo's "real location" is the scene's, not the visitor's: said so on screen (a tester took it for a leak, 16-nov).
 const SCENE_TRUTH = 'Palma (where the demo scene is set)';
@@ -122,33 +144,38 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak, recorded, 
       setSource('own');
       const hashTruth = truthFromHash();
       if (hashTruth) {
-        setTruthLabel('set in the page address (#truth), for testing or recording');
+        setTruthLabel(tr('set in the page address (#truth), for testing or recording', 'indicada en la dirección de la página (#truth), para probar o grabar'));
         setTruthPoint(hashTruth);
         setThreat(locationThreat({ ops: browserImageOps, truth: secret(hashTruth, 'your real location') }));
         kit.ledger.add({ op: 'Read your location from #truth (for local scoring only)', route: 'local-js', ms: 0, bytesOut: 0 });
         return;
       }
       // Without a location the attack is scored on the attacker's claimed precision, until the user shares one.
-      setTruthLabel('not set — tap “Use my location” for a real score');
+      setTruthLabel(tr('not set — tap “Use my location” for a real score', 'sin indicar (toca «Usar mi ubicación» para medir la distancia real)'));
       setTruthPoint(null);
       setThreat(locationThreat({ ops: browserImageOps }));
     } catch (e) {
       // The engine's own messages are already plain sentences for the user ("That file is not an image…").
-      setError((e as Error).name === 'PhotoInputError' ? (e as Error).message : `Could not read that image: ${(e as Error).message}`);
+      setError(
+        (e as Error).name === 'PhotoInputError'
+          ? (e as Error).message
+          : tr(`Could not read that image: ${(e as Error).message}`, `No se ha podido leer esa imagen: ${(e as Error).message}`),
+      );
     }
   }
 
   function useMyLocation() {
-    if (!navigator.geolocation) return setError('This browser cannot share a location.');
+    if (!navigator.geolocation) return setError(tr('This browser cannot share a location.', 'Este navegador no puede compartir una ubicación.'));
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         const here = { lat: pos.coords.latitude, lon: pos.coords.longitude };
-        setTruthLabel(`from this browser, ±${Math.round(pos.coords.accuracy)} m`);
+        const metres = num(Math.round(pos.coords.accuracy));
+        setTruthLabel(tr(`from this browser, ±${metres} m`, `según este navegador, ±${metres} m`));
         setTruthPoint(here);
         setThreat(locationThreat({ ops: browserImageOps, truth: secret(here, 'your real location') }));
         kit.ledger.add({ op: 'Read your location (for local scoring only)', route: 'local-js', ms: 0, bytesOut: 0 });
       },
-      (err) => setError(`Location not available: ${err.message}`),
+      (err) => setError(tr(`Location not available: ${err.message}`, `Ubicación no disponible: ${err.message}`)),
       { enableHighAccuracy: false, timeout: 10000 },
     );
   }
@@ -162,15 +189,19 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak, recorded, 
 
   useEffect(() => {
     registerLeak(async () => {
-      if (!privatePhoto.current || !original) return 'Scan your photo first, so the framework knows what is private.';
+      if (!privatePhoto.current || !original)
+        return tr('Scan your photo first, so the framework knows what is private.', 'Primero revisa tu foto, para que Throwaway sepa qué es privado.');
       try {
         // A careless developer passes the original photo to the cloud model, bypassing release() with a cast.
         await kit.cloud.generate([{ image: { value: original } as unknown as Publishable<Uint8Array>, mime: 'image/png' }], {
           op: 'Leak test: original photo to the cloud',
         });
-        return 'The photo was sent. This should never happen.';
+        return tr('The photo was sent. This should never happen.', 'La foto se ha enviado. Esto no debería pasar nunca.');
       } catch (e) {
-        return e instanceof PrivacyViolation ? 'Blocked by the privacy guard. 0 bytes left the device.' : (e as Error).message;
+        // The shell colours the answer by its first word: "Blocked", or "Bloqueado" in Spanish.
+        return e instanceof PrivacyViolation
+          ? tr('Blocked by the privacy guard. 0 bytes left the device.', 'Bloqueado por la protección de privacidad. Han salido 0 bytes del dispositivo.')
+          : (e as Error).message;
       }
     });
     return () => registerLeak(null);
@@ -220,59 +251,77 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak, recorded, 
   const verdictTitle = !verdict
     ? ''
     : reason === 'readable'
-      ? 'It read your address'
+      ? tr('It read your address', 'Ha leído tu dirección')
       : reason === 'near'
         ? city
-          ? `It knows your city: ~${formatKm(verdict.errorKm!)} off`
-          : `Found you: ~${formatKm(verdict.errorKm!)} away`
+          ? tr(`It knows your city: ~${formatKm(verdict.errorKm!)} off`, `Sabe cuál es tu ciudad: se equivoca por ~${formatKm(verdict.errorKm!)}`)
+          : tr(`Found you: ~${formatKm(verdict.errorKm!)} away`, `Te ha encontrado: a ~${formatKm(verdict.errorKm!)} de ti`)
         : reason === 'precise' && !city
-          ? `It can place you within ~${formatKm(verdict.radiusKm)}`
+          ? tr(`It can place you within ~${formatKm(verdict.radiusKm)}`, `Puede localizarte en un radio de ~${formatKm(verdict.radiusKm)}`)
           : unmeasured
             ? city
-              ? 'It may know your city'
-              : `It says “${verdict.place}”`
+              ? tr('It may know your city', 'Puede que sepa cuál es tu ciudad')
+              : tr(`It says “${verdict.place}”`, `Dice «${verdict.place}»`)
             : verdict.errorKm !== null
-              ? `Off by ~${formatKm(verdict.errorKm)}`
-              : 'It could not place you';
+              ? tr(`Off by ~${formatKm(verdict.errorKm)}`, `Se equivoca por ~${formatKm(verdict.errorKm)}`)
+              : tr('It could not place you', 'No ha podido localizarte');
   const verdictHeadline = !verdict
     ? ''
     : reason === 'readable'
-      ? 'It read an address: anyone can look it up'
+      ? tr('It read an address: anyone can look it up', 'Ha leído una dirección: cualquiera puede buscarla')
       : city
         ? unmeasured
-          ? 'It names a city, and nothing here can check it'
-          : 'It knows your city, not your street'
+          ? tr('It names a city, and nothing here can check it', 'Nombra una ciudad, y aquí no hay forma de comprobarlo')
+          : tr('It knows your city, not your street', 'Sabe cuál es tu ciudad, no tu calle')
         : reason
-          ? 'The AI found you'
+          ? tr('The AI found you', 'La IA te ha encontrado')
           : verdict.errorKm !== null
-            ? 'Wrong place: it guessed far from you'
+            ? tr('Wrong place: it guessed far from you', 'Lugar equivocado: ha apuntado lejos de ti')
             : verdict.lat === null
-              ? 'It could not place you at all'
-              : 'Too unsure to find you';
+              ? tr('It could not place you at all', 'No ha podido localizarte en absoluto')
+              : tr('Too unsure to find you', 'Duda demasiado para encontrarte');
+  const confidence = verdict ? confidenceLabel(verdict.confidence) : '';
   const verdictDetail = !verdict
     ? ''
     : reason === 'readable'
-      ? `Street names, house numbers and plates can be searched by a person even if the AI picked the wrong city${
-          verdict.errorKm !== null ? ` (it was ${formatKm(verdict.errorKm)} off)` : ''
-        }.`
+      ? tr(
+          `Street names, house numbers and plates can be searched by a person even if the AI picked the wrong city${
+            verdict.errorKm !== null ? ` (it was ${formatKm(verdict.errorKm)} off)` : ''
+          }.`,
+          `Una persona puede buscar nombres de calles, números de portal y matrículas aunque la IA se haya equivocado de ciudad${
+            verdict.errorKm !== null ? ` (ha fallado por ${formatKm(verdict.errorKm)})` : ''
+          }.`,
+        )
       : unmeasured
-        ? `Without your real location this device cannot tell how close that is: it claims ±${formatKm(verdict.radiusKm)}, with ${verdict.confidence} confidence. For a real score, start over and tap “Use my location” (it stays on this device).`
+        ? tr(
+            `Without your real location this device cannot tell how close that is: it claims ±${formatKm(verdict.radiusKm)}, with ${confidence} confidence. For a real score, start over and tap “Use my location” (it stays on this device).`,
+            `Sin tu ubicación real, este dispositivo no puede saber cuánto se acerca: dice tener un margen de ±${formatKm(verdict.radiusKm)}, con confianza ${confidence}. Para medirlo de verdad, empieza de nuevo y toca «Usar mi ubicación» (no sale de este dispositivo).`,
+          )
         : city
-          ? `Distance from where you really are, computed on your device. Its confidence: ${verdict.confidence}. If your city is a secret, crop the photo or post another one: blurring cells rarely hides a city.`
+          ? tr(
+              `Distance from where you really are, computed on your device. Its confidence: ${confidence}. If your city is a secret, crop the photo or post another one: blurring cells rarely hides a city.`,
+              `Distancia a tu ubicación real, calculada en tu dispositivo. Su confianza: ${confidence}. Si tu ciudad es un secreto, recorta la foto o publica otra: difuminar casillas pocas veces oculta una ciudad.`,
+            )
           : verdict.errorKm !== null
-          ? `Distance from where you really are, computed on your device. Its confidence: ${verdict.confidence}. Within ${formatKm(1)} it would know your street; within ${formatKm(50)}, your city.`
+          ? tr(
+              `Distance from where you really are, computed on your device. Its confidence: ${confidence}. Within ${formatKm(1)} it would know your street; within ${formatKm(50)}, your city.`,
+              `Distancia a tu ubicación real, calculada en tu dispositivo. Su confianza: ${confidence}. A menos de ${formatKm(1)} sabría tu calle; a menos de ${formatKm(50)}, tu ciudad.`,
+            )
           : verdict.lat === null
-            ? `It gave no place and no coordinates. Its confidence: ${verdict.confidence}.`
-            : `The AI’s own precision claim. Its confidence: ${verdict.confidence}.`;
+            ? tr(`It gave no place and no coordinates. Its confidence: ${confidence}.`, `No ha dado ningún lugar ni coordenadas. Su confianza: ${confidence}.`)
+            : tr(`The AI’s own precision claim. Its confidence: ${confidence}.`, `La precisión que dice tener la propia IA. Su confianza: ${confidence}.`);
   // What the last attack got wrong, said as it happened rather than as a promise ("Looks safe to post" read as a guarantee
   // to both testers, 16-nov).
   const missed = !verdict
     ? ''
     : verdict.errorKm !== null
-      ? `the AI guesses “${verdict.place}”: ${formatKm(verdict.errorKm)} from where it was taken`
+      ? tr(
+          `the AI guesses “${verdict.place}”: ${formatKm(verdict.errorKm)} from where it was taken`,
+          `la IA dice «${verdict.place}»: a ${formatKm(verdict.errorKm)} de donde se hizo`,
+        )
       : verdict.lat === null
-        ? 'the AI cannot place it at all'
-        : `the AI is too unsure to find it (it says “${verdict.place}”)`;
+        ? tr('the AI cannot place it at all', 'la IA no puede situarla en absoluto')
+        : tr(`the AI is too unsure to find it (it says “${verdict.place}”)`, `la IA duda demasiado para encontrarla (dice «${verdict.place}»)`);
 
   async function run(label: string, fn: () => Promise<void>) {
     acted.current = true;
@@ -407,31 +456,31 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak, recorded, 
   const budgetFull = !degraded && !!published && threat.clueShare >= threat.maxShare - 0.005 && !(verdict?.clues ?? []).some((c) => isIdentifier(c));
   const chosen = manual.filter((c) => !threat.masked.includes(c)).sort((x, y) => x - y);
   const maskLabel = !chosen.length
-    ? 'Tap the cells to blur'
+    ? tr('Tap the cells to blur', 'Toca las casillas que quieras difuminar')
     : chosen.length > 6
-      ? `Blur these ${chosen.length} cells`
-      : `Blur cell${chosen.length > 1 ? 's' : ''} ${chosen.join(', ')}`;
+      ? tr(`Blur these ${num(chosen.length)} cells`, `Difuminar estas ${num(chosen.length)} casillas`)
+      : tr(`Blur cell${chosen.length > 1 ? 's' : ''} ${chosen.join(', ')}`, `Difuminar ${chosen.length > 1 ? 'las casillas' : 'la casilla'} ${chosen.join(', ')}`);
   const visibleClues = clues.filter((c) => !threat.masked.includes(c.cell));
   const share = Math.round(threat.maskedShare * 100);
 
   const steps: StepDef[] = [
-    { label: 'Find', where: degraded ? 'no local model' : 'on your device' },
-    { label: 'Blur', where: degraded ? 'you choose cells' : 'on your device' },
-    { label: 'Test', where: 'in the cloud' },
+    { label: tr('Find', 'Buscar'), where: degraded ? tr('no local model', 'sin IA en el dispositivo') : tr('on your device', 'en tu dispositivo') },
+    { label: tr('Blur', 'Difuminar'), where: degraded ? tr('you choose cells', 'tú eliges las casillas') : tr('on your device', 'en tu dispositivo') },
+    { label: tr('Test', 'Probar'), where: tr('in the cloud', 'en la nube') },
   ];
   const working = !degraded && busy === 'scan';
   const attacking = busy === 'attack';
   const busyLabel =
     busy === 'scan'
       ? degraded
-        ? 'Scanning…'
-        : 'Looking at your photo on this device…'
+        ? tr('Scanning…', 'Revisando…')
+        : tr('Looking at your photo on this device…', 'Mirando tu foto en este dispositivo…')
       : attacking
-        ? 'Testing…'
+        ? tr('Testing…', 'Probando…')
         : busy === 'mask'
-          ? 'Blurring on your device…'
+          ? tr('Blurring on your device…', 'Difuminando en tu dispositivo…')
           : busy === 'toggle'
-            ? 'Blurring again…'
+            ? tr('Blurring again…', 'Difuminando de nuevo…')
             : '';
   const busyContent = (
     <>
@@ -444,64 +493,124 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak, recorded, 
   const head: { title: ReactNode; lede: string } =
     stage === 'loading' || stage === 'photo'
       ? {
-          title: (
-            <>
-              Before you post a photo, let an AI try to <span className="marker">place it</span>.
-            </>
-          ),
+          title:
+            lang === 'es' ? (
+              <>
+                Antes de publicar una foto, mira <span className="marker">qué delata el lugar</span>.
+              </>
+            ) : (
+              <>
+                Before you post a photo, see <span className="marker">what gives away the place</span>.
+              </>
+            ),
           lede: recorded
-            ? 'A recorded run: Gemini Nano’s answers on this demo photo were recorded in Chrome, and replay here.'
+            ? tr(
+                'A recorded run: Gemini Nano’s answers on this demo photo were recorded in Chrome, and replay here.',
+                'Una revisión grabada: las respuestas de Gemini Nano sobre esta foto de la demo se grabaron en Chrome y se reproducen aquí.',
+              )
             : degraded
-              ? 'No on-device AI here: you tap the cells to blur, on this device. Only the blurred photo is tested in the cloud, when you choose.'
-              : 'Throwaway finds the clues and blurs them on this device: street names, house numbers, plates, signs. Only the blurred photo is tested in the cloud, when you choose.',
+              ? tr(
+                  'No on-device AI here: you tap the cells to blur, on this device. Only the blurred photo is tested in the cloud, when you choose.',
+                  'Este dispositivo no tiene IA: tocas tú las casillas que difuminar, y se difuminan aquí. Solo la foto difuminada se prueba en la nube, cuando tú decidas.',
+                )
+              : tr(
+                  'Throwaway finds the clues and blurs them on this device: street names, house numbers, plates, signs. Only the blurred photo is tested in the cloud, when you choose.',
+                  'Throwaway encuentra las pistas y las difumina en este dispositivo: nombres de calles, números de portal, matrículas, carteles. Solo la foto difuminada se prueba en la nube, cuando tú decidas.',
+                ),
         }
       : stage === 'scanned'
         ? {
             title: degraded
-              ? 'Tap what could place this photo'
+              ? tr('Tap what could place this photo', 'Toca lo que podría delatar el lugar')
               : visibleClues.length
-                ? `${capital(plural(visibleClues.length, 'clue'))} could place this photo`
-                : 'Nothing obvious places this photo',
+                ? tr(
+                    `${capital(count(visibleClues.length, ['clue', 'clues'], ['pista', 'pistas']))} could place this photo`,
+                    `${capital(count(visibleClues.length, ['clue', 'clues'], ['pista', 'pistas']))} ${visibleClues.length === 1 ? 'podría' : 'podrían'} delatar el lugar`,
+                  )
+                : tr('Nothing obvious places this photo', 'Nada delata el lugar a simple vista'),
             // Your own photo with no location yet: ask now, before the test, or the guess cannot be measured at all.
             lede: !truthPoint
-              ? 'Share your location before the test, so this device can measure how close the guess lands: it never leaves this device.'
+              ? tr(
+                  'Share your location before the test, so this device can measure how close the guess lands: it never leaves this device.',
+                  'Comparte tu ubicación antes de probar, para que este dispositivo pueda medir cuánto se acerca la IA: tu ubicación nunca sale de él.',
+                )
               : degraded
-                ? 'Tap the cells with street names, house numbers, plates or signs. They are blurred on this device, around the faces.'
+                ? tr(
+                    'Tap the cells with street names, house numbers, plates or signs. They are blurred on this device, around the faces.',
+                    'Toca las casillas con nombres de calles, números de portal, matrículas o carteles. Se difuminan en este dispositivo, alrededor de las caras.',
+                  )
                 : nothingToBlur
-                  ? 'Gemini Nano found nothing here that places it. Tap any cell you still want blurred, or test it as you would post it.'
+                  ? tr(
+                      'Gemini Nano found nothing here that places it. Tap any cell you still want blurred, or test it as you would post it.',
+                      'Gemini Nano no ha encontrado nada que delate el lugar. Toca las casillas que aun así quieras difuminar, o pruébala tal como la publicarías.',
+                    )
                   : readHere.length
-                    ? `On this device, Gemini Nano read ${readHere.map((t) => `“${t}”`).join(', ')}${readAddress ? ': that is an address' : ''}. Next, Throwaway blurs the clues here; nothing has left this device.`
-                    : 'Found on this device, and nothing has left it. Next, Throwaway blurs the clues here.',
+                    ? tr(
+                        `On this device, Gemini Nano read ${readHere.map((t) => `“${t}”`).join(', ')}${readAddress ? ': that is an address' : ''}. Next, Throwaway blurs the clues here; nothing has left this device.`,
+                        `En este dispositivo, Gemini Nano ha leído ${readHere.map((t) => `«${t}»`).join(', ')}${readAddress ? ': eso es una dirección' : ''}. Después, Throwaway difumina aquí las pistas; nada ha salido de este dispositivo.`,
+                      )
+                    : tr(
+                        'Found on this device, and nothing has left it. Next, Throwaway blurs the clues here.',
+                        'Se ha buscado en este dispositivo, y nada ha salido de él. Después, Throwaway difumina aquí las pistas.',
+                      ),
           }
         : stage === 'attacked'
           ? {
               title: verdictTitle,
               lede: budgetFull
-                ? 'It can still find you, and blurring more would ruin the photo. Crop it, or post another one.'
+                ? tr(
+                    'It can still find you, and blurring more would ruin the photo. Crop it, or post another one.',
+                    'Aún puede encontrarte, y difuminar más estropearía la foto. Recórtala o publica otra.',
+                  )
                 : degraded
-                  ? 'Tap the cells to blur: the ones it used are selected. They are blurred on this device, around the faces.'
+                  ? tr(
+                      'Tap the cells to blur: the ones it used are selected. They are blurred on this device, around the faces.',
+                      'Toca las casillas que difuminar: las que usó la IA ya están marcadas. Se difuminan en este dispositivo, alrededor de las caras.',
+                    )
                   : published
-                    ? 'Next, Throwaway blurs what the AI used, on this device and around the faces.'
-                    : 'Next, Throwaway blurs the clues on this device: street names, numbers, plates and signs first, never a face, and at most a quarter of the photo.',
+                    ? tr(
+                        'Next, Throwaway blurs what the AI used, on this device and around the faces.',
+                        'Después, Throwaway difumina lo que usó la IA, en este dispositivo y alrededor de las caras.',
+                      )
+                    : tr(
+                        'Next, Throwaway blurs the clues on this device: street names, numbers, plates and signs first, never a face, and at most a quarter of the photo.',
+                        'Después, Throwaway difumina las pistas en este dispositivo: primero nombres de calles, números, matrículas y carteles, nunca una cara, y como mucho una cuarta parte de la foto.',
+                      ),
             }
           : stage === 'masked'
             ? {
-                title: 'Blurred on your device',
-                lede: `${share}% of the photo, around the faces. Tap a cell to blur it or show it again, then test it${history.length ? ' again' : ''}.`,
+                title: tr('Blurred on your device', 'Difuminada en tu dispositivo'),
+                lede: tr(
+                  `${share}% of the photo, around the faces. Tap a cell to blur it or show it again, then test it${history.length ? ' again' : ''}.`,
+                  `El ${num(share)}\u00a0% de la foto, alrededor de las caras. Toca una casilla para difuminarla o volver a mostrarla, y luego ${history.length ? 'vuelve a probarla' : 'pruébala'}.`,
+                ),
               }
             : {
-                title: city && !unmeasured && published ? 'Your street is hidden, your city is not' : verdictTitle,
+                title: city && !unmeasured && published ? tr('Your street is hidden, your city is not', 'Tu calle está oculta, tu ciudad no') : verdictTitle,
                 lede: !city
-                  ? `${capital(published ? 'after blurring, ' : 'as it is, ')}${missed}.`
+                  ? tr(`${capital(published ? 'after blurring, ' : 'as it is, ')}${missed}.`, `${capital(published ? 'tras difuminarla, ' : 'tal como está, ')}${missed}.`)
                   : unmeasured
-                    ? `It says “${verdict?.place}”, and without your location this device cannot check how close that is. Blur the clues anyway, or start over and share your location.`
-                    : `It can still tell your city (“${verdict?.place}”): fine if that is no secret.`,
+                    ? tr(
+                        `It says “${verdict?.place}”, and without your location this device cannot check how close that is. Blur the clues anyway, or start over and share your location.`,
+                        `Dice «${verdict?.place}», y sin tu ubicación este dispositivo no puede comprobar cuánto se acerca. Difumina las pistas de todos modos, o empieza de nuevo y comparte tu ubicación.`,
+                      )
+                    : tr(
+                        `It can still tell your city (“${verdict?.place}”): fine if that is no secret.`,
+                        `Aún puede saber cuál es tu ciudad («${verdict?.place}»): no pasa nada si no es un secreto.`,
+                      ),
               };
 
   const actions = (
     <>
       {working && busySince !== null && (
-        <WorkLog ledger={kit.ledger} since={busySince} plan={SCAN_PLAN} title="Scanning your photo on this device" recorded={recorded} download={download} />
+        <WorkLog
+          ledger={kit.ledger}
+          since={busySince}
+          plan={SCAN_PLAN}
+          title={tr('Scanning your photo on this device', 'Revisando tu foto en este dispositivo')}
+          recorded={recorded}
+          download={download}
+        />
       )}
       {busyNote && (
         <p className="dock-note busy" role="status">
@@ -512,27 +621,41 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak, recorded, 
           free plan allows. */}
       {!busy && stage === 'scanned' && nothingToBlur && chosen.length === 0 && !recorded && (
         <p className="dock-note consent">
-          Testing sends this photo as you would post it to Gemini, on Google’s free plan: Google may use it to improve its products, and people may review it.
+          {tr(
+            'Testing sends this photo as you would post it to Gemini, on Google’s free plan: Google may use it to improve its products, and people may review it.',
+            'Probarla envía a Gemini esta foto tal como la publicarías, en el plan gratuito de Google: Google puede usarla para mejorar sus productos, y una persona puede revisarla.',
+          )}
         </p>
       )}
       {!busy && stage === 'scanned' && canTestOriginal && !recorded && !nothingToBlur && (
         <p className="dock-note consent">
-          Testing the original sends your photo, unchanged, to Gemini in Google’s cloud, as if you had posted it. Blurring it first sends nothing.
+          {tr(
+            'Testing the original sends your photo, unchanged, to Gemini in Google’s cloud, as if you had posted it. Blurring it first sends nothing.',
+            'Probar el original envía tu foto, sin cambios, a Gemini en la nube de Google, como si la hubieras publicado. Difuminarla antes no envía nada.',
+          )}
         </p>
       )}
       {!busy && stage === 'masked' && (
         <p className={`dock-note ${recorded ? '' : 'consent'}`}>
           {recorded
-            ? 'A recorded run: nothing is sent. Live, only the blurred photo goes to Gemini, on Google’s free plan.'
-            : `Sends only the blurred photo, never your original, to Gemini on Google’s free plan: Google may use it to improve its products, and people may review it.${
-                blurFaces ? '' : ' Your face goes too, unless you tick “Blur faces too”.'
-              }`}
+            ? tr(
+                'A recorded run: nothing is sent. Live, only the blurred photo goes to Gemini, on Google’s free plan.',
+                'Una revisión grabada: no se envía nada. En directo, solo la foto difuminada va a Gemini, en el plan gratuito de Google.',
+              )
+            : tr(
+                `Sends only the blurred photo, never your original, to Gemini on Google’s free plan: Google may use it to improve its products, and people may review it.${
+                  blurFaces ? '' : ' Your face goes too, unless you tick “Blur faces too”.'
+                }`,
+                `Envía solo la foto difuminada, nunca tu original, a Gemini en el plan gratuito de Google: Google puede usarla para mejorar sus productos, y una persona puede revisarla.${
+                  blurFaces ? '' : ' Tu cara también va, salvo que marques «Difuminar también las caras».'
+                }`,
+              )}
         </p>
       )}
       <div className="dock-row">
         {stage === 'photo' && (
           <button className="primary" onClick={scan} disabled={!!busy} aria-busy={busy === 'scan'}>
-            {busy ? busyContent : 'Check my photo on this device'}
+            {busy ? busyContent : tr('Check my photo on this device', 'Revisar mi foto en este dispositivo')}
           </button>
         )}
         {/* Blur first, on the device: nothing has to leave it to find out (22-nov). */}
@@ -543,12 +666,12 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak, recorded, 
         )}
         {stage === 'scanned' && nothingToBlur && chosen.length === 0 && (
           <button className="primary" onClick={attackAsIs} disabled={!!busy} aria-busy={attacking}>
-            {busy ? busyContent : 'Test it as I would post it'}
+            {busy ? busyContent : tr('Test it as I would post it', 'Probarla tal como la publicaría')}
           </button>
         )}
         {stage === 'scanned' && !degraded && !nothingToBlur && (
           <button className="primary" onClick={mask} disabled={!!busy} aria-busy={busy === 'mask'}>
-            {busy === 'mask' ? busyContent : 'Blur the clues on this device'}
+            {busy === 'mask' ? busyContent : tr('Blur the clues on this device', 'Difuminar las pistas en este dispositivo')}
           </button>
         )}
         {stage === 'scanned' && canTestOriginal && !nothingToBlur && (
@@ -557,34 +680,44 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak, recorded, 
             onClick={attackAsIs}
             disabled={!!busy}
             aria-busy={attacking}
-            title={recorded ? 'A recorded run: nothing is sent' : undefined}
+            title={recorded ? tr('A recorded run: nothing is sent', 'Una revisión grabada: no se envía nada') : undefined}
           >
-            {attacking ? busyContent : recorded ? 'First, test the original (recorded)' : 'First, test my original'}
+            {attacking
+              ? busyContent
+              : recorded
+                ? tr('First, test the original (recorded)', 'Probar primero el original (grabado)')
+                : tr('First, test my original', 'Probar primero mi original')}
           </button>
         )}
         {stage === 'scanned' && !truthPoint && !busy && (
           <button className="ghost" onClick={useMyLocation}>
-            Use my location first
+            {tr('Use my location first', 'Usar mi ubicación antes')}
           </button>
         )}
         {stage === 'attacked' && !budgetFull && (
           <button className="primary" onClick={mask} disabled={!!busy || (degraded && chosen.length === 0)} aria-busy={busy === 'mask'}>
-            {busy ? busyContent : degraded ? maskLabel : published ? 'Blur what the AI used' : 'Blur the clues on this device'}
+            {busy
+              ? busyContent
+              : degraded
+                ? maskLabel
+                : published
+                  ? tr('Blur what the AI used', 'Difuminar lo que usó la IA')
+                  : tr('Blur the clues on this device', 'Difuminar las pistas en este dispositivo')}
           </button>
         )}
         {stage === 'masked' && published && (
           <button className="primary" onClick={() => attack(published, true)} disabled={!!busy} aria-busy={attacking}>
-            {busy ? busyContent : history.length ? 'Test again' : 'Test it'}
+            {busy ? busyContent : history.length ? tr('Test again', 'Probar de nuevo') : tr('Test it', 'Probarla')}
           </button>
         )}
         {stage === 'safe' && published && publishedUrl && (
           <a className="button-link" href={publishedUrl} download="throwaway-photo.png">
-            Download the blurred photo
+            {tr('Download the blurred photo', 'Descargar la foto difuminada')}
           </a>
         )}
         {stage === 'safe' && city && (
           <button className="ghost" onClick={() => setStage('attacked')} disabled={!!busy}>
-            {published ? 'Blur more anyway' : 'Blur the clues anyway'}
+            {published ? tr('Blur more anyway', 'Difuminar más de todos modos') : tr('Blur the clues anyway', 'Difuminar las pistas de todos modos')}
           </button>
         )}
       </div>
@@ -597,9 +730,13 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak, recorded, 
   const photo = (
     <section className="post panel photo-panel" aria-labelledby="photo-title">
       <div className="post-head">
-        <h2 id="photo-title">{published ? 'The version you would post' : 'Your photo'}</h2>
+        <h2 id="photo-title">{published ? tr('The version you would post', 'La versión que publicarías') : recorded ? tr('Demo photo', 'Foto de la demo') : tr('Your photo', 'Tu foto')}</h2>
         <span className={`chip ${!published && sentAsIs ? 'asis' : 'private'}`}>
-          {published ? 'released for publication' : sentAsIs ? 'sent as it is to the AI · your choice' : 'private · stays on this device'}
+          {published
+            ? tr('what you would post', 'lo que publicarías')
+            : sentAsIs
+              ? tr('sent as it is to the AI · your choice', 'enviada tal cual a la IA · decisión tuya')
+              : tr('private · stays on this device', 'privada · no sale de este dispositivo')}
         </span>
       </div>
       <div className={`photo ${working ? 'scanning' : ''}`}>
@@ -608,12 +745,16 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak, recorded, 
             src={baseUrl}
             width={SCENE_W}
             height={SCENE_H}
-            alt={source === 'demo' ? 'Selfie at home with the street visible through the window' : 'Your photo'}
+            alt={
+              source === 'demo'
+                ? tr('Selfie at home with the street visible through the window', 'Una selfi en casa, con la calle a la vista por la ventana')
+                : tr('Your photo', 'Tu foto')
+            }
             onLoad={() => reveal?.settled && setReveal(null)}
           />
         ) : (
           <div className="photo-loading">
-            <span className="spinner" aria-hidden="true" /> Drawing the demo photo on this device…
+            <span className="spinner" aria-hidden="true" /> {tr('Drawing the demo photo on this device…', 'Dibujando la foto de la demo en este dispositivo…')}
           </div>
         )}
         {/* Before and after: the original shows from the left up to the line, the blurred photo after it. */}
@@ -643,9 +784,14 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak, recorded, 
                   style={at(fresh >= 0 ? fresh : order)}
                   disabled={!active}
                   onClick={() => (canToggle ? toggle(cell) : setManual((m) => (m.includes(cell) ? m.filter((x) => x !== cell) : [...m, cell])))}
-                  aria-label={`Cell ${cell}${c ? `: ${c.what}` : ''}${a && !safe ? ', used by the AI' : ''}${isMasked ? ', blurred' : ''}${
-                    canToggle ? (isMasked ? '. Show it again' : '. Blur it') : ''
-                  }`}
+                  aria-label={tr(
+                    `Cell ${cell}${c ? `: ${c.what}` : ''}${a && !safe ? ', used by the AI' : ''}${isMasked ? ', blurred' : ''}${
+                      canToggle ? (isMasked ? '. Show it again' : '. Blur it') : ''
+                    }`,
+                    `Casilla ${cell}${c ? `: ${c.what}` : ''}${a && !safe ? ', la usó la IA' : ''}${isMasked ? ', difuminada' : ''}${
+                      canToggle ? (isMasked ? '. Volver a mostrarla' : '. Difuminarla') : ''
+                    }`,
+                  )}
                   aria-pressed={canPick && !isMasked ? picked : canToggle ? isMasked : undefined}
                 >
                   {pixelating && reveal.all.includes(cell) && publishedUrl && (
@@ -660,8 +806,8 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak, recorded, 
                     />
                   )}
                   <span className="n">{cell}</span>
-                  {c && <span className="tag">{c.kind}</span>}
-                  {!c && a && !safe && <span className="tag atk">used by the AI</span>}
+                  {c && <span className="tag">{kindLabel(c.kind)}</span>}
+                  {!c && a && !safe && <span className="tag atk">{tr('used by the AI', 'la usó la IA')}</span>}
                 </button>
               );
             })}
@@ -670,28 +816,45 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak, recorded, 
       </div>
       {published && (
         <label className="compare-range">
-          <span>Blurred</span>
-          <input type="range" min={0} max={100} value={compare} onChange={(e) => setCompare(Number(e.target.value))} aria-label="Drag to compare the blurred photo with your original" />
-          <span>Your original</span>
+          <span>{tr('Blurred', 'Difuminada')}</span>
+          <input
+            type="range"
+            min={0}
+            max={100}
+            value={compare}
+            onChange={(e) => setCompare(Number(e.target.value))}
+            aria-label={tr('Drag to compare the blurred photo with your original', 'Arrastra para comparar la foto difuminada con tu original')}
+          />
+          <span>{tr('Your original', 'Tu original')}</span>
         </label>
       )}
       {published && (
-        <p className="hint compare-hint">Drag the slider to see your original under the blur. Only the blurred version leaves this device.</p>
+        <p className="hint compare-hint">
+          {tr(
+            'Drag the slider to see your original under the blur. Only the blurred version leaves this device.',
+            'Arrastra el control para ver tu original debajo del difuminado. Solo la versión difuminada sale de este dispositivo.',
+          )}
+        </p>
       )}
 
       {stage === 'photo' && !recorded && (
         <div className="tools">
           <span className="hint">
-            {source === 'demo' ? 'Demo photo: a selfie at home, a street through the window (an illustration).' : 'Your photo, read and stripped of its location data on this device.'}
+            {source === 'demo'
+              ? tr(
+                  'Demo photo: a selfie at home, a street through the window (an illustration).',
+                  'Foto de la demo: una selfi en casa, con una calle por la ventana (es una ilustración).',
+                )
+              : tr('Your photo, read and stripped of its location data on this device.', 'Tu foto, leída en este dispositivo y sin sus datos de ubicación.')}
           </span>
           <span className="tools-end">
             <button className="mini" onClick={() => fileInput.current?.click()}>
-              Use my own photo
+              {tr('Use my own photo', 'Usar una foto mía')}
             </button>
             {/* Only for a photo of yours: on the demo photo it replaced the scene's place (Palma) with yours (22-nov). */}
             {source === 'own' && (
               <button className="mini" onClick={useMyLocation}>
-                Use my location
+                {tr('Use my location', 'Usar mi ubicación')}
               </button>
             )}
           </span>
@@ -700,23 +863,36 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak, recorded, 
       )}
       {stage === 'photo' && recorded && (
         <div className="tools">
-          <span className="hint">The demo photo is fixed in a recorded run.</span>
+          <span className="hint">{tr('The demo photo is fixed in a recorded run.', 'En una revisión grabada, la foto de la demo no se puede cambiar.')}</span>
           <a className="hint-link" href={location.pathname}>
-            Check your own photo, live
+            {tr('Check your own photo, live', 'Revisa una foto tuya, en vivo')}
           </a>
         </div>
       )}
       {/* Where "you" are on the map, and where it comes from: the scene's place in the demo (a tester took it for a leak). */}
       <p className="hint truth-note">
-        {truthLabel === SCENE_TRUTH ? 'Where the scene really is (Palma) stays on this device, to score each guess.' : `Your real location, known only to this device: ${truthLabel}.`}
+        {truthLabel === SCENE_TRUTH
+          ? tr(
+              'Where the scene really is (Palma) stays on this device, to score each guess.',
+              'El lugar real de la escena (Palma) se queda en este dispositivo, para medir cada intento de la IA.',
+            )
+          : tr(`Your real location, known only to this device: ${truthLabel}.`, `Tu ubicación real, que solo conoce este dispositivo: ${truthLabel}.`)}
       </p>
 
       {showCells && (
         <p className="legend" aria-hidden="true">
           {/* After blurring, a red cell left visible read as a mistake (a tester, 22-nov): say it is yours to blur. */}
-          {visibleClues.length > 0 && <span className="key clue">{threat.masked.length > 0 ? 'Found, not blurred: tap it to blur it' : 'Found on your device'}</span>}
-          {!!verdict && !safe && verdict.clues.some((c) => !threat.masked.includes(c.cell)) && <span className="key atk">Used by the cloud AI</span>}
-          {threat.masked.length > 0 && <span className="key blur">Blurred</span>}
+          {visibleClues.length > 0 && (
+            <span className="key clue">
+              {threat.masked.length > 0
+                ? tr('Found, not blurred: tap it to blur it', 'Encontrada, sin difuminar: tócala para difuminarla')
+                : tr('Found on your device', 'Encontrada en tu dispositivo')}
+            </span>
+          )}
+          {!!verdict && !safe && verdict.clues.some((c) => !threat.masked.includes(c.cell)) && (
+            <span className="key atk">{tr('Used by the cloud AI', 'La usó la IA de la nube')}</span>
+          )}
+          {threat.masked.length > 0 && <span className="key blur">{tr('Blurred', 'Difuminada')}</span>}
         </p>
       )}
 
@@ -724,29 +900,51 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak, recorded, 
         <label className="face-switch">
           <input type="checkbox" checked={blurFaces} disabled={!!busy} onChange={(e) => void toggleFaces(e.target.checked)} />
           <span>
-            <strong>Blur faces too</strong> Off, your face stays: the point is to post your photo, minus where it was taken. On, every face
-            found on this device is blurred as well.
+            <strong>{tr('Blur faces too', 'Difuminar también las caras')}</strong>{' '}
+            {tr(
+              'Off, your face stays: the point is to post your photo, minus where it was taken. On, every face found on this device is blurred as well.',
+              'Desactivado, tu cara se queda como está: la idea es publicar tu foto, pero no dónde se hizo. Activado, también se difuminan todas las caras que encuentre este dispositivo.',
+            )}
           </span>
         </label>
       )}
 
       {showCells && !degraded && (
-        <Why summary={threat.masked.length ? `${share}% blurred, in cells ${threat.masked.join(', ')}` : plural(visibleClues.length, 'clue') + ' found on your device'}>
+        <Why
+          summary={
+            threat.masked.length
+              ? tr(
+                  `${share}% blurred, in ${threat.masked.length === 1 ? 'cell' : 'cells'} ${threat.masked.join(', ')}`,
+                  `${num(share)}\u00a0% difuminado, en ${threat.masked.length === 1 ? 'la casilla' : 'las casillas'} ${threat.masked.join(', ')}`,
+                )
+              : tr(
+                  `${count(visibleClues.length, ['clue', 'clues'], ['pista', 'pistas'])} found on your device`,
+                  `${count(visibleClues.length, ['clue', 'clues'], ['pista', 'pistas'])} ${visibleClues.length === 1 ? 'encontrada' : 'encontradas'} en tu dispositivo`,
+                )
+          }
+        >
           {visibleClues.length === 0 ? (
-            <p className="good">{threat.masked.length ? 'Every clue found on your device is blurred.' : 'None found.'}</p>
+            <p className="good">
+              {threat.masked.length
+                ? tr('Every clue found on your device is blurred.', 'Todas las pistas encontradas en tu dispositivo están difuminadas.')
+                : tr('None found.', 'No se ha encontrado ninguna.')}
+            </p>
           ) : (
             <div>
-              <h3>Location clues found on your device</h3>
+              <h3>{tr('Location clues found on your device', 'Pistas del lugar encontradas en tu dispositivo')}</h3>
               {visibleClues.map((c, i) => (
                 <div key={`${c.cell}-${i}`} className="finding content" style={at(i)}>
-                  <code>cell {c.cell}</code> <span>{c.what}</span>
+                  <code>{tr('cell', 'casilla')} {c.cell}</code> <span>{c.what}</span>
                 </div>
               ))}
             </div>
           )}
           {threat.leftVisible.length > 0 && (
             <p className="hint">
-              Left visible: nothing on a person is blurred, and blurring covers at most a quarter of the photo, plus any street name, house number or plate.
+              {tr(
+                'Left visible: nothing on a person is blurred, and blurring covers at most a quarter of the photo, plus any street name, house number or plate.',
+                'Algunas quedan a la vista: no se difumina nada que esté sobre una persona, y el difuminado cubre como mucho una cuarta parte de la foto, además de cualquier nombre de calle, número de portal o matrícula.',
+              )}
             </p>
           )}
         </Why>
@@ -759,50 +957,77 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak, recorded, 
   const attacker = (attacking || verdict) && (
     <section className="section map-section" aria-labelledby="map-title">
       <div className="section-head">
-        <h2 id="map-title">The AI’s guess</h2>
-        <span className="chip public">what the cloud sees</span>
+        <h2 id="map-title">{tr('The AI’s guess', 'Lo que adivina la IA')}</h2>
+        <span className="chip public">{tr('what the cloud sees', 'lo que ve la nube')}</span>
       </div>
-      <p className="section-note">A cloud geolocation AI sees only the version you would post. Your device measures how far off it lands.</p>
+      <p className="section-note">
+        {tr(
+          'A cloud geolocation AI sees only the version you would post. Your device measures how far off it lands.',
+          'Una IA en la nube que sitúa fotos en el mapa solo ve la versión que publicarías. Tu dispositivo mide cuánto falla.',
+        )}
+      </p>
       {/* Blurred but not attacked again: the last guess is about the photo before, and looked current to a judge (17-nov). */}
-      {staleVerdict && <p className="notice slim">Before blurring. Test again to see where it guesses with the blurred photo.</p>}
+      {staleVerdict && (
+        <p className="notice slim">
+          {tr(
+            'Before blurring. Test again to see where it guesses with the blurred photo.',
+            'Antes de difuminar. Prueba de nuevo para ver dónde sitúa la foto difuminada.',
+          )}
+        </p>
+      )}
       <div className={staleVerdict ? 'stale' : undefined}>
         <div className={`result ${attacking ? '' : level}`} aria-live="polite">
           <div key={history.length} className={`result-num km ${attacking ? '' : 'land'}`}>
             {attacking ? <span className="spinner" aria-hidden="true" /> : formatKm(kmShown)}
           </div>
           <div className="result-text">
-            <strong>{attacking ? 'The AI is looking at your photo' : verdictHeadline}</strong>
+            <strong>{attacking ? tr('The AI is looking at your photo', 'La IA está mirando tu foto') : verdictHeadline}</strong>
             <p>
-              {attacking ? 'A cloud AI guesses where it was taken, from what it sees.' : `Guess: ${verdict!.place}. ${verdictDetail}`}
+              {attacking
+                ? tr('A cloud AI guesses where it was taken, from what it sees.', 'Una IA en la nube adivina dónde se hizo a partir de lo que ve.')
+                : tr(`Guess: ${placeLabel(verdict!.place)}. ${verdictDetail}`, `Su respuesta: ${placeLabel(verdict!.place)}. ${verdictDetail}`)}
               {/* Only the as-is path has a cloud guess from before blurring; on the private path the first test is already blurred. */}
-              {!attacking && sentAsIs && history.length > 1 ? ` Before blurring: ${formatKm(history[0])}.` : ''}
+              {!attacking && sentAsIs && history.length > 1 ? tr(` Before blurring: ${formatKm(history[0])}.`, ` Antes de difuminar: ${formatKm(history[0])}.`) : ''}
             </p>
             {!attacking && verdict && published && !sentAsIs && !staleVerdict && readHere.length > 0 && (
               <BeforeAfter
                 good={safe}
-                before={`Gemini Nano read ${readHere.map((t) => `“${t}”`).join(', ')}${readAddress ? ': an address anyone can look up' : ''}`}
-                now={`it guesses “${verdict.place}”${verdict.errorKm !== null ? `, ${formatKm(verdict.errorKm)} off` : ''}`}
+                before={tr(
+                  `Gemini Nano read ${readHere.map((t) => `“${t}”`).join(', ')}${readAddress ? ': an address anyone can look up' : ''}`,
+                  `Gemini Nano ha leído ${readHere.map((t) => `«${t}»`).join(', ')}${readAddress ? ': una dirección que cualquiera puede buscar' : ''}`,
+                )}
+                now={tr(
+                  `it guesses “${placeLabel(verdict.place)}”${verdict.errorKm !== null ? `, ${formatKm(verdict.errorKm)} off` : ''}`,
+                  `dice «${placeLabel(verdict.place)}»${verdict.errorKm !== null ? `, se equivoca por ${formatKm(verdict.errorKm)}` : ''}`,
+                )}
               />
             )}
           </div>
         </div>
         <WorldMap
           you={truthPoint}
-          youLabel={source === 'demo' ? 'The scene' : 'You'}
+          youLabel={source === 'demo' ? tr('The scene', 'La escena') : tr('You', 'Tú')}
           guess={attacking ? null : guess}
           guessLabel={verdict?.place ?? ''}
           distance={!attacking && verdict && verdict.errorKm !== null ? formatKm(verdict.errorKm) : undefined}
           level={level}
         />
         {!attacking && verdict && verdict.clues.length > 0 && (
-          <Why summary={safe ? 'what the AI went by, and still missed' : 'what the AI used'}>
+          <Why summary={safe ? tr('what the AI went by, and still missed', 'en qué se fijó la IA, y aun así falló') : tr('what the AI used', 'lo que usó la IA')}>
             {/* Why blurring stops with these cells still visible: a judge read them as a loop that gave up (17-nov). */}
-            {safe && <p className="hint">Not blurred, because they did not help it find you. Blurring stops here.</p>}
+            {safe && (
+              <p className="hint">
+                {tr(
+                  'Not blurred, because they did not help it find you. Blurring stops here.',
+                  'Sin difuminar, porque no le han servido para encontrarte. Aquí termina el difuminado.',
+                )}
+              </p>
+            )}
             <ul className="reasons">
               {/* A cell can hold several clues: keyed by cell alone, React kept a stale item on screen (live, 16-nov). */}
               {verdict.clues.map((c, i) => (
                 <li key={`${c.cell}-${i}`}>
-                  Cell {c.cell}: {c.what}
+                  {tr('Cell', 'Casilla')} {c.cell}: {c.what}
                 </li>
               ))}
             </ul>

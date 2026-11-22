@@ -644,6 +644,12 @@ export interface AuthorshipOptions {
   maxHits?: number;
   /** Called after each attack attempt, for live UI. */
   onAttempt?: (pickId: string, i: number) => void;
+  /**
+   * The rewrite's register. 'plain' (the default) asks for a neutral, plain register: it beat the lineup (0/10), but five of
+   * eight testers would not post it ("it sounds like an HR memo", 22-nov). 'yours' keeps the draft's tone (casual stays
+   * casual) and only drops the habits and details: kept only if a live test still leaves the attacker at chance.
+   */
+  tone?: 'plain' | 'yours';
 }
 
 const LETTERS = 'ABCDEFGHIJKLMNOP';
@@ -863,8 +869,12 @@ export function authorshipThreat(o: AuthorshipOptions): Threat<string, Clue, Aut
           (feedback?.reasons.length ? `An attacker still recognised the author because: ${feedback.reasons.join('; ')}. ` : '') +
           // The answer's shape is fixed by the schema: an example in the prompt got copied (16-nov), so there is none. The
           // answer comes back in English whatever is asked (?diag, 21-nov): the fixed rules are English too.
-          'Keep every claim and opinion. Do not add names, places, dates or numbers. Use a neutral, plain register and ' +
-          'sentences of your own: never copy five or more words in a row from the DRAFT.\n\nDRAFT:\n'
+          'Keep every claim and opinion. Do not add names, places, dates or numbers. ' +
+          (o.tone === 'yours'
+            ? // Same start, so the recorded demo still finds its answer (src/demo/recorded.ts keys on "Rewrite the DRAFT").
+              'Keep the tone of the DRAFT: if it is casual, stay casual, like a post on a forum, with everyday words, not formal or ' +
+              'corporate ones. Use sentences of your own: never copy five or more words in a row from the DRAFT.\n\nDRAFT:\n'
+            : 'Use a neutral, plain register and sentences of your own: never copy five or more words in a row from the DRAFT.\n\nDRAFT:\n')
         );
       };
       const ruledDraft = secret(ruled.text, 'draft, details generalised');

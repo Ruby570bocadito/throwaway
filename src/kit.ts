@@ -57,6 +57,13 @@ export function buildKit(ledger: Ledger) {
  * `decoys` are the nine public writers who stand next to the user: by default the recorded run's (design), or a pack of
  * the post's own field from `loadDecoyPacks()`. With off-topic decoys the attacker finds the author by subject, not style.
  */
+/**
+ * `?tone=yours` asks Gemini Nano to keep the draft's tone (22-nov plan, block 3): measured live in Chrome before it becomes
+ * a choice in the app. Testers would not post the plain, neutral rewrite.
+ */
+export const rewriteTone = (): 'plain' | 'yours' =>
+  typeof location !== 'undefined' && new URLSearchParams(location.search).get('tone') === 'yours' ? 'yours' : 'plain';
+
 export function buildAuthorship(onAttempt: (pickId: string, i: number) => void, ownPublic = '', decoys: readonly Candidate[] = DECOYS) {
   const own = ownPublic.trim();
   return authorshipThreat({
@@ -64,6 +71,7 @@ export function buildAuthorship(onAttempt: (pickId: string, i: number) => void, 
     self: own ? publicData(own, 'your public writing') : publicData(MARTA_PUBLIC, 'your public blog'),
     decoys: decoys.map((d) => ({ id: d.id, text: publicData(d.corpus, 'public decoy') })),
     onAttempt,
+    tone: rewriteTone(),
   });
 }
 

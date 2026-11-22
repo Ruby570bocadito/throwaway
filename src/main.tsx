@@ -1,5 +1,7 @@
 import { lazy, StrictMode, Suspense } from 'react'
 import { createRoot } from 'react-dom/client'
+// First: the language is picked (and <html lang> set) before anything renders.
+import './i18n'
 // Fonts are bundled, not loaded from a font CDN: a privacy tool should not tell a third party who opened it.
 import '@fontsource-variable/inter'
 import '@fontsource/eczar/500.css'

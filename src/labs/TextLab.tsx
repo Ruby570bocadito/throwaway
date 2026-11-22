@@ -2,7 +2,7 @@ import { useDeferredValue, useEffect, useMemo, useRef, useState, type CSSPropert
 import { createPortal } from 'react-dom';
 import { readsAsEnglish, styleMarkers, type Reliability } from '../engine/stylometry';
 import { DECOYS, DRAFT, MARTA_PUBLIC, SELF_ID } from '../demo/scenario';
-import { FIELD_IDS, FIELD_LABELS, type DecoyPackId } from '../demo/fields';
+import { FIELD_IDS, FIELD_LABELS, FIELD_LABELS_ES, type DecoyPackId } from '../demo/fields';
 import { keptPassages, markDeviceError, PrivacyViolation, release, secret, type Private, type Publishable } from '../framework';
 import {
   aboutSubject,
@@ -27,16 +27,44 @@ import { Why } from '../ui/Why';
 import { useAnimatedNumber, withTransition } from '../ui/motion';
 import { useCloudBusy } from '../ui/busy';
 import { Mascot, type Pose } from '../ui/Mascot';
+import { count, lang, num, tr } from '../i18n';
+
+/** A field's name in the reader's language ("design and product", "diseño y producto"). */
+const fieldLabel = (id: DecoyPackId) => tr(FIELD_LABELS[id], FIELD_LABELS_ES[id]);
+
+// The reasons next to each finding come from the fingerprint and the fixed rules in English (tests match them): said in
+// Spanish where they are shown. Gemini Nano's own reasons are model output and stay as they came.
+const WHY_ES: [RegExp, (m: RegExpMatchArray) => string][] = [
+  [/^You use “(.+)” (\d+)× more than other writers$/, (m) => `Usas «${m[1]}» ${m[2]} veces más que las demás personas`],
+  [/^Exact phrase from your public posts$/, () => 'Frase exacta de tus textos públicos'],
+  [/^Heavy em-dash habit, same as your public posts$/, () => 'Muchas rayas (—), como en tus textos públicos'],
+  [/^A link: fixed rule, no AI\.$/, () => 'Un enlace: regla fija, sin IA.'],
+  [/^An email address: fixed rule, no AI\.$/, () => 'Un correo: regla fija, sin IA.'],
+  [/^A username: fixed rule, no AI\.$/, () => 'Un nombre de usuario: regla fija, sin IA.'],
+  [/^A phone number: fixed rule, no AI\.$/, () => 'Un teléfono: regla fija, sin IA.'],
+  [/^A date: fixed rule, no AI\.$/, () => 'Una fecha: regla fija, sin IA.'],
+  [/^A count: fixed rule, no AI\.$/, () => 'Una cifra: regla fija, sin IA.'],
+  [/^Capital letter: maybe a name, place or company\. Fixed rule, no AI\.$/, () => 'Mayúscula: quizá un nombre, un lugar o una empresa. Regla fija, sin IA.'],
+  [/^Flagged by Gemini Nano\.$/, () => 'Lo marcó Gemini Nano.'],
+];
+const whyText = (why: string) => {
+  if (lang !== 'es') return why;
+  for (const [re, es] of WHY_ES) {
+    const m = why.match(re);
+    if (m) return es(m);
+  }
+  return why;
+};
 
 type Stage = 'draft' | 'scanned' | 'attacked' | 'rewritten' | 'reattacked';
 const LETTERS = 'ABCDEFGHIJ';
 // Fixed seats on screen: you and the nine writers, always in this order (the attacker gets its own shuffle every time).
 const SEATS = [3, 7, 0, 5, 9, 1, 8, 2, 6, 4];
 const CONFIDENCE: Record<Reliability['level'], string> = {
-  'too-short': 'Too short to tell',
-  low: 'Low confidence',
-  medium: 'Medium confidence',
-  high: 'High confidence',
+  'too-short': tr('Too short to tell', 'Demasiado corto para saberlo'),
+  low: tr('Low confidence', 'Confianza baja'),
+  medium: tr('Medium confidence', 'Confianza media'),
+  high: tr('High confidence', 'Confianza alta'),
 };
 // Find → Fix → Test (22-nov): the original is never tested by default, so `attacked` (found, by the optional as-is test or a
 // test of the rewrite) leads back to Fix.
@@ -44,22 +72,22 @@ const STAGE_STEP: Record<Stage, number> = { draft: 0, scanned: 1, attacked: 1, r
 
 // What each long action is expected to leave in the ledger, in order (see threats/authorship.ts).
 const SCAN_PLAN: PlanStep[] = [
-  { match: /^Fingerprint/, label: 'Fingerprint your style', route: 'local-js' },
-  { match: /^Find identifying details/, label: 'Find what identifies you', route: 'on-device', slow: true },
-  { match: /^Find counts and dates/, label: 'Find every count and date', route: 'local-js' },
+  { match: /^Fingerprint/, label: tr('Fingerprint your style', 'Tomar tu huella de escritura'), route: 'local-js' },
+  { match: /^Find identifying details/, label: tr('Find what identifies you', 'Buscar lo que te identifica'), route: 'on-device', slow: true },
+  { match: /^Find counts and dates/, label: tr('Find every count and date', 'Buscar todas las cifras y fechas'), route: 'local-js' },
 ];
 // Without a local model: no model step runs, and capital letters stand in for it as pointers to names.
 const SCAN_PLAN_NO_MODEL: PlanStep[] = [
-  { match: /^Fingerprint/, label: 'Fingerprint your style', route: 'local-js' },
-  { match: /^Find identifying details/, label: 'Find what identifies you', route: 'skipped' },
-  { match: /^Find counts, dates and names/, label: 'Find counts, dates and capitalised names', route: 'local-js' },
+  { match: /^Fingerprint/, label: tr('Fingerprint your style', 'Tomar tu huella de escritura'), route: 'local-js' },
+  { match: /^Find identifying details/, label: tr('Find what identifies you', 'Buscar lo que te identifica'), route: 'skipped' },
+  { match: /^Find counts, dates and names/, label: tr('Find counts, dates and capitalised names', 'Buscar cifras, fechas y nombres con mayúscula'), route: 'local-js' },
 ];
 const REWRITE_PLAN: PlanStep[] = [
-  { match: /^Fixed rules generalised/, label: 'Generalise the details', route: 'local-js', optional: true },
+  { match: /^Fixed rules generalised/, label: tr('Generalise the details', 'Generalizar los detalles'), route: 'local-js', optional: true },
   // A long post is rewritten part by part: the step is done with its last part ("Rewrite part 8 of 8 on-device").
-  { match: /^Rewrite (?:on-device|part (\d+) of \1 on-device)/, label: 'Rewrite your style', route: 'on-device', slow: true },
-  { match: /^Check the final text/, label: 'Check the final text for details', route: 'local-js' },
-  { match: /^Meaning check/, label: 'Check that the meaning survived', route: 'on-device', slow: true },
+  { match: /^Rewrite (?:on-device|part (\d+) of \1 on-device)/, label: tr('Rewrite your style', 'Reescribir tu estilo'), route: 'on-device', slow: true },
+  { match: /^Check the final text/, label: tr('Check the final text for details', 'Buscar detalles en el texto final'), route: 'local-js' },
+  { match: /^Meaning check/, label: tr('Check that the meaning survived', 'Comprobar que sigue diciendo lo mismo'), route: 'on-device', slow: true },
 ];
 
 const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -72,7 +100,6 @@ const firstLine = (text: string, max = 120) => {
 };
 const phraseRe = (p: string) => (p.includes(' ') ? esc(p).replace(/ /g, '[\\s,]+') : p === '—' ? '—' : `\\b${esc(p)}\\b`);
 const at = (i: number) => ({ '--i': i }) as CSSProperties;
-const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 const capital = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 const reducedMotion = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -224,12 +251,14 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
   // The shell's "Try to leak" button: a careless developer concatenates the draft into a cloud prompt.
   useEffect(() => {
     registerLeak(async () => {
-      if (!privateDraft.current) return 'Scan your post first, so the framework knows what is private.';
+      if (!privateDraft.current) return tr('Scan your post first, so the framework knows what is private.', 'Revisa primero tu post, para que la protección sepa qué es privado.');
       try {
         await kit.cloud.generate(['Summarise this review: ' + draft], { op: 'Leak test: draft in a cloud prompt' });
-        return 'The draft was sent. This should never happen.';
+        return tr('The draft was sent. This should never happen.', 'El borrador se envió. Esto no debería pasar nunca.');
       } catch (e) {
-        return e instanceof PrivacyViolation ? 'Blocked by the privacy guard. 0 bytes left the device.' : (e as Error).message;
+        return e instanceof PrivacyViolation
+          ? tr('Blocked by the privacy guard. 0 bytes left the device.', 'Bloqueado por la protección de privacidad. Salieron 0 bytes del dispositivo.')
+          : (e as Error).message;
       }
     });
     return () => registerLeak(null);
@@ -384,11 +413,14 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
     const r = deterministicGeneralise(edited, ruleCounts);
     setEdited(r.text);
     const n = r.done.length;
-    const shown = r.done.slice(0, 3).map((d) => `“${d.phrase}” → “${d.generic || 'removed'}”`);
+    const shown = r.done.slice(0, 3).map((d) => `“${d.phrase}” → “${d.generic || tr('removed', 'eliminado')}”`);
     setGenNote(
       n
-        ? `Generalised ${n} detail${n > 1 ? 's' : ''} with fixed rules, no AI: ${shown.join(', ')}${n > 3 ? ` and ${n - 3} more` : ''}. Names on their own and your habits are still yours to change.`
-        : 'Nothing left that the rules can generalise in your edit.',
+        ? tr(
+            `Generalised ${count(n, ['detail', 'details'], ['detalle', 'detalles'])} with fixed rules, no AI: ${shown.join(', ')}${n > 3 ? ` and ${n - 3} more` : ''}. Names on their own and your habits are still yours to change.`,
+            `${count(n, ['detail', 'details'], ['detalle', 'detalles'])} ${n === 1 ? 'generalizado' : 'generalizados'} con reglas fijas, sin IA: ${shown.join(', ')}${n > 3 ? ` y ${n - 3} más` : ''}. Los nombres sueltos y tus hábitos tienes que cambiarlos tú.`,
+          )
+        : tr('Nothing left that the rules can generalise in your edit.', 'En tu edición ya no queda nada que las reglas puedan generalizar.'),
     );
   };
 
@@ -414,8 +446,14 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
           const quote = (p: string) => `“${p.length > 140 ? `${p.slice(0, 140)}…` : p}”`;
           const message =
             kept.length === 1
-              ? `Your edit still keeps this passage of your original: ${quote(kept[0])}. Put it in other words (about 7 words in a row from your original are refused), then try again.`
-              : `Your edit still keeps ${kept.length >= 4 ? 'at least 4' : kept.length} passages of your original: ${kept.map(quote).join(', ')}. Put each in other words (about 7 words in a row from your original are refused), then try again.`;
+              ? tr(
+                  `Your edit still keeps this passage of your original: ${quote(kept[0])}. Put it in other words (about 7 words in a row from your original are refused), then try again.`,
+                  `Tu edición aún conserva este fragmento de tu original: ${quote(kept[0])}. Dilo con otras palabras (se rechazan unas 7 palabras seguidas de tu original) y vuelve a intentarlo.`,
+                )
+              : tr(
+                  `Your edit still keeps ${kept.length >= 4 ? 'at least 4' : kept.length} passages of your original: ${kept.map(quote).join(', ')}. Put each in other words (about 7 words in a row from your original are refused), then try again.`,
+                  `Tu edición aún conserva ${kept.length >= 4 ? 'al menos 4' : kept.length} fragmentos de tu original: ${kept.map(quote).join(', ')}. Di cada uno con otras palabras (se rechazan unas 7 palabras seguidas de tu original) y vuelve a intentarlo.`,
+                );
           throw Object.assign(new Error(message), { name: 'UserFacingError' });
         }
       } else {
@@ -440,7 +478,7 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
       setCopied(true);
       setTimeout(() => setCopied(false), 2500);
     } catch {
-      setError('Your browser blocked the clipboard. Select the text and copy it by hand.');
+      setError(tr('Your browser blocked the clipboard. Select the text and copy it by hand.', 'Tu navegador bloqueó el portapapeles. Selecciona el texto y cópialo a mano.'));
     }
   };
 
@@ -448,9 +486,9 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
   // offered only in the recorded demo (nothing is sent) or on a paid plan (`allowAsIsTest`).
   const canTestOriginal = recorded || allowAsIsTest;
   const steps: StepDef[] = [
-    { label: 'Find', where: degraded ? 'fixed rules, no model' : 'on your device' },
-    { label: 'Fix', where: degraded ? 'you edit it' : 'on your device' },
-    { label: 'Test', where: 'in the cloud' },
+    { label: tr('Find', 'Buscar'), where: degraded ? tr('fixed rules, no model', 'reglas fijas, sin modelo') : tr('on your device', 'en tu dispositivo') },
+    { label: tr('Fix', 'Arreglar'), where: degraded ? tr('you edit it', 'lo editas tú') : tr('on your device', 'en tu dispositivo') },
+    { label: tr('Test', 'Probar'), where: tr('in the cloud', 'en la nube') },
   ];
   const outcome = stage === 'reattacked' ? (contentClues.length ? 'warn' : 'good') : null;
   // A post of the user's own with no public writing of theirs: the lineup then looks for the sample writer, not for them,
@@ -502,111 +540,202 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
   // Whose field the nine writers share, and what follows from it.
   const canPickField = stage === 'draft' && !!ownText && !!packs;
   // "like you" read as "they resemble you" to both testers (16-nov): the field is what is shared, so it says so.
-  const sameField = ', the same field as you: the AI has to recognise your style, not your subject.';
+  const sameField = tr(
+    ', the same field as you: the AI has to recognise your style, not your subject.',
+    ', el mismo sector que tú: la IA tiene que reconocer tu estilo, no tu tema.',
+  );
   const fieldNote = !ownText
     ? recorded || draft === DRAFT
       ? sameField
-      : ', the sample writer’s field: she stands in for you until you add your own public writing.'
+      : tr(
+          ', the sample writer’s field: she stands in for you until you add your own public writing.',
+          ', el sector de la persona de ejemplo: ocupa tu lugar hasta que añadas tus propios textos públicos.',
+        )
     : packsFailed
-      ? ' (the other fields did not load).'
+      ? tr(' (the other fields did not load).', ' (los otros sectores no se cargaron).')
       : !lineupOf.clear
-        ? `: no field stood out in your writing${stage === 'draft' ? ', so pick the closest one' : ''}.`
+        ? tr(
+            `: no field stood out in your writing${stage === 'draft' ? ', so pick the closest one' : ''}.`,
+            `: en tus textos no destaca ningún sector${stage === 'draft' ? ', así que elige el más cercano' : ''}.`,
+          )
         : lineupOf.wanted === lineupOf.matched
           ? sameField
-          : `. Your writing reads as ${FIELD_LABELS[lineupOf.matched]}, so the AI may go by subject, not style.`;
+          : tr(
+              `. Your writing reads as ${FIELD_LABELS[lineupOf.matched]}, so the AI may go by subject, not style.`,
+              `. Tus textos parecen de ${FIELD_LABELS_ES[lineupOf.matched]}, así que la IA puede fijarse en el tema, no en el estilo.`,
+            );
 
   const busyLabel =
     busy === 'scan'
       ? degraded
-        ? 'Scanning…'
-        : 'Scanning on your device…'
+        ? tr('Scanning…', 'Revisando…')
+        : tr('Scanning on your device…', 'Revisando en tu dispositivo…')
       : busy === 'attack'
-        ? `Testing · ${Math.min(picks.length + 1, 10)} of 10`
+        ? tr(`Testing · ${Math.min(picks.length + 1, 10)} of 10`, `Probando · ${Math.min(picks.length + 1, 10)} de 10`)
         : busy === 'rewrite'
           ? degraded
-            ? 'Checking your edit…'
-            : 'Rewriting on your device…'
+            ? tr('Checking your edit…', 'Comprobando tu edición…')
+            : tr('Rewriting on your device…', 'Reescribiendo en tu dispositivo…')
           : '';
 
   // ── what this step says: a title and one sentence ──
   const nHabits = styleClues.length;
   const nDetails = contentClues.length;
-  const verdictTitle = standIn ? 'Not a test of you yet' : exposedNow ? 'The AI found you' : 'You are one of ten';
+  const verdictTitle = standIn
+    ? tr('Not a test of you yet', 'Esta prueba aún no es sobre ti')
+    : exposedNow
+      ? tr('The AI found you', 'La IA te encontró')
+      : tr('You are one of ten', 'Eres una persona más entre diez');
   const head: { title: ReactNode; lede: string } =
     stage === 'draft'
       ? {
-          title: (
-            <>
-              Before you post anonymously, let an AI try to <span className="marker">unmask you</span>.
-            </>
-          ),
+          title:
+            lang === 'es' ? (
+              <>
+                Antes de publicar de forma anónima, mira <span className="marker">qué te delata</span>.
+              </>
+            ) : (
+              <>
+                Before you post anonymously, see <span className="marker">what gives you away</span>.
+              </>
+            ),
           lede: recorded
-            ? 'A recorded run: Gemini Nano’s answers on this sample post were recorded in Chrome, and replay here.'
-            : 'Throwaway checks and fixes your post on this device. Only the version you would post is tested in the cloud, when you choose.',
+            ? tr(
+                'A recorded run: Gemini Nano’s answers on this sample post were recorded in Chrome, and replay here.',
+                'Una revisión grabada: las respuestas de Gemini Nano a este post de ejemplo se grabaron en Chrome y se reproducen aquí.',
+              )
+            : tr(
+                'Throwaway checks and fixes your post on this device. Only the version you would post is tested in the cloud, when you choose.',
+                'Throwaway revisa y arregla tu post en este dispositivo. En la nube solo se prueba la versión que publicarías, cuando tú decidas.',
+              ),
         }
       : stage === 'scanned'
         ? {
-            title: nHabits + nDetails ? `${capital(plural(nHabits, 'habit'))} and ${plural(nDetails, 'detail')} could give you away` : 'Nothing obvious gives you away',
+            title: nHabits + nDetails
+              ? tr(
+                  `${capital(count(nHabits, ['habit', 'habits'], ['hábito', 'hábitos']))} and ${count(nDetails, ['detail', 'details'], ['detalle', 'detalles'])} could give you away`,
+                  `${capital(count(nHabits, ['habit', 'habits'], ['hábito', 'hábitos']))} y ${count(nDetails, ['detail', 'details'], ['detalle', 'detalles'])} podrían delatarte`,
+                )
+              : tr('Nothing obvious gives you away', 'No hay nada evidente que te delate'),
             lede: degraded
-              ? 'Found with fixed rules on this device; names only by their capital letters. Change them in your post below: nothing has left this device.'
-              : 'Found on this device, and nothing has left it. Next, Gemini Nano rewrites your style and these details, here.',
+              ? tr(
+                  'Found with fixed rules on this device; names only by their capital letters. Change them in your post below: nothing has left this device.',
+                  'Encontrados con reglas fijas en este dispositivo; los nombres, solo por sus mayúsculas. Cámbialos en tu post, aquí abajo: nada ha salido de este dispositivo.',
+                )
+              : tr(
+                  'Found on this device, and nothing has left it. Next, Gemini Nano rewrites your style and these details, here.',
+                  'Encontrados en este dispositivo, y nada ha salido de él. Ahora Gemini Nano reescribe tu estilo y estos detalles, aquí mismo.',
+                ),
           }
         : stage === 'attacked'
           ? {
               title: verdictTitle,
               lede: degraded
-                ? 'No on-device AI here, so you change it: your habits and details are marked in the post below.'
+                ? tr(
+                    'No on-device AI here, so you change it: your habits and details are marked in the post below.',
+                    'No hay IA en este dispositivo, así que lo cambias tú: tus hábitos y detalles están marcados en el post, aquí abajo.',
+                  )
                 : rounds > 1
-                  ? 'Still found after a rewrite. Gemini Nano can rewrite it again, keeping in mind what the AI went by.'
+                  ? tr(
+                      'Still found after a rewrite. Gemini Nano can rewrite it again, keeping in mind what the AI went by.',
+                      'Te encontró incluso después de reescribirlo. Gemini Nano puede reescribirlo otra vez, teniendo en cuenta en qué se fijó la IA.',
+                    )
                   : exposedNow
-                    ? 'Next, Gemini Nano rewrites your style and the details, on this device.'
-                    : 'You could post it as it is. Gemini Nano can still rewrite it on this device, to be safe.',
+                    ? tr('Next, Gemini Nano rewrites your style and the details, on this device.', 'Ahora Gemini Nano reescribe tu estilo y los detalles, en este dispositivo.')
+                    : tr(
+                        'You could post it as it is. Gemini Nano can still rewrite it on this device, to be safe.',
+                        'Podrías publicarlo tal cual. Aun así, Gemini Nano puede reescribirlo en este dispositivo, por si acaso.',
+                      ),
             }
           : stage === 'rewritten'
             ? {
-                title: degraded ? 'Your edited version' : 'Rewritten on your device',
+                title: degraded ? tr('Your edited version', 'Tu versión editada') : tr('Rewritten on your device', 'Reescrito en tu dispositivo'),
                 lede: degraded
-                  ? 'Checked on this device: no long passage of your original is left. Next, test it: only this version goes to the cloud.'
-                  : 'In a plain, neutral voice on purpose: your style is what gives you away. Read it, then test it: only this version goes to the cloud.',
+                  ? tr(
+                      'Checked on this device: no long passage of your original is left. Next, test it: only this version goes to the cloud.',
+                      'Comprobado en este dispositivo: no queda ningún fragmento largo de tu original. Ahora pruébalo: a la nube solo va esta versión.',
+                    )
+                  : tr(
+                      'In a plain, neutral voice on purpose: your style is what gives you away. Read it, then test it: only this version goes to the cloud.',
+                      'Con una voz sencilla y neutra, a propósito: tu estilo es lo que te delata. Léelo y luego pruébalo: a la nube solo va esta versión.',
+                    ),
               }
             : {
-                title: nDetails ? `Your style is hidden, but ${plural(nDetails, 'detail')} can still identify you` : verdictTitle,
+                title: nDetails
+                  ? tr(
+                      `Your style is hidden, but ${count(nDetails, ['detail', 'details'], ['detalle', 'detalles'])} can still identify you`,
+                      `Tu estilo está oculto, pero ${count(nDetails, ['detail', 'details'], ['detalle', 'detalles'])} ${nDetails === 1 ? 'aún puede' : 'aún pueden'} identificarte`,
+                    )
+                  : verdictTitle,
                 lede: standIn
-                  ? 'Without your own public writing, this test looked for the sample writer, not you.'
+                  ? tr(
+                      'Without your own public writing, this test looked for the sample writer, not you.',
+                      'Sin tus propios textos públicos, esta prueba buscó a la persona de ejemplo, no a ti.',
+                    )
                   : nDetails
-                    ? 'Change them before you post.'
+                    ? tr('Change them before you post.', 'Cámbialos antes de publicar.')
                     : // "No identifying details are left" overclaimed: the rewrite still named the design team (a tester, 22-nov).
-                      `It cannot tell you apart from the other nine writers${degraded ? ', and no counts or dates are left. Names, places and companies were not checked.' : ', and the details your device found were generalised.'}`,
+                      tr(
+                        `It cannot tell you apart from the other nine writers${degraded ? ', and no counts or dates are left. Names, places and companies were not checked.' : ', and the details your device found were generalised.'}`,
+                        `La IA no te distingue de las otras nueve personas${degraded ? ', y no quedan cifras ni fechas. Los nombres, lugares y empresas no se comprobaron.' : ', y se generalizaron los detalles que encontró tu dispositivo.'}`,
+                      ),
               };
 
   // ── the note before the button: one, the one that matters most ──
   const note: { text: string; warn: boolean; consent?: boolean } | null =
     stage === 'draft'
       ? standIn
-        ? { text: 'Without your own public writing, the test will look for the sample writer, not you. Add yours under the post first.', warn: true }
+        ? {
+            text: tr(
+              'Without your own public writing, the test will look for the sample writer, not you. Add yours under the post first.',
+              'Sin tus propios textos públicos, la prueba buscará a la persona de ejemplo, no a ti. Antes, añade los tuyos debajo del post.',
+            ),
+            warn: true,
+          }
         : !recorded && readsAsEnglish(draft) === false
           ? {
-              text: 'This post does not read as English. Throwaway is tuned for English: counts, dates and habits in other languages are mostly not caught, and the rewrite comes back in English.',
+              text: tr(
+                'This post does not read as English. Throwaway is tuned for English: counts, dates and habits in other languages are mostly not caught, and the rewrite comes back in English.',
+                'Este post no parece estar en inglés. Throwaway está pensado para el inglés: en otros idiomas se le escapan la mayoría de las cifras, fechas y hábitos, y la reescritura sale en inglés.',
+              ),
               warn: true,
             }
           : null
       : stage === 'scanned'
         ? standIn
-          ? { text: 'No public writing of yours: this test looks for the sample writer, not you. Start over to add yours: your post stays.', warn: true }
+          ? {
+              text: tr(
+                'No public writing of yours: this test looks for the sample writer, not you. Start over to add yours: your post stays.',
+                'No hay textos públicos tuyos: esta prueba busca a la persona de ejemplo, no a ti. Empieza de nuevo para añadir los tuyos: tu post no se pierde.',
+              ),
+              warn: true,
+            }
           : canTestOriginal && !recorded
             ? // Only on a paid plan: the one step that would send the original, said before the tap (judge 17-nov, testers 22-nov).
               {
-                text: 'Testing the original sends your post, unchanged, to Gemini in Google’s cloud, ten times, as if you had posted it. Fixing it first sends nothing.',
+                text: tr(
+                  'Testing the original sends your post, unchanged, to Gemini in Google’s cloud, ten times, as if you had posted it. Fixing it first sends nothing.',
+                  'Probar el original envía tu post, sin cambios, a Gemini en la nube de Google, diez veces, como si lo hubieras publicado. Arreglarlo antes no envía nada.',
+                ),
                 warn: true,
                 consent: true,
               }
             : null
         : stage === 'rewritten' && published
           ? recorded
-            ? { text: 'A recorded run: nothing is sent. Live, only this version goes to Gemini, on Google’s free plan.', warn: false }
+            ? {
+                text: tr(
+                  'A recorded run: nothing is sent. Live, only this version goes to Gemini, on Google’s free plan.',
+                  'Una revisión grabada: no se envía nada. En vivo, solo esta versión va a Gemini, en el plan gratuito de Google.',
+                ),
+                warn: false,
+              }
             : // What Gemini's free plan allows, said before the tap (22-nov): only what you would post anyway goes.
               {
-                text: `Sends only ${degraded ? 'your edited version' : 'this version'}, never your original, to Gemini on Google’s free plan: Google may use it to improve its products, and people may review it.`,
+                text: tr(
+                  `Sends only ${degraded ? 'your edited version' : 'this version'}, never your original, to Gemini on Google’s free plan: Google may use it to improve its products, and people may review it.`,
+                  `Envía solo ${degraded ? 'tu versión editada' : 'esta versión'}, nunca tu original, a Gemini en el plan gratuito de Google: Google puede usarla para mejorar sus productos, y una persona puede revisarla.`,
+                ),
                 warn: true,
                 consent: true,
               }
@@ -619,7 +748,11 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
           ledger={kit.ledger}
           since={busySince}
           plan={busy === 'scan' ? (degraded ? SCAN_PLAN_NO_MODEL : SCAN_PLAN) : REWRITE_PLAN}
-          title={busy === 'scan' ? 'Scanning your post on this device' : 'Fixing your post on this device'}
+          title={
+            busy === 'scan'
+              ? tr('Scanning your post on this device', 'Revisando tu post en este dispositivo')
+              : tr('Fixing your post on this device', 'Arreglando tu post en este dispositivo')
+          }
           recorded={recorded}
           download={download}
         />
@@ -633,7 +766,7 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
       <div className="dock-row">
         {stage === 'draft' && (
           <button className="primary" onClick={scan} disabled={!!busy || !draft.trim() || lineupPending} aria-busy={busy === 'scan'}>
-            {busy ? <Busy label={busyLabel} /> : 'Check my post on this device'}
+            {busy ? <Busy label={busyLabel} /> : tr('Check my post on this device', 'Revisar mi post en este dispositivo')}
           </button>
         )}
         {(stage === 'scanned' || stage === 'attacked') && (
@@ -644,11 +777,11 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
               ? <Busy label={busyLabel} />
               : degraded
                 ? editUnchanged
-                  ? 'Edit your post below first'
-                  : 'Use my edited version'
+                  ? tr('Edit your post below first', 'Primero edita tu post, aquí abajo')
+                  : tr('Use my edited version', 'Usar mi versión editada')
                 : published
-                  ? 'Rewrite it again on this device'
-                  : 'Rewrite it on this device'}
+                  ? tr('Rewrite it again on this device', 'Reescribirlo otra vez en este dispositivo')
+                  : tr('Rewrite it on this device', 'Reescribirlo en este dispositivo')}
           </button>
         )}
         {/* Testing the untouched original: never the main action, and never the one that gets focus (`.as-is`). Only in the
@@ -659,19 +792,25 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
             onClick={attackAsIs}
             disabled={!!busy}
             aria-busy={busy === 'attack'}
-            title={recorded ? 'A recorded run: nothing is sent' : undefined}
+            title={recorded ? tr('A recorded run: nothing is sent', 'Revisión grabada: no se envía nada') : undefined}
           >
-            {busy === 'attack' ? <Busy label={busyLabel} /> : recorded ? 'First, test the original (recorded)' : 'First, test my original'}
+            {busy === 'attack' ? (
+              <Busy label={busyLabel} />
+            ) : recorded ? (
+              tr('First, test the original (recorded)', 'Probar primero el original (grabado)')
+            ) : (
+              tr('First, test my original', 'Probar primero mi original')
+            )}
           </button>
         )}
         {stage === 'rewritten' && published && (
           <button className="primary" onClick={() => attack(published, true)} disabled={!!busy} aria-busy={busy === 'attack'}>
-            {busy ? <Busy label={busyLabel} /> : attacks > 0 ? 'Test again' : 'Test it'}
+            {busy ? <Busy label={busyLabel} /> : attacks > 0 ? tr('Test again', 'Probar de nuevo') : tr('Test it', 'Probarlo')}
           </button>
         )}
         {stage === 'reattacked' && published && (
           <button className="primary" onClick={copySafe}>
-            {copied ? 'Copied' : 'Copy this version'}
+            {copied ? tr('Copied', 'Copiado') : tr('Copy this version', 'Copiar esta versión')}
           </button>
         )}
       </div>
@@ -682,40 +821,40 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
   const findings = (
     <div className="findings" key={published ? 'after' : 'before'}>
       <div className="finding-col">
-        <h3>Style habits</h3>
+        <h3>{tr('Style habits', 'Hábitos al escribir')}</h3>
         {styleClues.length === 0 ? (
-          <p className="good rise">No habits from your public writing.</p>
+          <p className="good rise">{tr('No habits from your public writing.', 'No aparece ningún hábito de tus textos públicos.')}</p>
         ) : (
           styleClues.map((m, i) => (
             <div key={`${m.phrase}-${i}`} className={`finding style rise ${goneFromEdit(m.phrase) ? 'gone' : ''}`} style={at(i)}>
               <code>{m.phrase}</code>{' '}
               <span>
-                {m.why}
-                {goneFromEdit(m.phrase) && <em className="gone-tag"> · gone from your edit</em>}
+                {whyText(m.why)}
+                {goneFromEdit(m.phrase) && <em className="gone-tag">{tr(' · gone from your edit', ' · ya no está en tu edición')}</em>}
               </span>
             </div>
           ))
         )}
       </div>
       <div className="finding-col">
-        <h3>Identifying details</h3>
+        <h3>{tr('Identifying details', 'Detalles que te identifican')}</h3>
         {contentClues.length === 0 ? (
           <p className="good rise">
             {degraded
               ? published
-                ? 'No counts, dates or capitalised names left.'
-                : 'No counts, dates or capitalised names found.'
+                ? tr('No counts, dates or capitalised names left.', 'No quedan cifras, fechas ni nombres con mayúscula.')
+                : tr('No counts, dates or capitalised names found.', 'No se encontraron cifras, fechas ni nombres con mayúscula.')
               : published
-                ? 'None left (checked on your device).'
-                : 'None found.'}
+                ? tr('None left (checked on your device).', 'No queda ninguno (comprobado en tu dispositivo).')
+                : tr('None found.', 'No se encontró ninguno.')}
           </p>
         ) : (
           contentClues.map((m, i) => (
             <div key={`${m.phrase}-${i}`} className={`finding content rise ${goneFromEdit(m.phrase) ? 'gone' : ''}`} style={at(i)}>
               <code>{m.phrase}</code>{' '}
               <span>
-                {m.why}
-                {goneFromEdit(m.phrase) && <em className="gone-tag"> · gone from your edit</em>}
+                {whyText(m.why)}
+                {goneFromEdit(m.phrase) && <em className="gone-tag">{tr(' · gone from your edit', ' · ya no está en tu edición')}</em>}
               </span>
             </div>
           ))
@@ -724,8 +863,11 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
           <div key={`${g.phrase}-${i}`} className="finding generalised rise" style={at(i)}>
             <code>{g.phrase}</code>{' '}
             <span>
-              {g.generic ? `→ “${g.generic.length > 70 ? `${g.generic.slice(0, 70)}…` : g.generic}”` : '→ removed'}
-              <em className="by">{g.by === 'rule' ? ' · fixed rule, no AI' : ' · Gemini Nano'}, on your device</em>
+              {g.generic ? `→ “${g.generic.length > 70 ? `${g.generic.slice(0, 70)}…` : g.generic}”` : tr('→ removed', '→ eliminado')}
+              <em className="by">
+                {g.by === 'rule' ? tr(' · fixed rule, no AI', ' · regla fija, sin IA') : ' · Gemini Nano'}
+                {tr(', on your device', ', en tu dispositivo')}
+              </em>
             </span>
           </div>
         ))}
@@ -736,8 +878,11 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
   // Without a local model only the fixed rules ran: say what that left unchecked, where the findings are (16-nov).
   const unchecked = degraded && (
     <p className="unchecked">
-      <strong>Names, places and companies: only guessed from capital letters.</strong> There is no local model on this device, so read your post for them
-      too before you post.
+      <strong>{tr('Names, places and companies: only guessed from capital letters.', 'Nombres, lugares y empresas: solo se adivinan por las mayúsculas.')}</strong>{' '}
+      {tr(
+        'There is no local model on this device, so read your post for them too before you post.',
+        'No hay un modelo local en este dispositivo, así que búscalos tú también en tu post antes de publicarlo.',
+      )}
     </p>
   );
 
@@ -745,9 +890,12 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
     <div className="meter">
       <div className="meter-top">
         {/* While you edit by hand the rank follows your edit: it moved with no word of why for a tester (17-nov). */}
-        <span className="meter-label">{editingByHand ? 'Your edit’s rank' : 'Your rank'} among ten writers: #1 reads most like you, #10 least</span>
+        <span className="meter-label">
+          {editingByHand ? tr('Your edit’s rank', 'El puesto de tu edición') : tr('Your rank', 'Tu puesto')}
+          {tr(' among ten writers: #1 reads most like you, #10 least', ' entre diez personas: el #1 es el que más suena a ti; el #10, el que menos')}
+        </span>
         <strong className={!rankShown || !stylo ? '' : stylo.rank <= 2 ? 'bad' : stylo.rank <= 5 ? 'warn' : 'good'}>
-          #{rankShown ? Math.round(rank) : '–'} <span>of 10</span>
+          #{rankShown ? Math.round(rank) : '–'} <span>{tr('of 10', 'de 10')}</span>
         </strong>
       </div>
       <div className="bar">
@@ -757,7 +905,11 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
         <div className={`trust ${trust.level}`}>
           <span className="conf">{CONFIDENCE[trust.level]}</span>
           {!tooShort && (
-            <span>{trust.rankRange[0] === trust.rankRange[1] ? `Steady at #${trust.rankRange[0]}` : `Likely #${trust.rankRange[0]} to #${trust.rankRange[1]}`}</span>
+            <span>
+              {trust.rankRange[0] === trust.rankRange[1]
+                ? tr(`Steady at #${trust.rankRange[0]}`, `Estable en el #${trust.rankRange[0]}`)
+                : tr(`Likely #${trust.rankRange[0]} to #${trust.rankRange[1]}`, `Probablemente entre el #${trust.rankRange[0]} y el #${trust.rankRange[1]}`)}
+            </span>
           )}
           {trust.notes.length > 0 && <p className="trust-notes">{trust.notes.join(' ')}</p>}
         </div>
@@ -766,15 +918,20 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
       {rankShown && stylo && (
         <p className="meter-read">
           {stylo.rank <= 2
-            ? 'It reads a lot like your public writing: easy to link.'
+            ? tr('It reads a lot like your public writing: easy to link.', 'Suena mucho a tus textos públicos: es fácil relacionarlo contigo.')
             : stylo.rank <= 5
-              ? 'It reads somewhat like your public writing.'
-              : 'It reads less like you than most of the other writers.'}
+              ? tr('It reads somewhat like your public writing.', 'Suena un poco a tus textos públicos.')
+              : tr('It reads less like you than most of the other writers.', 'Suena menos a ti que a la mayoría de las otras personas.')}
         </p>
       )}
-      <small>Local fingerprint: Burrows’ Delta on function words, range from 100 resamples · in your browser · 0 bytes sent</small>
+      <small>
+        {tr(
+          'Local fingerprint: Burrows’ Delta on function words, range from 100 resamples · in your browser · 0 bytes sent',
+          'Huella de escritura local: Delta de Burrows con palabras funcionales, rango a partir de 100 remuestreos · en tu navegador · 0 bytes enviados',
+        )}
+      </small>
       {/* Without your writing there is no rank of you: the sample writer's rank confused a tester (17-nov). */}
-      {standIn && <p className="hint">Add your own public writing to see how much your post reads like you.</p>}
+      {standIn && <p className="hint">{tr('Add your own public writing to see how much your post reads like you.', 'Añade tus propios textos públicos para ver cuánto suena tu post a ti.')}</p>}
     </div>
   );
 
@@ -782,13 +939,21 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
     <div className={`claims ${claims.meaningCheck === 'failed' ? 'failed' : ''}`}>
       {claims.meaningCheck === 'failed' ? (
         <>
-          <h3>Same meaning? No answer</h3>
-          <p>Gemini Nano gave no readable answer, so nothing checked that the rewrite still says what you meant. Read it before you post.</p>
+          <h3>{tr('Same meaning? No answer', '¿Dice lo mismo? Sin respuesta')}</h3>
+          <p>
+            {tr(
+              'Gemini Nano gave no readable answer, so nothing checked that the rewrite still says what you meant. Read it before you post.',
+              'Gemini Nano no dio una respuesta legible, así que no se comprobó que la reescritura siga diciendo lo que querías decir. Léela antes de publicar.',
+            )}
+          </p>
         </>
       ) : (
         <>
           <h3>
-            Same meaning? {claims.claims.filter((c) => c.kept).length} of {claims.claims.length} claims kept · checked on your device
+            {tr(
+              `Same meaning? ${claims.claims.filter((c) => c.kept).length} of ${claims.claims.length} claims kept · checked on your device`,
+              `¿Dice lo mismo? ${claims.claims.filter((c) => c.kept).length} de ${claims.claims.length} puntos conservados · comprobado en tu dispositivo`,
+            )}
           </h3>
           <ul>
             {claims.claims.map((c, i) => (
@@ -805,13 +970,25 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
   const lost = !!claims && claims.claims.length > 0 && claimsKept < claims.claims.length;
 
   // ── your post: the draft, then what was found in it, then the version you would post ──
-  const postLabel = published ? (degraded ? 'Your edit' : 'The rewritten version') : editingByHand ? 'Your edit' : 'Your post';
+  const postLabel = published
+    ? degraded
+      ? tr('Your edit', 'Tu edición')
+      : tr('The rewritten version', 'La versión reescrita')
+    : editingByHand
+      ? tr('Your edit', 'Tu edición')
+      : recorded
+        ? tr('Sample post', 'Post de ejemplo')
+        : tr('Your post', 'Tu post');
   const post = (
     <section className="post panel" aria-labelledby="post-title">
       <div className="post-head">
         <h2 id="post-title">{postLabel}</h2>
         <span className={`chip ${!published && sentAsIs ? 'asis' : 'private'}`}>
-          {published ? 'released for publication' : sentAsIs ? 'sent as it is to the AI · your choice' : 'private · stays on this device'}
+          {published
+            ? tr('what you would post', 'lo que publicarías')
+            : sentAsIs
+              ? tr('sent as it is to the AI · your choice', 'enviado tal cual a la IA · decisión tuya')
+              : tr('private · stays on this device', 'privado · se queda en este dispositivo')}
         </span>
       </div>
       <div className={`sheet-wrap ${working ? 'reading' : ''}`}>
@@ -819,7 +996,7 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
           <textarea
             ref={textareaRef}
             aria-labelledby="post-title"
-            placeholder="Paste the post you are about to publish…"
+            placeholder={tr('Paste the post you are about to publish…', 'Pega el post que vas a publicar…')}
             readOnly={recorded && stage === 'draft'}
             value={stage === 'draft' ? draft : edited}
             onChange={(e) => (stage === 'draft' ? setDraft(e.target.value) : setEdited(e.target.value))}
@@ -834,14 +1011,14 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
         <div className="tools">
           <span className="hint">
             {recorded
-              ? 'The sample post is fixed in a recorded run.'
+              ? tr('The sample post is fixed in a recorded run.', 'En una revisión grabada, el post de ejemplo no se puede cambiar.')
               : draft === DRAFT
-                ? 'Sample post: an anonymous review of an employer. Edit it, or paste yours.'
-                : 'Your post stays on this device until you choose to test it.'}
+                ? tr('Sample post: an anonymous review of an employer. Edit it, or paste yours.', 'Post de ejemplo (en inglés): una reseña anónima de una empresa. Edítalo o pega el tuyo.')
+                : tr('Your post stays on this device until you choose to test it.', 'Tu post se queda en este dispositivo hasta que decidas probarlo.')}
           </span>
           {recorded ? (
             <a className="hint-link" href={location.pathname}>
-              Check your own post, live
+              {tr('Check your own post, live', 'Revisar tu propio post, en vivo')}
             </a>
           ) : (
             <button
@@ -851,7 +1028,7 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
                 textareaRef.current?.focus();
               }}
             >
-              Paste my own post
+              {tr('Paste my own post', 'Pegar mi propio post')}
             </button>
           )}
         </div>
@@ -860,27 +1037,34 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
         <details ref={ownRef} className="disclosure own-writing" onToggle={(e) => e.currentTarget.open && setWantPacks(true)}>
           {/* The count against the 150 a fingerprint needs, as you type: a tester stopped at 141 without knowing (17-nov). */}
           <summary>
-            Compare with your own public writing
-            <span className="why-s">{ownWords ? `${ownWords}${ownWords < 150 ? ' of 150' : ''} words` : 'optional'}</span>
+            {tr('Compare with your own public writing', 'Comparar con tus propios textos públicos')}
+            <span className="why-s">
+              {ownWords
+                ? tr(`${num(ownWords)}${ownWords < 150 ? ' of 150' : ''} words`, `${num(ownWords)}${ownWords < 150 ? ' de 150' : ''} palabras`)
+                : tr('optional', 'opcional')}
+            </span>
           </summary>
           <div className="disclosure-body">
             <p className="hint">
-              Paste things you have already published under your name, 150 words or more: blog posts, LinkedIn posts, comments. The fingerprint compares them
-              with your anonymous post on this device. For the attack they go to the cloud as one of the ten writers, so paste only writing that is already
-              public. Nothing is stored.
+              {tr(
+                'Paste things you have already published under your name, 150 words or more: blog posts, LinkedIn posts, comments. The fingerprint compares them with your anonymous post on this device. For the attack they go to the cloud as one of the ten writers, so paste only writing that is already public. Nothing is stored.',
+                'Pega textos que ya hayas publicado con tu nombre, 150 palabras o más: entradas de blog, posts de LinkedIn, comentarios. La huella de escritura los compara con tu post anónimo en este dispositivo. Para la prueba, van a la nube como una de las diez personas, así que pega solo textos que ya sean públicos. No se guarda nada.',
+              )}
             </p>
             <textarea
-              aria-label="Your public writing"
+              aria-label={tr('Your public writing', 'Tus textos públicos')}
               rows={5}
               value={ownPublic}
               onChange={(e) => setOwnPublic(e.target.value)}
-              placeholder="Paste a few paragraphs you have published under your name…"
+              placeholder={tr('Paste a few paragraphs you have published under your name…', 'Pega unos párrafos que hayas publicado con tu nombre…')}
             />
-            {ownWords > 0 && ownWords < 150 && <p className="hint">At least 150 words make a useful fingerprint.</p>}
+            {ownWords > 0 && ownWords < 150 && (
+              <p className="hint">{tr('At least 150 words make a useful fingerprint.', 'Hacen falta al menos 150 palabras para una huella de escritura útil.')}</p>
+            )}
             {canPickField && (
               <p className="field-line">
                 <label>
-                  The other nine writers write about{' '}
+                  {tr('The other nine writers write about', 'Las otras nueve personas escriben sobre')}{' '}
                   <select
                     value={lineupOf.wanted}
                     disabled={!!busy}
@@ -891,7 +1075,7 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
                   >
                     {FIELD_IDS.map((id) => (
                       <option key={id} value={id}>
-                        {FIELD_LABELS[id]}
+                        {fieldLabel(id)}
                       </option>
                     ))}
                   </select>
@@ -905,8 +1089,8 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
 
       {stage !== 'draft' && !editing && (nHabits > 0 || nDetails > 0) && (
         <p className="legend" aria-hidden="true">
-          {nHabits > 0 && <span className="key style">Habit your public writing shares</span>}
-          {nDetails > 0 && <span className="key content">Detail that identifies you</span>}
+          {nHabits > 0 && <span className="key style">{tr('Habit your public writing shares', 'Hábito que comparten tus textos públicos')}</span>}
+          {nDetails > 0 && <span className="key content">{tr('Detail that identifies you', 'Detalle que te identifica')}</span>}
         </p>
       )}
 
@@ -915,12 +1099,14 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
           <div className="tools">
             {/* Steps, not a goal: a tester without Gemini Nano did not know what to change (17-nov). */}
             <span className="hint">
-              Press the button for counts, dates and some names. Then change the rest yourself: a name becomes a role (“the regional manager”), and the words
-              under your habits go.
+              {tr(
+                'Press the button for counts, dates and some names. Then change the rest yourself: a name becomes a role (“the regional manager”), and the words under your habits go.',
+                'Pulsa el botón para las cifras, las fechas y algunos nombres. Luego cambia tú el resto: un nombre pasa a ser un cargo (“the regional manager”) y las palabras marcadas como hábitos se quitan.',
+              )}
             </span>
             {ruleCounts.length > 0 && (
               <button className="mini" onClick={generaliseForMe}>
-                Generalise details for me
+                {tr('Generalise details for me', 'Generalizar los detalles por mí')}
               </button>
             )}
           </div>
@@ -938,15 +1124,28 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
 
       {published && (
         <div className="tools">
-          <span className="hint">Read it before you post: the meaning check runs on a small model and can miss a change.</span>
+          <span className="hint">
+            {/* Only says the meaning was checked when it was: not for a hand edit, nor when the check failed (22-nov). */}
+            {degraded || !claims || claims.meaningCheck === 'failed' || claims.claims.length === 0
+              ? tr('Read it before you post: check that it still says what you meant.', 'Léelo antes de publicar: comprueba que sigue diciendo lo que querías.')
+              : claims.claims.every((c) => c.kept)
+                ? tr(
+                    'Read it before you post. A small model on your device checked that it still says what you said; check it yourself too.',
+                    'Léelo antes de publicar. Un modelo pequeño de tu dispositivo comprobó que sigue diciendo lo mismo; compruébalo tú también.',
+                  )
+                : tr(
+                    'Read it before you post: the check on your device found a point that may have changed (see “Why?” below).',
+                    'Léelo antes de publicar: la comprobación de tu dispositivo encontró un punto que puede haber cambiado (mira «¿Por qué?» abajo).',
+                  )}
+          </span>
           <span className="tools-end">
             <button className="mini" aria-expanded={showCompare} onClick={() => setShowCompare((v) => !v)}>
-              {showCompare ? 'Hide the comparison' : 'Compare with your original'}
+              {showCompare ? tr('Hide the comparison', 'Ocultar la comparación') : tr('Compare with your original', 'Comparar con tu original')}
             </button>
             {/* At the end, copying is the step's own button: one Copy, not two (21-nov plan). */}
             {stage !== 'reattacked' && (
               <button className="mini" onClick={copySafe}>
-                {copied ? 'Copied' : 'Copy'}
+                {copied ? tr('Copied', 'Copiado') : tr('Copy', 'Copiar')}
               </button>
             )}
           </span>
@@ -954,16 +1153,32 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
       )}
       {published && showCompare && <Compare original={draft} final={published.value} />}
       {/* A failed or lossy meaning check is said where the text is, not only behind "Why?". */}
-      {published && claims?.meaningCheck === 'failed' && <p className="notice slim">Gemini Nano gave no answer on the meaning: read the rewrite against your post before you post it.</p>}
+      {published && claims?.meaningCheck === 'failed' && (
+        <p className="notice slim">
+          {tr(
+            'Gemini Nano gave no answer on the meaning: read the rewrite against your post before you post it.',
+            'Gemini Nano no respondió sobre el sentido: compara la reescritura con tu post antes de publicarla.',
+          )}
+        </p>
+      )}
 
       {stage !== 'draft' && !editingByHand && (
         <Why
           summary={
             published && claims
-              ? `${plural(generalised.length, 'detail')} generalised${claims.claims.length ? ` · ${claimsKept} of ${claims.claims.length} claims kept` : ''}`
+              ? tr(
+                  `${count(generalised.length, ['detail', 'details'], ['detalle', 'detalles'])} generalised${claims.claims.length ? ` · ${claimsKept} of ${claims.claims.length} claims kept` : ''}`,
+                  `${count(generalised.length, ['detail', 'details'], ['detalle', 'detalles'])} ${generalised.length === 1 ? 'generalizado' : 'generalizados'}${claims.claims.length ? ` · ${claimsKept} de ${claims.claims.length} puntos conservados` : ''}`,
+                )
               : published
-                ? `${plural(nHabits, 'habit')} and ${plural(nDetails, 'detail')} left`
-                : `${plural(nHabits, 'habit')} · ${plural(nDetails, 'detail')} · your style ranks ${rankShown ? `#${Math.round(rank)}` : '–'} of 10`
+                ? tr(
+                    `${count(nHabits, ['habit', 'habits'], ['hábito', 'hábitos'])} and ${count(nDetails, ['detail', 'details'], ['detalle', 'detalles'])} left`,
+                    `quedan ${count(nHabits, ['habit', 'habits'], ['hábito', 'hábitos'])} y ${count(nDetails, ['detail', 'details'], ['detalle', 'detalles'])}`,
+                  )
+                : tr(
+                    `${count(nHabits, ['habit', 'habits'], ['hábito', 'hábitos'])} · ${count(nDetails, ['detail', 'details'], ['detalle', 'detalles'])} · ${rankShown ? (Math.round(rank) === 1 ? 'your style is the easiest of the 10 to recognise' : `your style ranks #${Math.round(rank)} of 10 (#1 is the easiest to recognise)`) : 'your style: no rank'}`,
+                    `${count(nHabits, ['habit', 'habits'], ['hábito', 'hábitos'])} · ${count(nDetails, ['detail', 'details'], ['detalle', 'detalles'])} · ${rankShown ? (Math.round(rank) === 1 ? 'tu estilo es el más fácil de reconocer de los 10' : `tu estilo está en el puesto #${Math.round(rank)} de 10 (el #1 es el más fácil de reconocer)`) : 'tu estilo: sin puesto'}`,
+                  )
           }
           open={lost}
         >
@@ -973,7 +1188,16 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
           {fingerprint}
         </Why>
       )}
-      {editingByHand && <Why summary={`your edit ranks ${rankShown ? `#${Math.round(rank)}` : '–'} of 10`}>{fingerprint}</Why>}
+      {editingByHand && (
+        <Why
+          summary={tr(
+            `your edit ranks ${rankShown ? `#${Math.round(rank)}` : '–'} of 10`,
+            `tu edición está en el puesto ${rankShown ? `#${Math.round(rank)}` : '–'} de 10`,
+          )}
+        >
+          {fingerprint}
+        </Why>
+      )}
     </section>
   );
 
@@ -991,13 +1215,15 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
   const lineupSection = (
     <section className="section lineup-section" aria-labelledby="lineup-title">
       <div className="section-head">
-        <h2 id="lineup-title">The lineup</h2>
-        <span className="chip public">what the cloud sees</span>
+        <h2 id="lineup-title">{tr('Ten writers, and one is you', 'Diez personas, y una eres tú')}</h2>
+        <span className="chip public">{tr('what the cloud sees', 'lo que ve la nube')}</span>
       </div>
       <p className="section-note">
-        When you test, a cloud AI gets the text and ten public writers, shuffled on every attempt; it is never told which one is you. The other nine write
-        about{' '}
-        <strong>{FIELD_LABELS[lineupOf.field]}</strong>
+        {tr(
+          'When you test, a cloud AI gets the text and ten public writers, shuffled on every attempt; it is never told which one is you. The other nine write about',
+          'Cuando pruebas, una IA en la nube recibe el texto y lo que han publicado diez personas, en un orden distinto en cada intento; nunca se le dice cuál eres tú. Las otras nueve escriben sobre',
+        )}{' '}
+        <strong>{fieldLabel(lineupOf.field)}</strong>
         {fieldNote}
       </p>
 
@@ -1009,35 +1235,62 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
           <div className="result-text">
             <strong>
               {attacking
-                ? `Attempt ${Math.min(picks.length + 1, 10)} of 10`
+                ? tr(`Attempt ${Math.min(picks.length + 1, 10)} of 10`, `Intento ${Math.min(picks.length + 1, 10)} de 10`)
                 : inconclusive
-                  ? 'Inconclusive: too few answers'
+                  ? tr('Inconclusive: too few answers', 'Sin resultado claro: muy pocas respuestas')
                   : standIn
-                    ? 'It looked for the sample writer'
+                    ? tr('It looked for the sample writer', 'Buscó a la persona de ejemplo')
                     : exposedNow
-                      ? `It picked you ${final!.hits} of ${final!.answered} times`
+                      ? tr(`It picked you ${final!.hits} of ${final!.answered} times`, `Te eligió ${final!.hits} de ${final!.answered} veces`)
                       : mistakenFor
-                        ? `It picked you ${final!.hits} of ${final!.answered} times: it took you for Writer ${mistakenFor.letter}`
-                        : `It picked you ${final!.hits} of ${final!.answered} times: about chance`}
+                        ? final!.hits === 0
+                          ? tr(
+                              `It never picked you in ${final!.answered} tries: it mistook you for Writer ${mistakenFor.letter}`,
+                              `No te eligió en ninguno de los ${final!.answered} intentos: te confundió con la persona ${mistakenFor.letter}`,
+                            )
+                          : tr(
+                              `It picked you ${final!.hits} of ${final!.answered} times: it mistook you for Writer ${mistakenFor.letter}`,
+                              `Te eligió ${final!.hits} de ${final!.answered} veces: te confundió con la persona ${mistakenFor.letter}`,
+                            )
+                        : tr(`It picked you ${final!.hits} of ${final!.answered} times: about chance`, `Te eligió ${final!.hits} de ${final!.answered} veces: más o menos al azar`)}
             </strong>
             {/* The count in words: a tester could not tell whether "2/10" meant it picked her (17-nov). */}
             <p>
               {attacking
-                ? `${picks.length ? `So far it picked ${standIn ? 'the sample writer' : 'you'} ${hits} of ${picks.length} times. ` : ''}By pure chance it would be 1 in 10.`
+                ? tr(
+                    `${picks.length ? `So far it picked ${standIn ? 'the sample writer' : 'you'} ${hits} of ${picks.length} times. ` : ''}By pure chance it would be 1 in 10.`,
+                    `${picks.length ? `Hasta ahora ${standIn ? 'ha elegido a la persona de ejemplo' : 'te ha elegido'} ${hits} de ${picks.length} veces. ` : ''}Por puro azar sería 1 de cada 10.`,
+                  )
                 : standIn
                   ? // Not a score of you at all: "picked the sample writer 0 of 10 times" read as "safe" to a tester, three rounds running (17-nov).
-                    `Without your own public writing, the AI looked for the sample writer (it picked her ${final!.hits} of ${final!.answered} times).`
+                    tr(
+                      `Without your own public writing, the AI looked for the sample writer (it picked her ${final!.hits} of ${final!.answered} times).`,
+                      `Sin tus propios textos públicos, la IA buscó a la persona de ejemplo (la eligió ${final!.hits} de ${final!.answered} veces).`,
+                    )
                   : !exposedNow && mistakenFor
-                    ? `Writer ${mistakenFor.letter} got ${mistakenFor.count} of ${final!.answered} picks: your rewrite reads like someone else. By pure chance it would be 1 in 10.`
+                    ? tr(
+                        `Writer ${mistakenFor.letter} got ${mistakenFor.count} of ${final!.answered} picks: your rewrite reads like someone else’s. By pure chance it would be 1 in 10.`,
+                        `La persona ${mistakenFor.letter} se llevó ${mistakenFor.count} de ${final!.answered}: tu reescritura parece de otra persona. Por puro azar sería 1 de cada 10.`,
+                      )
                     : exposedNow
-                      ? 'By pure chance it would be 1 in 10: it recognised your style.'
-                      : 'By pure chance it would be 1 in 10.'}
-              {!attacking && final!.answered < final!.attempts ? ` ${final!.attempts - final!.answered} attempts got no answer (model busy).` : ''}
-              {!attacking && inconclusive ? ' Too few answers came back from the cloud: wait a minute and test again.' : ''}
-              {!attacking && before !== null && stage === 'reattacked' ? ` Before: ${before}/10.` : ''}
+                      ? tr('By pure chance it would be 1 in 10: it recognised your style.', 'Por puro azar sería 1 de cada 10: reconoció tu estilo.')
+                      : tr('By pure chance it would be 1 in 10.', 'Por puro azar sería 1 de cada 10.')}
+              {!attacking && final!.answered < final!.attempts
+                ? tr(
+                    ` ${count(final!.attempts - final!.answered, ['attempt', 'attempts'], ['intento', 'intentos'])} got no answer (model busy).`,
+                    ` ${count(final!.attempts - final!.answered, ['attempt', 'attempts'], ['intento', 'intentos'])} sin respuesta (modelo ocupado).`,
+                  )
+                : ''}
+              {!attacking && inconclusive
+                ? tr(' Too few answers came back from the cloud: wait a minute and test again.', ' Llegaron muy pocas respuestas de la nube: espera un minuto y prueba de nuevo.')
+                : ''}
+              {!attacking && before !== null && stage === 'reattacked' ? tr(` Before: ${before}/10.`, ` Antes: ${before}/10.`) : ''}
               {/* An AI is not your boss (a tester, 22-nov): the people who know you read the details, not the style. */}
               {!attacking && stage === 'reattacked' && !exposedNow && !standIn && !inconclusive
-                ? ' People who know you still might: reread names, teams, roles, numbers and dates before you post.'
+                ? tr(
+                    ' People who know you still might: reread names, teams, roles, numbers and dates before you post.',
+                    ' La gente que te conoce aún podría reconocerte: relee nombres, equipos, cargos, cifras y fechas antes de publicar.',
+                  )
                 : ''}
             </p>
             <span className="ticks" aria-hidden="true">
@@ -1051,24 +1304,29 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
               <BeforeAfter
                 good={!exposedNow}
                 before={[
-                  rankBefore !== null ? `your style ranked #${rankBefore} of 10 writers` : '',
-                  habitsBefore + detailsBefore ? `${plural(habitsBefore, 'habit')} and ${plural(detailsBefore, 'detail')} could give you away` : '',
+                  rankBefore !== null ? (rankBefore === 1 ? tr('your style was the easiest of the 10 to recognise', 'tu estilo era el más fácil de reconocer de los 10') : tr(`your style ranked #${rankBefore} of 10 (#1 is the easiest to recognise)`, `tu estilo estaba en el puesto #${rankBefore} de 10 (el #1 es el más fácil de reconocer)`)) : '',
+                  habitsBefore + detailsBefore
+                    ? tr(
+                        `${count(habitsBefore, ['habit', 'habits'], ['hábito', 'hábitos'])} and ${count(detailsBefore, ['detail', 'details'], ['detalle', 'detalles'])} could give you away`,
+                        `${count(habitsBefore, ['habit', 'habits'], ['hábito', 'hábitos'])} y ${count(detailsBefore, ['detail', 'details'], ['detalle', 'detalles'])} podían delatarte`,
+                      )
+                    : '',
                 ]
                   .filter(Boolean)
                   .join('; ')}
-                now={`it picked you ${final.hits} of ${final.answered} times`}
+                now={tr(`it picked you ${final.hits} of ${final.answered} times`, `te eligió ${final.hits} de ${final.answered} veces`)}
               />
             )}
             {standIn && !attacking && addWriting && !inconclusive && (
               <button className="mini add-writing" onClick={addWriting}>
-                Add my public writing
+                {tr('Add my public writing', 'Añadir mis textos públicos')}
               </button>
             )}
           </div>
         </div>
       )}
 
-      <div className={`writers ${attacking ? 'looking' : ''}`} role="list" aria-label="Ten writers">
+      <div className={`writers ${attacking ? 'looking' : ''}`} role="list" aria-label={tr('Ten writers', 'Diez personas')}>
         {lineup.map((c, k) => {
           const n = picks.filter((p) => p === c.id).length;
           const isMe = c.id === SELF_ID;
@@ -1078,7 +1336,7 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
               letter={c.letter}
               glyph={glyphs[k] ?? []}
               // Without your own writing this seat holds the sample writer: "you" on it misled a judge (17-nov).
-              you={isMe ? (standIn ? 'Sample' : 'You') : undefined}
+              you={isMe ? (standIn ? tr('Sample', 'Ejemplo') : tr('You', 'Tú')) : undefined}
               count={n}
               pointed={current === c.id}
               found={isMe && n >= 3}
@@ -1087,29 +1345,49 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
         })}
       </div>
       <p className="glyph-key">
-        Each card is a writing fingerprint: how often a writer uses little words (“the”, “but”, “I”…) and marks (dashes, brackets), compared with the other
-        nine. The AI recognises people by habits like these.
+        {tr(
+          'Each card is a writing fingerprint: how often a writer uses little words (“the”, “but”, “I”…) and marks (dashes, brackets), compared with the other nine. The AI recognises people by habits like these.',
+          'Cada tarjeta es una huella de escritura: cuántas veces usa una persona palabras pequeñas (“the”, “but”, “I”…) y signos (guiones, paréntesis), frente a las otras nueve. La IA reconoce a la gente por hábitos así.',
+        )}
       </p>
 
       {styleGone && !busy && (
         <p className="notice slim">
-          Your writing habits no longer stand out (your fingerprint ranks you #{Math.round(rank)} of 10), yet it still picked you.{' '}
+          {tr(
+            `Your writing habits no longer stand out (your fingerprint ranks you #${Math.round(rank)} of 10), yet it still picked you.`,
+            `Tus hábitos al escribir ya no destacan (tu huella de escritura te pone en el puesto #${Math.round(rank)} de 10), pero aun así te eligió.`,
+          )}{' '}
           {/* What to change, by name: "Change those next" left a tester guessing (17-nov). */}
           {contentClues.length
-            ? `These details are still in your post: ${contentClues
-                .slice(0, 4)
-                .map((c) => `“${c.phrase}”`)
-                .join(', ')}. Change them next.`
-            : 'It goes by what you write about: change the specifics of the story (the events, the people), not your words.'}
+            ? tr(
+                `These details are still in your post: ${contentClues
+                  .slice(0, 4)
+                  .map((c) => `“${c.phrase}”`)
+                  .join(', ')}. Change them next.`,
+                `Estos detalles siguen en tu post: ${contentClues
+                  .slice(0, 4)
+                  .map((c) => `“${c.phrase}”`)
+                  .join(', ')}. Cámbialos ahora.`,
+              )
+            : tr(
+                'It goes by what you write about: change the specifics of the story (the events, the people), not your words.',
+                'Se fija en lo que cuentas: cambia lo concreto de la historia (los hechos, la gente que aparece), no tus palabras.',
+              )}
         </p>
       )}
 
       {verdict && verdict.reasons.length > 0 && picks.length === verdict.attempts && (
-        <Why summary={reasonsSeat ? `the AI’s reasons for Writer ${reasonsSeat}` : 'the AI’s reasons'}>
+        <Why
+          summary={
+            reasonsSeat ? tr(`the AI’s reasons for Writer ${reasonsSeat}`, `las razones de la IA para elegir a la persona ${reasonsSeat}`) : tr('the AI’s reasons', 'las razones de la IA')
+          }
+        >
           {reasonsSeat && (
             <p className="hint reasons-whose">
-              For its last pick, Writer {reasonsSeat}
-              {standIn ? '' : ', not you'}: why it matched the post with {reasonsSeat}’s writing.
+              {tr(
+                `For its last pick, Writer ${reasonsSeat}${standIn ? '' : ', not you'}: why it matched the post with ${reasonsSeat}’s writing.`,
+                `Sobre su última elección, la persona ${reasonsSeat}${standIn ? '' : ', no tú'}: por qué relacionó el post con los textos de ${reasonsSeat}.`,
+              )}
             </p>
           )}
           <ul className="reasons">
@@ -1120,26 +1398,30 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
                 {namesYou && (
                   <em className="from-pick">
                     {' '}
-                    · {seatOf(SELF_ID)} is {standIn ? 'the sample writer' : 'you'}
+                    · {tr(`${seatOf(SELF_ID)} is ${standIn ? 'the sample writer' : 'you'}`, `${seatOf(SELF_ID)} ${standIn ? 'es la persona de ejemplo' : 'eres tú'}`)}
                   </em>
                 )}
                 {(fromPick.length > 0 || fromOther) && (
                   <em className="from-pick">
                     {' '}
-                    · quotes{' '}
+                    · {tr('quotes', 'cita')}{' '}
                     {fromOther
-                      ? 'another writer’s text'
+                      ? tr('another writer’s text', 'el texto de otra persona')
                       : verdict?.reasonsPick === SELF_ID
                         ? standIn
-                          ? 'the sample writer’s posts'
-                          : 'your public writing'
-                        : `Writer ${reasonsSeat}’s writing`}
+                          ? tr('the sample writer’s posts', 'los posts de la persona de ejemplo')
+                          : tr('your public writing', 'tus textos públicos')
+                        : tr(`Writer ${reasonsSeat}’s writing`, `los textos de la persona ${reasonsSeat}`)}
                   </em>
                 )}
                 {notIn.length > 0 && (
                   <em className="ungrounded">
                     {' '}
-                    · {notIn.map((q) => `“${q}”`).join(', ')} {notIn.length > 1 ? 'are' : 'is'} in none of the texts it was given
+                    ·{' '}
+                    {tr(
+                      `${notIn.map((q) => `“${q}”`).join(', ')} ${notIn.length > 1 ? 'are' : 'is'} in none of the texts it was given`,
+                      `${notIn.map((q) => `“${q}”`).join(', ')} ${notIn.length > 1 ? 'no están' : 'no está'} en ninguno de los textos que recibió`,
+                    )}
                   </em>
                 )}
               </li>
@@ -1148,14 +1430,18 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
           {foldedReasons > 0 && (
             <button className="mini reasons-more" onClick={() => setShowUngrounded(true)}>
               {/* The action first: "…: show" at the end read as a glitch to a tester (17-nov). */}
-              {foldedReasons === 1 ? 'Show one more reason: it quotes' : `Show ${foldedReasons} more reasons: they quote`} words that are in none of the texts it
-              was given
+              {foldedReasons === 1
+                ? tr('Show one more reason: it quotes', 'Mostrar una razón más: cita')
+                : tr(`Show ${foldedReasons} more reasons: they quote`, `Mostrar ${foldedReasons} razones más: citan`)}
+              {tr(' words that are in none of the texts it was given', ' palabras que no están en ninguno de los textos que recibió')}
             </button>
           )}
           {bySubject && (
             <p className="hint subject-note">
-              Some of its reasons are about what you write about, not how you write. If the other nine writers are not from your field, start over and pick a
-              closer one; if they are, your subject alone gives you away.
+              {tr(
+                'Some of its reasons are about what you write about, not how you write. If the other nine writers are not from your field, start over and pick a closer one; if they are, your subject alone gives you away.',
+                'Algunas de sus razones hablan de qué escribes, no de cómo escribes. Si las otras nueve personas no son de tu sector, empieza de nuevo y elige uno más cercano; si lo son, tu tema basta para delatarte.',
+              )}
             </p>
           )}
         </Why>
@@ -1163,12 +1449,21 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
 
       {/* The ten writers, a line each: "the same field" was a claim a judge could not see (17-nov). */}
       <details className="disclosure lineup-texts">
-        <summary>Read a line from each writer</summary>
+        <summary>{tr('Read a line from each writer', 'Leer una frase de cada persona')}</summary>
         <ul className="disclosure-body">
           {lineup.map((c) => (
             <li key={c.id}>
               <b>{c.letter}</b>{' '}
-              {c.id === SELF_ID && <em>{standIn ? 'sample writer' : ownText ? 'you, your public writing' : 'you, the sample writer’s posts'}: </em>}
+              {c.id === SELF_ID && (
+                <em>
+                  {standIn
+                    ? tr('sample writer', 'persona de ejemplo')
+                    : ownText
+                      ? tr('you, your public writing', 'tú, tus textos públicos')
+                      : tr('you, the sample writer’s posts', 'tú, los posts de la persona de ejemplo')}
+                  :{' '}
+                </em>
+              )}
               {firstLine(corpusOf(c.id))}
             </li>
           ))}

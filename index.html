@@ -127,8 +127,8 @@
             <article class="scene-card reveal">
               <img src="/illus/review-800.webp" srcset="/illus/review-640.webp 640w, /illus/review-800.webp 800w, /illus/review-1400.webp 1400w" sizes="(max-width: 980px) 92vw, 380px" width="800" height="533" loading="lazy" alt="A tired office worker typing at a kitchen table. The paper-ball mascot points at highlighted lines on the laptop screen." />
               <div class="scene-copy">
-                <h3>Anonymous reviews</h3>
-                <p>Your manager knows how you write. The words you always use, and the details only your team knows, can sign the review for you.</p>
+                <h3>Posts about your work or your street</h3>
+                <p>Your manager, your hospital or your town hall knows how you write. The words you always use, and the details only your people know, can sign the post for you.</p>
               </div>
             </article>
             <article class="scene-card reveal">
@@ -180,7 +180,7 @@
             <p class="kicker reveal">Real results</p>
             <h2 class="reveal">We let an AI try to find us</h2>
             <p class="sub reveal">
-              Two real checks, before and after the fix. The attacker was Gemini Flash-Lite, in the cloud: ten tries on the post (16 November 2026), one
+              Two real checks, before and after the fix. The AI that tried to find the author was Gemini Flash-Lite, in the cloud: ten tries on the post (16 November 2026), one
               guess on the selfie (22 November 2026).
             </p>
           </header>
@@ -206,7 +206,7 @@
                 </div>
                 <div class="v good">
                   <dt>Blurred on your device</dt>
-                  <dd>No street left to read. It could only guess the city from the old-town look: <strong>Palma</strong>, a whole city, not your door.</dd>
+                  <dd>No street left to read. It could only guess the city from the old-town look: <strong>Palma</strong>. That is as far as blurring goes: if your city is a secret too, crop the photo or pick another one.</dd>
                 </div>
               </dl>
             </article>
@@ -291,15 +291,15 @@
             </article>
           </div>
           <!-- A sceptical developer and the jury asked how to check the promises (22-nov): four ways, none needing trust. -->
-          <div class="verify reveal">
-            <h3>Don’t take our word for it</h3>
+          <details class="verify reveal">
+            <summary><h3>Don’t take our word for it</h3> <span class="verify-hint">Four ways to check it yourself</span></summary>
             <ol>
               <li><strong>Read the code.</strong> It is open source, on <a href="https://github.com/Ruby570bocadito/throwaway-Firebase-Hackaton">GitHub</a>.</li>
-              <li><strong>Count the bytes.</strong> In the app, “Sent to the cloud” opens a receipt of every step and every byte.</li>
-              <li><strong>Try to leak it.</strong> That receipt has a button that pushes your original into a cloud call. The guard blocks it.</li>
+              <li><strong>Count the bytes.</strong> In the app, the counter at the top opens a receipt of every step and every byte.</li>
+              <li><strong>Try to leak it.</strong> That receipt has a test button that tries to send your original out. The guard stops it.</li>
               <li><strong>Watch the network.</strong> In your browser’s developer tools, your post or photo is in no request until you test, and then only the version you would post.</li>
             </ol>
-          </div>
+          </details>
           <p class="legal reveal">
             Why Google reCAPTCHA appears: when you open the live app, it checks that requests come from this app and not from a bot, with cookies of Google’s
             own. It never sees your post or your photo. This site is protected by reCAPTCHA and the Google <a href="https://policies.google.com/privacy">Privacy Policy</a> and
@@ -360,11 +360,11 @@
               <summary>What is Gemini Nano? Will it download something?</summary>
               <p>A small AI model from Google, built into Chrome. It runs on your computer, so your draft doesn’t have to go anywhere to be checked or fixed. Chrome downloads it once, when you start your first check. It asks for 22 GB of free disk, though the model itself is much smaller, and removes it by itself if free space drops below 10 GB.</p>
             </details>
-            <details>
+            <details open>
               <summary>Does it work on my phone?</summary>
               <p>The demo does, and so do checking a post with fixed rules and picking what to blur in a photo. The full check needs Gemini Nano, which today runs in Chrome on computers.</p>
             </details>
-            <details>
+            <details open>
               <summary>Can it promise nobody will find me?</summary>
               <p>No. It lowers the odds against an AI reading your post today. Short posts are hard to judge either way, blurring is weaker than cropping, and the rewrite sounds plainer than you do. Read the result before you post it.</p>
             </details>
@@ -403,7 +403,7 @@
           <a href="/es/" hreflang="es" lang="es" data-lang="es">Español</a>
           <a href="https://github.com/Ruby570bocadito/throwaway-Firebase-Hackaton">For developers: the code on GitHub</a>
         </nav>
-        <p class="foot-fine">Made for #BuildHybridAI 2026 with Firebase AI Logic, Gemini Nano and Gemini · Apache-2.0 · No cookies of ours</p>
+        <p class="foot-fine">Open source (Apache-2.0) · Built with Firebase AI Logic, Gemini Nano and Gemini</p>
       </div>
     </footer>
 
