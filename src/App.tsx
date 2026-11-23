@@ -213,13 +213,13 @@ export default function App() {
                 live
                   ? tr('Live: Gemini Nano on this device, Gemini in the cloud', 'En vivo: Gemini Nano en este dispositivo, Gemini en la nube')
                   : tr(
-                      'A real run in Chrome, replayed: the AI answers were recorded on 15–16 November; everything else runs live in this tab',
-                      'Una revisión real en Chrome, repetida: las respuestas de la IA se grabaron el 15 y el 16 de noviembre; todo lo demás funciona en vivo en esta pestaña',
+                      'Real runs in Chrome, replayed: the AI answers were recorded between 15 and 23 November; nothing is sent, and everything else runs in this tab',
+                      'Revisiones reales en Chrome, repetidas: las respuestas de la IA se grabaron entre el 15 y el 23 de noviembre; no se envía nada, y todo lo demás funciona en esta pestaña',
                     )
               }
             >
               <i className="dot" aria-hidden="true" />
-              {live ? tr('Live', 'En vivo') : tr('Demo: a real run, replayed', 'Demo: una revisión real, repetida')}
+              {live ? tr('Live', 'En vivo') : tr('Demo: a recorded run', 'Demo: una revisión grabada')}
             </span>
             {/* Before anything is sent it says so in words, not "Sent to the cloud 0 B" (22-nov). */}
             <button
@@ -229,7 +229,14 @@ export default function App() {
               aria-haspopup="dialog"
             >
               <i className="dot" aria-hidden="true" />
-              {sentOut === 0 ? (
+              {/* A replay sends nothing: "Sent to the cloud 44 KB" in the recorded demo contradicted "nothing is sent" (the judge
+                  and four testers, round 6, 23-nov). The receipt says what the real run sent. */}
+              {!live ? (
+                <>
+                  <span className="receipt-word">{tr('Nothing sent: a recorded run', 'Nada enviado: revisión grabada')}</span>
+                  <span className="receipt-short">{tr('Nothing sent', 'Nada enviado')}</span>
+                </>
+              ) : sentOut === 0 ? (
                 <>
                   <span className="receipt-word">{tr('Nothing sent yet', 'Aún no se ha enviado nada')}</span>
                   <span className="receipt-short">{tr('Nothing sent', 'Nada enviado')}</span>
@@ -326,13 +333,13 @@ export default function App() {
               <CloseIcon />
             </button>
           </header>
-          <LedgerSummary entries={entries} />
+          <LedgerSummary entries={entries} replay={!live} />
           {/* "· recorded" on every model step read as a fake to a judge, without a word on what is replayed (17-nov). */}
           {!live && (
             <p className="hint">
               {tr(
-                'Recorded run: Gemini’s answers are replayed from real runs in Chrome (15–16 November), so nothing leaves this tab; the bytes below are what the real run sent. The fingerprint, the fixed rules, the privacy guard, the shuffled lineups and this receipt run live, in this tab.',
-                'Revisión grabada: las respuestas de Gemini vienen de revisiones reales en Chrome (15 y 16 de noviembre) y se reproducen aquí, así que nada sale de esta pestaña; los bytes de abajo son los que envió la revisión real. La huella de escritura, las reglas fijas, la protección de privacidad, el orden al azar de las personas y este recibo funcionan en vivo, en esta pestaña.',
+                'Recorded run: Gemini’s answers are replayed from real runs in Chrome (15 to 23 November), so nothing leaves this tab; the bytes below are what the real run sent. The fingerprint, the fixed rules, the privacy guard, the shuffled lineups and this receipt run live, in this tab.',
+                'Revisión grabada: las respuestas de Gemini vienen de revisiones reales en Chrome (del 15 al 23 de noviembre) y se reproducen aquí, así que nada sale de esta pestaña; los bytes de abajo son los que envió la revisión real. La huella de escritura, las reglas fijas, la protección de privacidad, el orden al azar de las personas y este recibo funcionan en vivo, en esta pestaña.',
               )}
             </p>
           )}
@@ -371,8 +378,8 @@ export default function App() {
           {live && (
             <p className="hint">
               {tr(
-                'Tests run on Gemini’s free plan: Google may use what is sent to improve its products, and people may review it. That is why only the version you would post is sent, never your original.',
-                'Las pruebas usan el plan gratuito de Gemini: Google puede usar lo que se envía para mejorar sus productos, y una persona puede revisarlo. Por eso solo se envía la versión que publicarías, nunca tu original.',
+                'Tests run on Gemini’s free plan: Google may use what is sent to improve its products, and people may review it. That is why only the version you would post is sent, never your original: what Google sees is what everyone will see once you post it.',
+                'Las pruebas usan el plan gratuito de Gemini: Google puede usar lo que se envía para mejorar sus productos, y una persona puede revisarlo. Por eso solo se envía la versión que publicarías, nunca tu original: lo que ve Google es lo que verá todo el mundo cuando lo publiques.',
               )}
             </p>
           )}

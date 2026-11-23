@@ -599,8 +599,8 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak, recorded, 
             ? {
                 title: tr('Blurred on your device', 'Difuminada en tu dispositivo'),
                 lede: tr(
-                  `${share}% of the photo, around the faces. Tap a cell to blur it or show it again, then test it${history.length ? ' again' : ''}.`,
-                  `El ${num(share)}\u00a0% de la foto, alrededor de las caras. Toca una casilla para difuminarla o volver a mostrarla, y luego ${history.length ? 'vuelve a probarla' : 'pruébala'}.`,
+                  `${share}% of the photo: each cell with a clue and a little around it, so nothing on its edge stays sharp, and never a face. Tap a cell to blur it or show it again, then test it${history.length ? ' again' : ''}.`,
+                  `El ${num(share)}\u00a0% de la foto: cada casilla con una pista y un poco alrededor, para que no quede nada nítido en su borde, y nunca una cara. Toca una casilla para difuminarla o volver a mostrarla, y luego ${history.length ? 'vuelve a probarla' : 'pruébala'}.`,
                 ),
               }
             : {
@@ -640,8 +640,8 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak, recorded, 
       {!busy && stage === 'scanned' && nothingToBlur && chosen.length === 0 && !recorded && (
         <p className="dock-note consent">
           {tr(
-            'Testing sends this photo as you would post it to Gemini, on Google’s free plan: Google may use it to improve its products, and people may review it.',
-            'Probarla envía a Gemini esta foto tal como la publicarías, en el plan gratuito de Google: Google puede usarla para mejorar sus productos, y una persona puede revisarla.',
+            'Testing sends this photo as you would post it to Gemini, on Google’s free plan: Google may use it to improve its products, and people may review it. It is what you are about to post for everyone anyway.',
+            'Probarla envía a Gemini esta foto tal como la publicarías, en el plan gratuito de Google: Google puede usarla para mejorar sus productos, y una persona puede revisarla. Es lo que vas a publicar para todo el mundo de todos modos.',
           )}
         </p>
       )}
@@ -661,10 +661,10 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak, recorded, 
                 'Una revisión grabada: no se envía nada. En directo, solo la foto difuminada va a Gemini, en el plan gratuito de Google.',
               )
             : tr(
-                `Sends only the blurred photo, never your original, to Gemini on Google’s free plan: Google may use it to improve its products, and people may review it.${
+                `Sends only the blurred photo, never your original, to Gemini on Google’s free plan: Google may use it to improve its products, and people may review it. It is what you are about to post for everyone anyway.${
                   blurFaces ? '' : ' Your face goes too, unless you tick “Blur faces too”.'
                 }`,
-                `Envía solo la foto difuminada, nunca tu original, a Gemini en el plan gratuito de Google: Google puede usarla para mejorar sus productos, y una persona puede revisarla.${
+                `Envía solo la foto difuminada, nunca tu original, a Gemini en el plan gratuito de Google: Google puede usarla para mejorar sus productos, y una persona puede revisarla. Es lo que vas a publicar para todo el mundo de todos modos.${
                   blurFaces ? '' : ' Tu cara también va, salvo que marques «Difuminar también las caras».'
                 }`,
               )}
@@ -730,7 +730,7 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak, recorded, 
         )}
         {stage === 'safe' && published && publishedUrl && (
           <a className="button-link" href={publishedUrl} download="throwaway-photo.png">
-            {tr('Download the blurred photo', 'Descargar la foto difuminada')}
+            {tr('Download the blurred photo · no location data inside (EXIF, GPS)', 'Descargar la foto difuminada · sin datos de ubicación dentro (EXIF, GPS)')}
           </a>
         )}
         {stage === 'safe' && city && (

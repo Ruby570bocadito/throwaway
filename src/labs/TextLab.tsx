@@ -136,6 +136,9 @@ function Highlighted({ text, marks }: { text: string; marks: { phrase: string; k
   );
 }
 
+/** Little words everyone uses: in the version you would post they are not habits worth marking. */
+const LITTLE_WORDS = new Set(['of', 'the', 'and', 'a', 'an', 'to', 'in', 'on', 'at', 'it', 'is', 'for', 'as', 'by', 'or']);
+
 export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, dock, kept, keep, addWriting, onStarted }: LabProps) {
   const [stage, setStage] = useState<Stage>('draft');
   // Your own post and public writing come back after "Start over" or the Gemini Nano switch (the shell keeps them in memory).
@@ -291,9 +294,15 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
   // How far to trust that rank: below 50 words it is not shown at all; above, resampling the words says how much it moves.
   const trust = stylo?.reliability ?? null;
   const tooShort = trust?.level === 'too-short';
-  // Habits in the version you would post: only needed once there is one.
+  // Habits in the version you would post: only needed once there is one. A single little word ("of") stays in the
+  // fingerprint score but is not marked: underlined next to "Copy this version" it read as a contradiction (round 6, 23-nov).
   const liveStyle = useMemo(
-    () => (published ? styleMarkers(shownText, selfCorpus, decoys.map((d) => d.corpus)).map((m) => ({ ...m, kind: 'style' as const })) : []),
+    () =>
+      published
+        ? styleMarkers(shownText, selfCorpus, decoys.map((d) => d.corpus))
+            .filter((m) => !LITTLE_WORDS.has(m.phrase.toLowerCase()))
+            .map((m) => ({ ...m, kind: 'style' as const }))
+        : [],
     [published, shownText, selfCorpus, decoys],
   );
   const styleClues = published ? liveStyle : clues.filter((c) => c.kind === 'style');
@@ -733,8 +742,8 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
             : // What Gemini's free plan allows, said before the tap (22-nov): only what you would post anyway goes.
               {
                 text: tr(
-                  `Sends only ${degraded ? 'your edited version' : 'this version'}, never your original, to Gemini on Google’s free plan: Google may use it to improve its products, and people may review it.`,
-                  `Envía solo ${degraded ? 'tu versión editada' : 'esta versión'}, nunca tu original, a Gemini en el plan gratuito de Google: Google puede usarla para mejorar sus productos, y una persona puede revisarla.`,
+                  `Sends only ${degraded ? 'your edited version' : 'this version'}, never your original, to Gemini on Google’s free plan: Google may use it to improve its products, and people may review it. It is what you are about to post for everyone anyway.`,
+                  `Envía solo ${degraded ? 'tu versión editada' : 'esta versión'}, nunca tu original, a Gemini en el plan gratuito de Google: Google puede usarla para mejorar sus productos, y una persona puede revisarla. Es lo que vas a publicar para todo el mundo de todos modos.`,
                 ),
                 warn: true,
                 consent: true,
@@ -1244,9 +1253,10 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
                       ? tr(`It picked you ${final!.hits} of ${final!.answered} times`, `Te eligió ${final!.hits} de ${final!.answered} veces`)
                       : mistakenFor
                         ? final!.hits === 0
-                          ? tr(
-                              `It never picked you in ${final!.answered} tries: it mistook you for Writer ${mistakenFor.letter}`,
-                              `No te eligió en ninguno de los ${final!.answered} intentos: te confundió con la persona ${mistakenFor.letter}`,
+                          ? // "0/10" next to "Writer F got 10 of 10" read backwards ("did I fail?", "what if F is me?": round 6, 23-nov).
+                            tr(
+                              `It did not recognise you: in all ${final!.answered} tries it picked someone else`,
+                              `No te reconoció: en los ${final!.answered} intentos eligió a otra persona`,
                             )
                           : tr(
                               `It picked you ${final!.hits} of ${final!.answered} times: it mistook you for Writer ${mistakenFor.letter}`,
@@ -1258,8 +1268,8 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
             <p>
               {attacking
                 ? tr(
-                    `${picks.length ? `So far it picked ${standIn ? 'the sample writer' : 'you'} ${hits} of ${picks.length} times. ` : ''}By pure chance it would be 1 in 10.`,
-                    `${picks.length ? `Hasta ahora ${standIn ? 'ha elegido a la persona de ejemplo' : 'te ha elegido'} ${hits} de ${picks.length} veces. ` : ''}Por puro azar sería 1 de cada 10.`,
+                    `${picks.length ? `So far it picked ${standIn ? 'the sample writer' : 'you'} ${hits} of ${picks.length} times. ` : ''}Guessing blindly, it would pick you about 1 time in 10.`,
+                    `${picks.length ? `Hasta ahora ${standIn ? 'ha elegido a la persona de ejemplo' : 'te ha elegido'} ${hits} de ${picks.length} veces. ` : ''}Eligiendo a ciegas, te elegiría más o menos 1 vez de cada 10.`,
                   )
                 : standIn
                   ? // Not a score of you at all: "picked the sample writer 0 of 10 times" read as "safe" to a tester, three rounds running (17-nov).
@@ -1269,12 +1279,12 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
                     )
                   : !exposedNow && mistakenFor
                     ? tr(
-                        `Writer ${mistakenFor.letter} got ${mistakenFor.count} of ${final!.answered} picks: your rewrite reads like someone else’s. By pure chance it would be 1 in 10.`,
-                        `La persona ${mistakenFor.letter} se llevó ${mistakenFor.count} de ${final!.answered}: tu reescritura parece de otra persona. Por puro azar sería 1 de cada 10.`,
+                        `It picked Writer ${mistakenFor.letter} ${mistakenFor.count} of ${final!.answered} times, and you are ${seatOf(SELF_ID) ?? 'C'}: your rewrite reads like someone else’s. (Guessing blindly, it would pick you about 1 time in 10.)`,
+                        `Eligió a la persona ${mistakenFor.letter} ${mistakenFor.count} de ${final!.answered} veces, y tú eres la ${seatOf(SELF_ID) ?? 'C'}: tu reescritura parece de otra persona. (Eligiendo a ciegas, te elegiría más o menos 1 vez de cada 10.)`,
                       )
                     : exposedNow
-                      ? tr('By pure chance it would be 1 in 10: it recognised your style.', 'Por puro azar sería 1 de cada 10: reconoció tu estilo.')
-                      : tr('By pure chance it would be 1 in 10.', 'Por puro azar sería 1 de cada 10.')}
+                      ? tr('Guessing blindly, it would pick you about 1 time in 10: it recognised your style.', 'Eligiendo a ciegas, te elegiría más o menos 1 vez de cada 10: reconoció tu estilo.')
+                      : tr('Guessing blindly, it would pick you about 1 time in 10.', 'Eligiendo a ciegas, te elegiría más o menos 1 vez de cada 10.')}
               {!attacking && final!.answered < final!.attempts
                 ? tr(
                     ` ${count(final!.attempts - final!.answered, ['attempt', 'attempts'], ['intento', 'intentos'])} got no answer (model busy).`,

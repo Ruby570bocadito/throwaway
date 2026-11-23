@@ -158,7 +158,8 @@ function Note({ note, recorded }: { note?: string; recorded: boolean }) {
   return (
     <>
       {text && <em className="l-note"> · {noteText(text)}</em>}
-      {recorded && <em className="l-rec"> · {tr('recorded', 'grabado')}</em>}
+      {/* "· recorded" on steps that run on the device read as if they had not run at all (the judge, round 6). */}
+      {recorded && <em className="l-rec"> · {tr('answer replayed from a real run', 'respuesta repetida de una revisión real')}</em>}
     </>
   );
 }
@@ -251,7 +252,7 @@ export function LedgerTable({ entries }: { entries: LedgerEntry[] }) {
 }
 
 /** Totals for the top of the receipt: steps on the device, calls to the cloud and their bytes, blocked attempts. */
-export function LedgerSummary({ entries }: { entries: LedgerEntry[] }) {
+export function LedgerSummary({ entries, replay = false }: { entries: LedgerEntry[]; replay?: boolean }) {
   const local = entries.filter((e) => e.route === 'on-device' || e.route === 'local-js').length;
   const cloud = entries.filter((e) => e.route === 'cloud');
   const blocked = entries.filter((e) => e.route === 'blocked').length;
@@ -266,7 +267,8 @@ export function LedgerSummary({ entries }: { entries: LedgerEntry[] }) {
         <dd>{count(local, ['step', 'steps'], ['paso', 'pasos'])} · 0 B</dd>
       </div>
       <div className="cloud">
-        <dt>{tr('To the cloud', 'A la nube')}</dt>
+        {/* In the recorded demo nothing leaves: these are the real run's calls (round 6, 23-nov). */}
+        <dt>{replay ? tr('To the cloud, in the real run', 'A la nube, en la revisión real') : tr('To the cloud', 'A la nube')}</dt>
         <dd>
           {count(cloud.length, ['call', 'calls'], ['llamada', 'llamadas'])} · {bytes(Math.round(sent))}
         </dd>
