@@ -72,12 +72,18 @@ export const LINEUP: Candidate[] = [{ id: SELF_ID, label: 'You', corpus: MARTA_P
 export const DRAFT = `So, honestly, I loved this company for three years — but the last six months have been kind of a mess. Anyway, after the March reorg our design team in the Lisbon office went from 6 people to 2 (and nobody told us why). Basically we were asked to ship the Figma migration with half the people and the same deadline. Honestly, management means well, but they do not listen — they announce. So, if you are a designer, think twice (sorry not sorry).`;
 
 /**
- * The REAL final text of the on-device pipeline that keeps your tone (the default since 22-nov), on the sample post in Rafa's
- * Chrome on 22-nov-2026: fixed rules generalised the details, then Gemini Nano rewrote the style, keeping the draft's
- * first person. Copied from that run's page. His live test of it: the author picked 0 times of 10 (writer d1 9 times), 6
- * claims of 6 kept. The demo replays this text, and the cloud test recorded on it (ATTACK_AFTER).
+ * The REAL final text of the on-device pipeline as a forum post (the default since 23-nov), on the sample post in Rafa's
+ * Chrome on 23-nov-2026: fixed rules generalised the details, then Gemini Nano rewrote the style in the first person, with
+ * short sentences. Copied from that run's page. His live test of it: the author picked 1 time of 9 (writer d1 6 times),
+ * 6 claims of 6 kept. The demo replays this text, and a cloud test recorded on it (ATTACK_AFTER).
  */
-export const REWRITE = `I really enjoyed working for this organization for quite a while. However, things have deteriorated significantly recently. Following the restructuring, the number of designers in the office significantly decreased. There was a complete lack of explanation for this reduction in staff. Consequently, we received the instruction to complete a significant undertaking with a reduced team and the same timeline. While leadership intends to improve things, communication remains a significant problem. They deliver announcements rather than actively listen to feedback. Therefore, if you're a designer, please consider this carefully.`;
+export const REWRITE = `I used to really like this place. Lately, though, things have been rough. The team in my department shrunk after a change in how things are structured. No one explained the decision. We now have to deliver a big project with fewer workers and the same due date. People at the top seem nice, but they don’t really hear what we say; they just make announcements. If you work in design, you should really consider this. I'm not holding back.`;
+
+/**
+ * The REAL rewrite that kept the draft's tone (Rafa's Chrome, 22-nov): 0 of 10 in his run and 0 of 10 again from the preview
+ * (23-nov, writer d1 all ten times, "formal, professional register"), but testers still read it as an HR statement.
+ */
+export const REWRITE_YOURS = `I really enjoyed working for this organization for quite a while. However, things have deteriorated significantly recently. Following the restructuring, the number of designers in the office significantly decreased. There was a complete lack of explanation for this reduction in staff. Consequently, we received the instruction to complete a significant undertaking with a reduced team and the same timeline. While leadership intends to improve things, communication remains a significant problem. They deliver announcements rather than actively listen to feedback. Therefore, if you're a designer, please consider this carefully.`;
 
 /**
  * The REAL final text of the first full pipeline (v5), in the author's Chrome on 16-nov-2026, in a neutral, plain register
@@ -139,17 +145,18 @@ export const ATTACK_BEFORE: AttackRun = {
 };
 
 /**
- * After the rewrite in your tone: REAL cloud answers recorded on 23-nov-2026 from gemini-3.5-flash-lite through Firebase AI
- * Logic on REWRITE (the live preview, no Gemini Nano in that browser: the text was entered by hand, exactly as Nano wrote it in
- * Rafa's Chrome). All ten attempts picked d1, the corporate writer, with high confidence; the author 0 times. The reasons are
- * the last attempt's, the ones the screen shows. (Rafa's own run of the same text: d1 nine times, another writer once.)
+ * After the forum-post rewrite: REAL cloud answers recorded on 23-nov-2026 from gemini-3.5-flash-lite through Firebase AI
+ * Logic on REWRITE, from the live preview (no Gemini Nano in that browser: the text was entered by hand, exactly as Nano wrote
+ * it in Rafa's Chrome). The author once (attempt 5), writer d1 four times. The reasons are the last attempt's, the ones the
+ * screen shows; they quote d1's own words, not the rewrite's. The same text, all runs: 1 of 9 in Rafa's Chrome, 3 of 9 and
+ * then this 1 of 10 from the preview: 5 of 28. The demo replays the last, the only one complete with its reasons.
  */
 export const ATTACK_AFTER: AttackRun = {
-  picks: ['d1', 'd1', 'd1', 'd1', 'd1', 'd1', 'd1', 'd1', 'd1', 'd1'],
+  picks: ['d9', 'd7', 'd1', 'd6', 'marta', 'd1', 'd9', 'd1', 'd2', 'd1'],
   reasons: [
-    'Formal, professional register and vocabulary',
-    "Consistent use of connective adverbs such as 'Consequently' and 'Therefore'",
-    'Absence of colloquialisms or fragmented sentences',
+    "Formal corporate vocabulary and phrasing like 'quarterly review', 'delivery timelines', and 'planning cycle'.",
+    'Third-person objective tone discussing organisational strategy rather than casual personal anecdotes.',
+    'Similar professional sentence structures and balanced paragraph transitions.',
   ],
   confidence: 'high',
 };

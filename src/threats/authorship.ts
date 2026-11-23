@@ -645,12 +645,14 @@ export interface AuthorshipOptions {
   /** Called after each attack attempt, for live UI. */
   onAttempt?: (pickId: string, i: number) => void;
   /**
-   * The rewrite's register. 'yours' (the default since 22-nov) keeps the draft's tone (casual stays casual) and only drops
-   * the habits and details: measured live in Rafa's Chrome on the sample post, the attacker still picked the author 0 times
-   * out of 10 (another writer 9 times), and the meaning check kept 6 claims of 6. 'plain' asks for a neutral, plain register:
-   * it beat the lineup too (0/10, 16-nov), but five of eight testers would not post it ("it sounds like an HR memo", 22-nov).
+   * The rewrite's register. 'casual' (the default since 23-nov) asks for a forum post outright: first person, short
+   * sentences, contractions, and none of the linking and corporate words the attacker named ("Consequently", "Therefore").
+   * Measured on the sample post: the author picked 1 time of 9 in Rafa's Chrome, then 3 of 9 and 1 of 10 on the same text
+   * from the preview, 5 of 28 in all (chance is about 3); testers no longer read it as an HR statement.
+   * 'yours' keeps the draft's tone: 0 of 10 in Rafa's Chrome and 0 of 10 again on the same text (22/23-nov), but the result
+   * still read formal to the testers. 'plain' asks for a neutral, plain register: 0/10 too (16-nov), and "an HR memo".
    */
-  tone?: 'plain' | 'yours';
+  tone?: 'plain' | 'yours' | 'casual';
 }
 
 const LETTERS = 'ABCDEFGHIJKLMNOP';
@@ -871,11 +873,17 @@ export function authorshipThreat(o: AuthorshipOptions): Threat<string, Clue, Aut
           // The answer's shape is fixed by the schema: an example in the prompt got copied (16-nov), so there is none. The
           // answer comes back in English whatever is asked (?diag, 21-nov): the fixed rules are English too.
           'Keep every claim and opinion. Do not add names, places, dates or numbers. ' +
-          (o.tone !== 'plain'
-            ? // Same start either way, so the recorded demo finds its answer (src/demo/recorded.ts keys on "Rewrite the DRAFT").
-              'Keep the tone of the DRAFT: if it is casual, stay casual, like a post on a forum, with everyday words, not formal or ' +
-              'corporate ones. Use sentences of your own: never copy five or more words in a row from the DRAFT.\n\nDRAFT:\n'
-            : 'Use a neutral, plain register and sentences of your own: never copy five or more words in a row from the DRAFT.\n\nDRAFT:\n')
+          // Same start whatever the tone, so the recorded demo finds its answer (src/demo/recorded.ts keys on "Rewrite the DRAFT").
+          (o.tone === 'plain'
+            ? 'Use a neutral, plain register and sentences of your own: never copy five or more words in a row from the DRAFT.\n\nDRAFT:\n'
+            : o.tone === 'yours'
+              ? 'Keep the tone of the DRAFT: if it is casual, stay casual, like a post on a forum, with everyday words, not formal or ' +
+                'corporate ones. Use sentences of your own: never copy five or more words in a row from the DRAFT.\n\nDRAFT:\n'
+              : // No example sentence: small models copy them into the text (16-nov). Words to avoid are named, not shown in use.
+                'Write it the way a person posts on a forum: first person, short sentences, everyday words and contractions. Never use ' +
+                'formal linking words (however, consequently, therefore, moreover, furthermore) or corporate words (significant, ' +
+                'individuals, personnel, undertaking, leadership). Use sentences of your own: never copy five or more words in a row ' +
+                'from the DRAFT.\n\nDRAFT:\n')
         );
       };
       const ruledDraft = secret(ruled.text, 'draft, details generalised');

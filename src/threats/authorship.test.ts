@@ -70,10 +70,10 @@ const V3_LEFT = ['three years', 'March', 'Lisbon office', 'six individuals to tw
 const V3_RULED =
   "The tenure with the organization spanned several years. Recent organizational changes, implemented recently, significantly altered the structure of the design team located in the office. The team's size reduced from several individuals to a few. A key directive arose to implement a migration within this diminished team structure, maintaining the original project timeline. Management communicated the direction, yet feedback mechanisms appeared ineffective. The situation presents challenges for those in design roles.";
 
-// Five of eight testers would not post the neutral rewrite ("an HR memo", 22-nov). Keeping the draft's tone still left the
-// attacker at 0 of 10 in Rafa's Chrome (22-nov), so it is the default; the neutral register stays as an option.
-describe('the rewrite keeps your tone (22-nov)', () => {
-  const rewritePrompt = async (tone?: 'plain' | 'yours') => {
+// Five of eight testers would not post the neutral rewrite ("an HR memo", 22-nov), and the one in the draft's tone still read
+// formal (23-nov). The forum-post rewrite is the default since 23-nov (5 of 28 picks of the author); the others stay options.
+describe('the rewrite reads like a forum post (22/23-nov)', () => {
+  const rewritePrompt = async (tone?: 'plain' | 'yours' | 'casual') => {
     const prompts: string[] = [];
     const nano = nanoScript((prompt) => {
       prompts.push(prompt);
@@ -93,17 +93,26 @@ describe('the rewrite keeps your tone (22-nov)', () => {
     return prompts.find((p) => p.startsWith('Rewrite the DRAFT')) ?? '';
   };
 
-  it('asks for the draft’s own tone by default, and for a neutral register with tone: plain', async () => {
-    const yours = await rewritePrompt();
+  it('asks for a forum post by default, the draft’s own tone with tone: yours, and a neutral register with tone: plain', async () => {
+    expect(await rewritePrompt()).toBe(await rewritePrompt('casual'));
+    const yours = await rewritePrompt('yours');
     expect(yours).toContain('Keep the tone of the DRAFT');
     expect(yours).not.toContain('neutral, plain register');
-    expect(await rewritePrompt('yours')).toBe(yours);
     const plain = await rewritePrompt('plain');
     expect(plain).toContain('Use a neutral, plain register');
     expect(plain).not.toContain('Keep the tone');
     // The recorded demo finds its answer by this start (src/demo/recorded.ts).
     expect(yours.startsWith('Rewrite the DRAFT')).toBe(true);
     expect(plain.startsWith('Rewrite the DRAFT')).toBe(true);
+  });
+
+  it('asks for a forum post with tone: casual, naming the words to avoid without showing them in a sentence', async () => {
+    const casual = await rewritePrompt('casual');
+    expect(casual.startsWith('Rewrite the DRAFT')).toBe(true);
+    expect(casual).toContain('first person, short sentences');
+    for (const w of ['consequently', 'therefore', 'significant']) expect(casual).toContain(w);
+    expect(casual).not.toContain('Keep the tone of the DRAFT');
+    expect(casual).toContain('never copy five or more words in a row');
   });
 });
 
@@ -547,8 +556,9 @@ describe("the attacker's reasons", () => {
   it('flag quotes that are not in the attacked text, and leave the grounded ones alone (recorded run)', () => {
     // Before: every quoted habit is in the draft.
     for (const r of ATTACK_BEFORE.reasons) expect(quotesNotIn(r, DRAFT), r).toEqual([]);
-    // After the rewrite in your tone (23-nov): the words it quotes are the rewrite's own.
-    for (const r of ATTACK_AFTER.reasons) expect(quotesNotIn(r, REWRITE), r).toEqual([]);
+    // After the forum-post rewrite (23-nov), the reasons the screen shows: the attacker quoted the corporate writer's own
+    // words, none of them in the rewrite (the screen says so).
+    expect(quotesNotIn(ATTACK_AFTER.reasons[0], REWRITE)).toEqual(['quarterly review', 'delivery timelines', 'planning cycle']);
     // After the neutral v5 rewrite (16-nov), the reasons it gave: the rewrite says "organization" and never "review"; the
     // attacker quoted another writer's words.
     expect(quotesNotIn("Lexical choices such as 'organisation', 'review', and 'staffing'", REWRITE_V5_PLAIN)).toEqual(['organisation', 'review']);
@@ -629,7 +639,10 @@ describe('a reason about the subject, not the style', () => {
     expect(aboutSubject('The vocabulary focuses on retail management and store operations.')).toBe(true);
     expect(aboutSubject('Mentions retail/store management context and shift/rota challenges.')).toBe(true);
     // The recorded run's reasons are about style.
-    for (const r of [...ATTACK_BEFORE.reasons, ...ATTACK_AFTER.reasons]) expect(aboutSubject(r), r).toBe(false);
+    for (const r of [...ATTACK_BEFORE.reasons, ATTACK_AFTER.reasons[0], ATTACK_AFTER.reasons[2]]) expect(aboutSubject(r), r).toBe(false);
+    // A reason can be about both: "Third-person objective tone discussing organisational strategy" (23-nov). It only matters
+    // when the attacker found you, which it did not in that run.
+    expect(aboutSubject(ATTACK_AFTER.reasons[1])).toBe(true);
   });
 
   it('also when it names a word of a field that the attacked text uses, but not a word that names a habit of style', () => {
@@ -643,6 +656,6 @@ describe('a reason about the subject, not the style', () => {
     // Field words that also name habits of style, even when the post uses them.
     expect(aboutSubject('A close match in sentence flow and a clinical, detached tone', FIELD_WORDS, 'Patient flow is a mess and clinical staff are close to quitting.')).toBe(false);
     // The recorded run stays on style.
-    for (const r of [...ATTACK_BEFORE.reasons, ...ATTACK_AFTER.reasons]) expect(aboutSubject(r, FIELD_WORDS, DRAFT), r).toBe(false);
+    for (const r of [...ATTACK_BEFORE.reasons, ATTACK_AFTER.reasons[0], ATTACK_AFTER.reasons[2]]) expect(aboutSubject(r, FIELD_WORDS, DRAFT), r).toBe(false);
   });
 });

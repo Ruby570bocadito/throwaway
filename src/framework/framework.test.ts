@@ -127,9 +127,9 @@ describe('authorship threat on the demo scenario', () => {
 
     const attacks = events.filter((e) => e.type === 'attacked');
     expect(attacks[0]).toMatchObject({ exposed: true });
-    // Recorded real answers: 10/10 before the rewrite, 0/10 after.
+    // Recorded real answers: 10/10 before the rewrite, 1/10 after (what a blind guess gets).
     expect((attacks[0] as { verdict: { hits: number } }).verdict.hits).toBe(10);
-    expect((attacks[1] as { verdict: { hits: number } }).verdict.hits).toBe(0);
+    expect((attacks[1] as { verdict: { hits: number } }).verdict.hits).toBe(1);
     expect(attacks[1]).toMatchObject({ exposed: false });
     expect(events[events.length - 1]?.type).toBe('safe');
 

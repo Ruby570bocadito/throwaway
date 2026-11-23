@@ -1,5 +1,5 @@
 // Pins the recorded run (`?demo`) end to end. The video and the README quote these outcomes, so any change to the
-// framework, the rules or the stylometry must leave them exactly as they are: text 10/10 → 0/10, fingerprint #1 → #10,
+// framework, the rules or the stylometry must leave them exactly as they are: text 10/10 → 1/10, fingerprint #1 → #10,
 // photo (the Palma selfie, since 23-nov): it reads the street sign as it is → "Valletta, Malta" after blurring cells 3 and 8.
 
 import { beforeEach, describe, expect, it } from 'vitest';
@@ -40,10 +40,10 @@ const CONTENT: Clue[] = [
   { phrase: 'six months', why: 'A count: fixed rule, no AI.', kind: 'content' },
 ];
 
-// What the recorded run publishes: the rewrite in your tone as Gemini Nano wrote it (22-nov); no fixed rule had to change it.
+// What the recorded run publishes: the forum-post rewrite as Gemini Nano wrote it (23-nov); no fixed rule had to change it.
 const PUBLISHED = REWRITE;
 
-describe('recorded text run (your tone, 22/23-nov)', () => {
+describe('recorded text run (a forum post, 23-nov)', () => {
   it('replays the same clues, rewrite, attacks and fingerprints', async () => {
     const kit = kitFor();
     const threat = authorshipThreat({
@@ -57,15 +57,15 @@ describe('recorded text run (your tone, 22/23-nov)', () => {
     expect(events.map((e) => e.type)).toEqual(['clues', 'attacked', 'sanitized', 'attacked', 'safe']);
     expect((events[0] as { clues: Clue[] }).clues).toEqual([...STYLE, ...CONTENT]);
     const attacks = events.filter((e) => e.type === 'attacked') as { verdict: AuthorshipVerdict }[];
-    expect(attacks.map((a) => [a.verdict.hits, a.verdict.answered])).toEqual([[10, 10], [0, 10]]);
-    expect(attacks[1].verdict.picks.filter((p) => p === 'd1')).toHaveLength(10);
+    expect(attacks.map((a) => [a.verdict.hits, a.verdict.answered])).toEqual([[10, 10], [1, 10]]);
+    expect(attacks[1].verdict.picks.filter((p) => p === 'd1')).toHaveLength(4);
     // The reasons say whose they are, and name that writer by its letter in that attempt's shuffle (the screen puts it back
     // to the writer's seat): before the rewrite they are about the author; after it, about the last writer picked.
     const [asIs, rewritten] = attacks.map((a) => a.verdict);
     expect(asIs.reasonsPick).toBe(SELF_ID);
     const letter = 'ABCDEFGHIJ'[asIs.reasonsOrder!.indexOf(SELF_ID)];
     expect(asIs.reasons[2]).toBe(`Strong conversational stylometry matching Writer ${letter}'s specific syntactic rhythm.`);
-    // The reasons quote d1's own text ("organisation", "review", "staffing"): they are d1's, the writer picked 9 times.
+    // The reasons are the last attempt's, a pick of d1: they quote d1's own text ("quarterly review", "planning cycle").
     expect(rewritten.reasonsPick).toBe('d1');
     expect(rewritten.reasonsOrder).toHaveLength(10);
     const d1 = DECOYS.find((d) => d.id === 'd1')!.corpus;
@@ -90,7 +90,7 @@ describe('recorded text run (your tone, 22/23-nov)', () => {
     expect([before.rank, before.score]).toEqual([1, 1]);
     expect([after.rank, after.score]).toEqual([10, 0]);
     expect(before.ranked[0].delta).toBeCloseTo(0.820018, 5);
-    expect(after.ranked[9].delta).toBeCloseTo(1.414855, 5);
+    expect(after.ranked[9].delta).toBeCloseTo(1.310751, 5);
     expect(threat.fingerprint(REWRITE).rank).toBe(10);
     expect(buildAuthorship(() => undefined).fingerprint(DRAFT).rank).toBe(1);
 
@@ -112,9 +112,8 @@ describe('recorded text run (your tone, 22/23-nov)', () => {
 
   it('shows the same style habits and rule-found details on screen', () => {
     expect(styleMarkers(DRAFT, MARTA_PUBLIC, DECOYS.map((d) => d.corpus))).toEqual(STYLE);
-    expect(styleMarkers(PUBLISHED, MARTA_PUBLIC, DECOYS.map((d) => d.corpus))).toEqual([
-      { phrase: 'of', kind: 'style', why: 'You use “of” 4× more than other writers' },
-    ]);
+    // The forum-post rewrite keeps none of her habits, not even a little word.
+    expect(styleMarkers(PUBLISHED, MARTA_PUBLIC, DECOYS.map((d) => d.corpus))).toEqual([]);
     // The range is one detail since 17-nov: "6 people to 2" generalises to "several people to a few".
     expect(ruleDetails(DRAFT).map((d) => d.phrase)).toEqual(['March', '6 people to 2', 'three years', 'six months']);
   });
@@ -126,7 +125,7 @@ const sentOriginal = (ledger: Ledger) => ledger.all.some((e) => e.route === 'clo
 // Private by default (22-nov): the app no longer tests the original first. The framework always allowed it (`redTeam`
 // without `asIs`), and the recorded answers still replay: these pin that path.
 describe('recorded run, private by default (22-nov)', () => {
-  it('text: rewritten on the device without testing the original, then 0 of 10', async () => {
+  it('text: rewritten on the device without testing the original, then 1 of 10', async () => {
     const kit = kitFor();
     const threat = authorshipThreat({
       selfId: SELF_ID,
@@ -141,8 +140,8 @@ describe('recorded run, private by default (22-nov)', () => {
     // The "before" the app shows is measured on the device: the draft's own style ranks first of the ten.
     expect(threat.fingerprint(DRAFT).rank).toBe(1);
     const v = (events[2] as { verdict: AuthorshipVerdict }).verdict;
-    expect([v.hits, v.answered]).toEqual([0, 10]);
-    expect(v.picks.filter((p) => p === 'd1')).toHaveLength(10);
+    expect([v.hits, v.answered]).toEqual([1, 10]);
+    expect(v.picks.filter((p) => p === 'd1')).toHaveLength(4);
     expect(sentOriginal(kit.ledger)).toBe(false);
   }, 30_000);
 

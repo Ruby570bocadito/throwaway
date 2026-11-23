@@ -61,11 +61,14 @@ export function buildKit(ledger: Ledger) {
 export const blurTight = (): boolean => typeof location !== 'undefined' && new URLSearchParams(location.search).get('blur') === 'tight';
 
 /**
- * The rewrite keeps the draft's tone (the default since 22-nov: 0 of 10 live in Rafa's Chrome, see AuthorshipOptions.tone).
- * `?tone=plain` asks for the neutral register of the first runs, which testers would not post.
+ * The rewrite reads like a forum post (the default since 23-nov: 5 of 28 picks of the author over three runs, see
+ * AuthorshipOptions.tone). `?tone=yours` keeps the draft's tone (0 of 20, but it read formal); `?tone=plain` asks for the
+ * neutral register of the first runs, which testers would not post.
  */
-export const rewriteTone = (): 'plain' | 'yours' =>
-  typeof location !== 'undefined' && new URLSearchParams(location.search).get('tone') === 'plain' ? 'plain' : 'yours';
+export const rewriteTone = (): 'plain' | 'yours' | 'casual' => {
+  const asked = typeof location !== 'undefined' ? new URLSearchParams(location.search).get('tone') : null;
+  return asked === 'plain' || asked === 'yours' ? asked : 'casual';
+};
 
 export function buildAuthorship(onAttempt: (pickId: string, i: number) => void, ownPublic = '', decoys: readonly Candidate[] = DECOYS) {
   const own = ownPublic.trim();

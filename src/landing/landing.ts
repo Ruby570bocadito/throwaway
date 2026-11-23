@@ -256,7 +256,8 @@ function lineupReplay(root: HTMLElement) {
   cards.forEach((card, k) => card.querySelector('b')?.after(glyph(GLYPHS[k])));
 
   const ME = 2; // C, as in the app
-  const AFTER = [5, 5, 5, 5, 5, 5, 5, 5, 5, 5]; // after the rewrite in her tone: F all ten times (23-nov run, as the app replays)
+  // After the forum-post rewrite, the seats picked in the run the app replays (23-nov): E, B, F, I, the author (C), F, E, F, H, F.
+  const AFTER = [4, 1, 5, 8, 2, 5, 4, 5, 7, 5];
   const tally = cards.map(() => 0);
   const badge = (k: number) => {
     let b = cards[k].querySelector<HTMLElement>('.w-count');
@@ -320,7 +321,7 @@ function lineupReplay(root: HTMLElement) {
       await wait(1500);
       for (let i = 1; i <= 10; i++) {
         pick(AFTER[i - 1]);
-        num.textContent = `0/${i}`;
+        num.textContent = `${AFTER.slice(0, i).filter((k) => k === ME).length}/${i}`;
         await wait(260);
       }
       for (const c of cards) c.classList.remove('pointed');

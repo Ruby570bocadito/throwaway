@@ -665,8 +665,8 @@ export function TextLab({ kit, localBackend, degraded, registerLeak, recorded, d
                       'Comprobado en este dispositivo: no queda ningún fragmento largo de tu original. Ahora pruébalo: a la nube solo va esta versión.',
                     )
                   : tr(
-                      'Gemini Nano wrote it in new sentences, trying to keep your tone: your habits and your details were what gave you away. Read it, then test it: only this version goes to the cloud.',
-                      'Gemini Nano lo ha escrito con frases nuevas, intentando conservar tu tono: lo que te delataba eran tus muletillas y tus detalles. Léelo y luego pruébalo: a la nube solo va esta versión.',
+                      'Gemini Nano wrote it in new sentences, the way people post on a forum: your habits and your details were what gave you away. Read it, then test it: only this version goes to the cloud.',
+                      'Gemini Nano lo ha escrito con frases nuevas, como se escribe en un foro: lo que te delataba eran tus muletillas y tus detalles. Léelo y luego pruébalo: a la nube solo va esta versión.',
                     ),
               }
             : {
