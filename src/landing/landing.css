@@ -122,6 +122,8 @@ html:not(.js) .scrawl path { stroke-dashoffset: 0; }
 .clue-number { left: 74.4%; top: 47.4%; width: 4.4%; height: 5.4%; transition-delay: 0.24s; }
 .clue-number i { top: calc(100% + 7px); right: -6px; }
 .shot[data-phase='found'] .clue, .shot[data-phase='blur'] .clue { opacity: 1; transform: none; }
+/* Gemini Nano found the two signs; the house number beside the shop sign goes with its cell's edge, so it shows when blurred. */
+.shot[data-phase='found'] .clue-number { opacity: 0; transform: scale(1.35); }
 .shot[data-phase='blur'] .clue { border-color: var(--green); background: transparent; }
 .shot[data-phase='blur'] .clue i { background: var(--green); }
 .shot[data-phase='blur'] .clue i::after { content: ' · blurred'; }

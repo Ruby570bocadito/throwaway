@@ -1,6 +1,6 @@
 // Pins the recorded run (`?demo`) end to end. The video and the README quote these outcomes, so any change to the
 // framework, the rules or the stylometry must leave them exactly as they are: text 10/10 → 0/10, fingerprint #1 → #10,
-// photo Palma 215 m off (it claimed 0.5 km) → "Tokyo, Japan" after hiding cells 3, 7, 8 (since 21-nov; it was Rome).
+// photo (the Palma selfie, since 23-nov): it reads the street sign as it is → "Valletta, Malta" after blurring cells 3 and 8.
 
 import { beforeEach, describe, expect, it } from 'vitest';
 import { clearTaint, CloudModel, Ledger, LocalModel, publicData, redTeam, release, secret, type RedTeamEvent } from '../framework';
@@ -40,10 +40,10 @@ const CONTENT: Clue[] = [
   { phrase: 'six months', why: 'A count: fixed rule, no AI.', kind: 'content' },
 ];
 
-const PUBLISHED =
-  "An attachment to this organization existed for a period of several years; however, the preceding several months have presented challenges. Following a restructuring, the design team's personnel transitioned from numerous individuals to a smaller number, without explanation. The expectation became to deliver the transition with reduced staffing levels while maintaining the same timeline. Management intends positively, yet responsiveness appears lacking. Consequently, individuals in design roles should carefully consider this proposition.";
+// What the recorded run publishes: the rewrite in your tone as Gemini Nano wrote it (22-nov); no fixed rule had to change it.
+const PUBLISHED = REWRITE;
 
-describe('recorded text run (v5, 16-nov)', () => {
+describe('recorded text run (your tone, 22/23-nov)', () => {
   it('replays the same clues, rewrite, attacks and fingerprints', async () => {
     const kit = kitFor();
     const threat = authorshipThreat({
@@ -58,7 +58,7 @@ describe('recorded text run (v5, 16-nov)', () => {
     expect((events[0] as { clues: Clue[] }).clues).toEqual([...STYLE, ...CONTENT]);
     const attacks = events.filter((e) => e.type === 'attacked') as { verdict: AuthorshipVerdict }[];
     expect(attacks.map((a) => [a.verdict.hits, a.verdict.answered])).toEqual([[10, 10], [0, 10]]);
-    expect(attacks[1].verdict.picks.filter((p) => p === 'd1')).toHaveLength(9);
+    expect(attacks[1].verdict.picks.filter((p) => p === 'd1')).toHaveLength(10);
     // The reasons say whose they are, and name that writer by its letter in that attempt's shuffle (the screen puts it back
     // to the writer's seat): before the rewrite they are about the author; after it, about the last writer picked.
     const [asIs, rewritten] = attacks.map((a) => a.verdict);
@@ -90,7 +90,7 @@ describe('recorded text run (v5, 16-nov)', () => {
     expect([before.rank, before.score]).toEqual([1, 1]);
     expect([after.rank, after.score]).toEqual([10, 0]);
     expect(before.ranked[0].delta).toBeCloseTo(0.820018, 5);
-    expect(after.ranked[9].delta).toBeCloseTo(1.426507, 5);
+    expect(after.ranked[9].delta).toBeCloseTo(1.414855, 5);
     expect(threat.fingerprint(REWRITE).rank).toBe(10);
     expect(buildAuthorship(() => undefined).fingerprint(DRAFT).rank).toBe(1);
 
@@ -142,7 +142,7 @@ describe('recorded run, private by default (22-nov)', () => {
     expect(threat.fingerprint(DRAFT).rank).toBe(1);
     const v = (events[2] as { verdict: AuthorshipVerdict }).verdict;
     expect([v.hits, v.answered]).toEqual([0, 10]);
-    expect(v.picks.filter((p) => p === 'd1')).toHaveLength(9);
+    expect(v.picks.filter((p) => p === 'd1')).toHaveLength(10);
     expect(sentOriginal(kit.ledger)).toBe(false);
   }, 30_000);
 
@@ -163,16 +163,17 @@ describe('recorded run, private by default (22-nov)', () => {
     expect(events.map((e) => e.type)).toEqual(['clues', 'sanitized', 'attacked', 'safe']);
     // The "before" the app shows: what Gemini Nano read up close, on the device.
     const clues = (events[0] as { clues: PhotoClue[] }).clues;
-    expect([...new Set(clues.filter((c) => c.read).flatMap((c) => c.seen ?? []))]).toEqual(['CARRER DE LA LLUM', '23', 'FORN PASTISSERIA']);
-    expect(threat.masked).toEqual([3, 7, 8]);
+    expect([...new Set(clues.filter((c) => c.read).flatMap((c) => c.seen ?? []))]).toEqual(['CARRER DE LA LLUM', 'FORN PASTISSERIA']);
+    // The street sign and the shop sign; "FORN PASTITESSERIA" in cell 12 reads as nothing there, and goes.
+    expect(threat.masked).toEqual([3, 8]);
     const v = (events[2] as { verdict: LocationVerdict }).verdict;
-    expect(v.place).toBe('Tokyo, Japan');
+    expect(v.place).toBe('Valletta, Malta');
     expect(threat.tier(v)).toBe('safe');
     expect(sentOriginal(kit.ledger)).toBe(false);
   }, 30_000);
 });
 
-describe('recorded photo run (15/16-nov)', () => {
+describe('recorded photo run (the Palma selfie, 22/23-nov)', () => {
   const fakeOps: ImageOps = {
     withGrid: async (png) => new Uint8Array([...png, 250]),
   size: async () => ({ width: 400, height: 300 }),
@@ -182,24 +183,27 @@ describe('recorded photo run (15/16-nov)', () => {
   };
   const PHOTO = new Uint8Array(Array.from({ length: 64 }, (_, i) => (i * 37) % 251));
 
-  it('replays Palma 215 m off (claiming 0.5 km), then "Tokyo, Japan" after hiding the street name, number and shop sign', async () => {
+  it('replays the street sign read as it is (Alcúdia, 51 km off), then "Valletta, Malta" after blurring the two signs', async () => {
     const kit = kitFor();
     const threat = locationThreat({ ops: fakeOps, truth: secret(DEMO_TRUTH, 'real location') });
     const events: RedTeamEvent<Uint8Array, PhotoClue, LocationVerdict>[] = [];
     for await (const e of redTeam(threat, secret(PHOTO, 'photo'), kit, { asIs: release(PHOTO, 'baseline', { userConfirmedAsIs: true }) })) events.push(e);
 
     expect(events.map((e) => e.type)).toEqual(['clues', 'attacked', 'sanitized', 'attacked', 'safe']);
-    expect((events[0] as { clues: PhotoClue[] }).clues.map((c) => c.cell)).toEqual([3, 7, 8, 12, 1]);
+    expect((events[0] as { clues: PhotoClue[] }).clues.map((c) => c.cell).sort((a, b) => a - b)).toEqual([1, 3, 4, 7, 8, 10, 11, 15]);
     const [asIs, masked] = (events.filter((e) => e.type === 'attacked') as { verdict: LocationVerdict }[]).map((a) => a.verdict);
-    expect(asIs.place).toBe('Carrer de la Llum, 23, Palma, Mallorca, Spain');
-    expect(asIs.radiusKm).toBe(0.5);
+    expect(asIs.place).toBe('Carrer de la Llum, Alcúdia, Mallorca, Spain');
+    expect(asIs.radiusKm).toBe(0.05);
+    // The wrong town, but a street name anyone can look up: red.
+    expect(Math.round(asIs.errorKm ?? 0)).toBe(51);
     expect(threat.tier(asIs)).toBe('street');
     expect(threat.exposureReason(asIs)).toBe('readable');
-    expect(threat.masked).toEqual([3, 7, 8]); // the poster in 1 has nothing to read, the tree in 12 only says the city
-    expect(masked.place).toBe('Tokyo, Japan');
-    expect(masked.confidence).toBe('low');
-    // Palma → Tokyo. The landing page and the README still quote Rome (869 km): they change with this photo work.
-    expect(Math.round(masked.errorKm ?? 0)).toBe(10559);
+    // Gemini Nano's "No readable text" in cell 10 is no clue; the cell keeps the other scan's "Reflection of the street".
+    expect((events[0] as { clues: PhotoClue[] }).clues.find((c) => c.cell === 10)?.what).toBe('Reflection of the street');
+    expect(threat.masked).toEqual([3, 8]);
+    expect(masked.place).toBe('Valletta, Malta');
+    expect(masked.confidence).toBe('medium');
+    expect(Math.round(masked.errorKm ?? 0)).toBe(1119);
     expect(threat.tier(masked)).toBe('safe');
     expect(threat.leftVisible).toEqual([]);
     // The as-is path is the one that sends the original, and the receipt says so (the private path's check relies on it).

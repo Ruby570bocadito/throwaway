@@ -204,15 +204,15 @@ export const GEO_ATTACKS: Record<string, GeoAnswer> = {
  * cells over all cells). Since 21-nov trees are no longer masked, so "1,3,7,8" replays "1,3,7,8,12", not a recording that
  * happened to mask four cells.
  */
-export function recordedGeo(masked: number[]): GeoAnswer {
+export function recordedGeo(masked: number[], attacks: Record<string, GeoAnswer> = GEO_ATTACKS): GeoAnswer {
   const key = masked.length ? [...masked].sort((x, y) => x - y).join(',') : 'none';
-  if (GEO_ATTACKS[key]) return GEO_ATTACKS[key];
+  if (attacks[key]) return attacks[key];
   const cells = (k: string) => (k === 'none' ? [] : k.split(',').map(Number));
   const alike = (k: string) => {
     const c = cells(k);
     const shared = c.filter((x) => masked.includes(x)).length;
     return shared / (new Set([...c, ...masked]).size || 1);
   };
-  const best = Object.keys(GEO_ATTACKS).sort((x, y) => alike(y) - alike(x))[0];
-  return GEO_ATTACKS[best];
+  const best = Object.keys(attacks).sort((x, y) => alike(y) - alike(x))[0];
+  return attacks[best];
 }

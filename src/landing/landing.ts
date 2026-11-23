@@ -202,7 +202,7 @@ function heroShot(fig: HTMLElement) {
   const CHIP: Record<Phase, string> = {
     idle: tr('Your photo, on your device', 'Tu foto, en tu dispositivo'),
     scan: tr('Looking for clues on your device…', 'Buscando pistas en tu dispositivo…'),
-    found: tr('3 clues found on your device', '3 pistas encontradas en tu dispositivo'),
+    found: tr('2 signs found on your device', '2 carteles encontrados en tu dispositivo'),
     blur: tr('Blurred on your device', 'Difuminado en tu dispositivo'),
     safe: tr('Tested by an AI in the cloud', 'Probado por una IA en la nube'),
   };
@@ -256,7 +256,7 @@ function lineupReplay(root: HTMLElement) {
   cards.forEach((card, k) => card.querySelector('b')?.after(glyph(GLYPHS[k])));
 
   const ME = 2; // C, as in the app
-  const AFTER = [5, 5, 6, 5, 5, 5, 5, 5, 5, 5]; // after the rewrite: F nine times, G once (16-nov run)
+  const AFTER = [5, 5, 5, 5, 5, 5, 5, 5, 5, 5]; // after the rewrite in her tone: F all ten times (23-nov run, as the app replays)
   const tally = cards.map(() => 0);
   const badge = (k: number) => {
     let b = cards[k].querySelector<HTMLElement>('.w-count');

@@ -87,6 +87,13 @@ export interface LocationOptions {
   maxMaskedShare?: number;
   /** Blur the faces too (default off). Testers asked for it (22-nov); the threat's own switch can change it later. */
   blurFaces?: boolean;
+  /**
+   * Blur only the part of a cell where the text is (default off, until the photo bench says it covers every identifier).
+   * A street name, house number or plate read in its cell is read again in four overlapping quarters of that cell; the
+   * quarters that still read it, padded, are blurred instead of the whole cell. Nowhere or everywhere: the whole cell, as
+   * before. Four more Gemini Nano calls per identifier (Rafa, 22-nov: "more detail in the blurring").
+   */
+  tight?: boolean;
 }
 
 /** Clues that point at one spot; the rest (architecture, vegetation, "other") mostly say which city, not where in it. */
@@ -169,7 +176,8 @@ const PERSON =
   /\b(person|persons|people|man|men|woman|women|girl|girls|boy|boys|child|children|kid|kids|baby|face|faces|head|heads|hair|eyes|eyebrows?|nose|mouth|lips|tooth|teeth|beard|moustache|mustache|freckles|smile|smiling|body|bodies|shoulders?|selfie|human|humans|crowd|friends|couple|tourists?|pedestrians?|portrait|someone|glasses|sunglasses|spectacles|earrings?|necklace|jacket|shirt|t-shirt|hoodie|sweater|scarf|backpack)\b/i;
 
 // What a small model writes when there is nothing there is not a clue: "text: None" in six cells of an empty park (bench).
-const NOTHING = /^\s*(?:none|n\/?a|nothing|no text|unknown|unclear|not visible|empty|-+)?\s*[.!]?\s*$/i;
+// "No readable text" too: Gemini Nano gave it as a text clue on the Palma selfie (22-nov), and the app showed it as one.
+const NOTHING = /^\s*(?:none|n\/?a|nothing(?: (?:readable|visible|legible))?|no (?:readable |visible |legible |clear )?(?:text|writing|signs?)(?: (?:visible|found|here))?|unknown|unclear|not visible|empty|-+)?\s*[.!]?\s*$/i;
 const wordsOf = (s: string) => s.split(/[^\p{L}\p{N}'’-]+/u).filter(Boolean);
 
 /**
@@ -201,6 +209,23 @@ export function gridSquare(cell: number, n: number, area: Rect): Rect {
   const x = area.x + Math.floor((k * area.w) / n);
   const y = area.y + Math.floor((r * area.h) / n);
   return { x, y, w: area.x + Math.ceil(((k + 1) * area.w) / n) - x, h: area.y + Math.ceil(((r + 1) * area.h) / n) - y };
+}
+
+/**
+ * How far a hidden cell reaches into the cells around it, as a share of a cell's short side. Text right at a cell's edge
+ * runs on past it: on the Palma photo the house number sat on the line between two cells, and with its cell hidden the
+ * lower half was left sharp (photo bench in Rafa's Chrome, 22-nov: 53 % of it covered). An eighth of a cell (about 26 px
+ * at 1280 × 853) takes in such an edge; faces are still cut out of it.
+ */
+export const EDGE = 0.12;
+
+/** The part of the photo that hiding a cell blurs: the cell, grown by `edge` of a cell on every side, inside the photo. */
+export function cellArea(cell: number, n: number, area: Rect, edge = EDGE): Rect {
+  const sq = gridSquare(cell, n, area);
+  const m = Math.round(edge * Math.min(area.w / n, area.h / n));
+  const x = Math.max(area.x, sq.x - m);
+  const y = Math.max(area.y, sq.y - m);
+  return { x, y, w: Math.min(area.x + area.w, sq.x + sq.w + m) - x, h: Math.min(area.y + area.h, sq.y + sq.h + m) - y };
 }
 
 const overlaps = (a: Rect, b: Rect) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
@@ -479,6 +504,12 @@ export function locationThreat(o: LocationOptions): Threat<Uint8Array, PhotoClue
   let faces: Promise<Rect[]> | null = null;
   /** Cells already hidden: hiding them again adds nothing. */
   const hiddenCells = new Set<number>();
+  // Cells hidden only in part (the `tight` option): if the attacker still names one, the whole cell is hidden next time.
+  const narrowedCells = new Set<number>();
+  // What each hidden cell counts against the budget: the cell itself around the faces, not its edge (EDGE), which only
+  // makes sure what sits on a cell's line is hidden whole. With the edge counted, Paris and Tokyo lost a clue to the budget.
+  const cellCores = new Map<number, Rect[]>();
+  const coresNow = () => [...cellCores.values()].flat();
 
   /**
    * The faces, from the on-device detector (MediaPipe). On the photo bench (21-nov) Gemini Nano's own idea of where people
@@ -528,6 +559,55 @@ export function locationThreat(o: LocationOptions): Threat<Uint8Array, PhotoClue
     }
   }
 
+  /**
+   * Where in a cell the clue's text is (the `tight` option): the cell's four overlapping quarters (60% of its width and
+   * height each), read close up; the quarters that read the clue, joined and padded by a quarter of their size, within the
+   * cell. Null when no quarter reads it or all of them do (the recorded demo, which answers per cell): the whole cell then.
+   */
+  async function tighten(png: Uint8Array, cell: number, clue: PhotoClue, kit: Kit): Promise<Rect | null> {
+    const square = gridSquare(cell, GRID, { x: 0, y: 0, w: photoSize!.width, h: photoSize!.height });
+    const qw = Math.round(square.w * 0.6);
+    const qh = Math.round(square.h * 0.6);
+    const quarters: Rect[] = [
+      { x: square.x, y: square.y, w: qw, h: qh },
+      { x: square.x + square.w - qw, y: square.y, w: qw, h: qh },
+      { x: square.x, y: square.y + square.h - qh, w: qw, h: qh },
+      { x: square.x + square.w - qw, y: square.y + square.h - qh, w: qw, h: qh },
+    ];
+    const hits: Rect[] = [];
+    for (const [i, q] of quarters.entries()) {
+      const closeUp = new Private(await o.ops.crop(png, q), 'part of one cell of the photo');
+      const res = await kit.local.generate(
+        [
+          `Write every piece of text you can read in this picture (part ${i + 1} of cell ${cell} of a photo), exactly as it is written. ` +
+            'If there is none, give an empty list.',
+          { image: closeUp, mime: 'image/png' },
+        ],
+        { json: true, schema: READ_SCHEMA, op: `Read part ${i + 1} of cell ${cell}` },
+      );
+      try {
+        const seen = listAt(parseModelJsonLenient(res.text).value, 'texts').map(String).filter((t) => t.trim());
+        if (readMatches(seen, clue.what)) hits.push(q);
+      } catch (e) {
+        if (!(e instanceof ModelJsonError)) throw e;
+        return null; // an unreadable answer: the whole cell, to be safe
+      }
+    }
+    if (hits.length === 0 || hits.length === quarters.length) return null;
+    const x0 = Math.min(...hits.map((r) => r.x));
+    const y0 = Math.min(...hits.map((r) => r.y));
+    const x1 = Math.max(...hits.map((r) => r.x + r.w));
+    const y1 = Math.max(...hits.map((r) => r.y + r.h));
+    // Padded by a quarter of the box on every side, and kept inside the cell.
+    const px = Math.round((x1 - x0) * 0.25);
+    const py = Math.round((y1 - y0) * 0.25);
+    const left = Math.max(square.x, x0 - px);
+    const top = Math.max(square.y, y0 - py);
+    const right = Math.min(square.x + square.w, x1 + px);
+    const bottom = Math.min(square.y + square.h, y1 + py);
+    return { x: left, y: top, w: right - left, h: bottom - top };
+  }
+
   /** Adds what to hide, paints it on the photo, records it, and returns the masked photo, released. */
   async function hide(png: Uint8Array, fresh: MaskRegion[], left: PhotoClue[], kit: Kit, op: string): Promise<Publishable<Uint8Array>> {
     const whole = { x: 0, y: 0, w: photoSize!.width, h: photoSize!.height };
@@ -539,8 +619,9 @@ export function locationThreat(o: LocationOptions): Threat<Uint8Array, PhotoClue
       : [];
     const painted = [...threat.regions, ...faceLayer];
     threat.maskedShare = coverage(painted.map((g) => g.rect), whole);
-    threat.clueShare = coverage(threat.regions.map((g) => g.rect), whole);
-    threat.masked = Array.from({ length: GRID * GRID }, (_, i) => i + 1).filter((c) => cellCovered(c) > 0.02);
+    threat.clueShare = coverage(coresNow(), whole);
+    // The cells hidden on purpose, not the cells around them that a hidden cell's edge (EDGE) reaches into.
+    threat.masked = [...new Set(threat.regions.map((g) => g.cell).filter((c) => c > 0))].sort((a, b) => a - b);
     threat.leftVisible = left.sort((a, b) => a.cell - b.cell);
     const masked = await o.ops.paint(png, painted);
     const kept = left.length ? ` · kept ${left.length} ${left.length === 1 ? 'clue' : 'clues'} visible: all face, or past the budget` : '';
@@ -697,7 +778,7 @@ export function locationThreat(o: LocationOptions): Threat<Uint8Array, PhotoClue
           c.read = raw.read;
           c.seen = raw.seen;
         }
-        if (hiddenCells.has(c.cell)) return;
+        if (hiddenCells.has(c.cell) && !(cited && narrowedCells.has(c.cell))) return;
         const prev = best.get(c.cell);
         const r = rankOf(c);
         if (!prev || r < prev.rank || (cited && !prev.cited)) best.set(c.cell, { rank: Math.min(r, prev?.rank ?? r), cited: cited || !!prev?.cited, clue: c });
@@ -729,20 +810,26 @@ export function locationThreat(o: LocationOptions): Threat<Uint8Array, PhotoClue
       for (const [cell, entry] of ranked) {
         const { clue } = entry;
         const always = tier(entry) === 0;
-        // The clue's cell, cut around every face in it: a whole cell is what Gemini Nano can point at reliably.
-        const pieces = cutAround(gridSquare(cell, GRID, whole), around);
-        if (!pieces.length) {
+        // The clue's cell and its edge (EDGE), cut around every face: a whole cell is what Gemini Nano can point at reliably. With `tight`,
+        // an identifier read in its cell is narrowed to the part of the cell that reads it (see tighten).
+        const narrowed = o.tight && clue.read === true && isIdentifier(clue) && !narrowedCells.has(cell) ? await tighten(png, cell, clue, kit) : null;
+        const pieces = cutAround(narrowed ?? cellArea(cell, GRID, whole), around);
+        const core = narrowed ? pieces : cutAround(gridSquare(cell, GRID, whole), around);
+        if (!pieces.length || !core.length) {
           left.push(clue);
           continue;
         }
         const regions = pieces.map((rect) => ({ rect, style: 'blur' as const, cell, what: clue.what }));
-        const share = coverage([...threat.regions, ...fresh, ...regions].map((g) => g.rect), whole);
+        const share = coverage([...coresNow(), ...core], whole);
         if (!always && share > threat.maxShare + 1e-9) {
           left.push(clue);
           continue;
         }
         fresh = [...fresh, ...regions];
+        cellCores.set(cell, core);
         hiddenCells.add(cell);
+        if (narrowed) narrowedCells.add(cell);
+        else narrowedCells.delete(cell);
       }
       if (!fresh.length && !threat.regions.length && !facesToBlur) {
         throw new Error('Nothing to mask: what was flagged in this photo is all face. If you would post it as it is, attack it as it is');
@@ -760,7 +847,8 @@ export function locationThreat(o: LocationOptions): Threat<Uint8Array, PhotoClue
       const chosen = [...new Set(cells)].filter((c) => validCell(c) && !hiddenCells.has(c));
       const fresh: MaskRegion[] = [];
       for (const cell of chosen) {
-        fresh.push(...cutAround(gridSquare(cell, GRID, whole), around).map((rect) => ({ rect, style: 'blur' as const, cell, what: 'chosen by you' })));
+        fresh.push(...cutAround(cellArea(cell, GRID, whole), around).map((rect) => ({ rect, style: 'blur' as const, cell, what: 'chosen by you' })));
+        cellCores.set(cell, cutAround(gridSquare(cell, GRID, whole), around));
         hiddenCells.add(cell);
       }
       if (!fresh.length && !threat.regions.length) throw new Error('Nothing to mask: tap the cells you want to hide first');
@@ -783,10 +871,14 @@ export function locationThreat(o: LocationOptions): Threat<Uint8Array, PhotoClue
       if (!kept.length && !add.length) throw new Error('Nothing would stay hidden: if you would post the photo as it is, attack it as it is');
       const around = await facesIn(png, kit);
       threat.regions = kept;
-      for (const c of show) hiddenCells.delete(c);
+      for (const c of show) {
+        hiddenCells.delete(c);
+        cellCores.delete(c);
+      }
       const fresh: MaskRegion[] = [];
       for (const cell of add) {
-        fresh.push(...cutAround(gridSquare(cell, GRID, whole), around).map((rect) => ({ rect, style: 'blur' as const, cell, what: 'chosen by you' })));
+        fresh.push(...cutAround(cellArea(cell, GRID, whole), around).map((rect) => ({ rect, style: 'blur' as const, cell, what: 'chosen by you' })));
+        cellCores.set(cell, cutAround(gridSquare(cell, GRID, whole), around));
         hiddenCells.add(cell);
       }
       const did = [add.length && `hide ${add.length === 1 ? `cell ${add[0]}` : `${add.length} cells`}`, show.length && `show ${show.length === 1 ? `cell ${show[0]}` : `${show.length} cells`} again`].filter(Boolean);

@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { clearTaint, CloudModel, Ledger, LocalModel, PrivacyViolation, redTeam, release, secret, type ModelBackend } from '../framework';
 import { demoBackends } from '../demo/recorded';
-import { distanceKm, isIdentifier, locationThreat, readMatches, type ImageOps } from './location';
+import { coverage, distanceKm, isIdentifier, locationThreat, readMatches, type ImageOps } from './location';
+import { BENCH } from '../demo/bench';
 import { DEMO_TRUTH } from '../demo/photo';
 
 // Fake image ops: no canvas in Node. Masking appends the masked cells, so the bytes change like a real edit would.
@@ -17,10 +18,85 @@ const PHOTO = new Uint8Array(Array.from({ length: 64 }, (_, i) => (i * 37) % 251
 
 beforeEach(() => clearTaint());
 
+// "More detail in the blurring" (Rafa, 22-nov): with `tight`, an identifier is blurred where it reads, not across its cell.
+// The Palma selfie, from Gemini Nano's real answers in Rafa's Chrome (22-nov): cells 3 and 8 hold the street sign and the
+// shop sign, and the house number sits on the line between cells 8 and 12. Blurring the cells alone left its lower half
+// sharp (53 % covered); with their edge (EDGE) it is hidden whole, and the face is not touched.
+describe('the edge of a hidden cell (23-nov)', () => {
+  it('hides the house number on the line between two cells, and never the face (Palma selfie, bench boxes)', async () => {
+    const palma = BENCH.find((p) => p.name === 'window-palma')!;
+    const W = 1280;
+    const H = 853;
+    const px = ([x, y, w, h]: number[]) => ({ x: x * W, y: y * H, w: w * W, h: h * H });
+    const face = px(palma.faces[0]);
+    const ledger = new Ledger();
+    const b = demoBackends();
+    const kit = { local: new LocalModel(b.local, ledger), cloud: new CloudModel(b.cloud, ledger), ledger };
+    const t = locationThreat({ ops: { ...fakeOps, size: async () => ({ width: W, height: H }), faces: async () => [face] } });
+    const photo = secret(PHOTO, 'photo');
+    await t.sanitize(photo, await t.findClues(photo, kit), null, kit);
+    expect(t.masked).toEqual([3, 8]);
+    const rects = t.regions.map((g) => g.rect);
+    for (const id of palma.identifiers) expect(coverage(rects, px(id.box)), id.what).toBeGreaterThan(0.99);
+    expect(coverage(rects, face)).toBe(0);
+    // Two cells count against the budget; with their edges, about a sixth of the photo is blurred.
+    expect(t.clueShare).toBeCloseTo(2 / 16, 2);
+    expect(t.maskedShare).toBeLessThan(0.17);
+  });
+});
+
+describe('tight blurring (22-nov)', () => {
+  /** A scripted Gemini Nano: it reads the plaque only in quarter `where` of cell 14. */
+  const readsOnlyIn = (where: number): ModelBackend => ({
+    name: 'nano',
+    generate: async (parts) => {
+      const prompt = parts.map((p) => ('text' in p ? p.text : '')).join('\n');
+      const part = prompt.match(/part (\d) of cell (\d+)/);
+      const texts = !part || Number(part[1]) === where ? ['RUE OBERKAMPF'] : [];
+      return { text: JSON.stringify({ texts }), source: 'on_device' as const };
+    },
+  });
+  const plaque = [{ cell: 14, kind: 'text', what: 'Blue street sign reading Rue Oberkampf', read: true }];
+
+  it('blurs the padded quarter of the cell that reads the plaque, not the whole cell', async () => {
+    const ledger = new Ledger();
+    const kit = { local: new LocalModel(readsOnlyIn(2), ledger), cloud: new CloudModel(readsOnlyIn(2), ledger), ledger };
+    const t = locationThreat({ ops: fakeOps, tight: true });
+    await t.sanitize(secret(PHOTO, 'photo'), plaque, null, kit);
+    // Cell 14 of 400 × 300 is x 100–200, y 225–300. Its top-right quarter (60% wide and high) is x 140–200, y 225–270;
+    // padded by a quarter of its size, within the cell: x 125–200, y 225–281.
+    expect(t.regions.map((g) => g.rect)).toEqual([{ x: 125, y: 225, w: 75, h: 56 }]);
+    expect(t.masked).toEqual([14]);
+    expect(ledger.all.filter((e) => /^Read part \d of cell 14$/.test(e.op))).toHaveLength(4);
+  });
+
+  it('blurs the whole cell when every quarter reads it, as the recorded demo answers per cell', async () => {
+    const ledger = new Ledger();
+    const kit = { local: new LocalModel(readsOnlyIn(0), ledger), cloud: new CloudModel(readsOnlyIn(0), ledger), ledger };
+    const everywhere = { ...readsOnlyIn(0), generate: async () => ({ text: JSON.stringify({ texts: ['RUE OBERKAMPF'] }), source: 'on_device' as const }) };
+    const t = locationThreat({ ops: fakeOps, tight: true });
+    await t.sanitize(secret(PHOTO, 'photo'), plaque, null, { ...kit, local: new LocalModel(everywhere, ledger) });
+    // The whole cell (100 × 75 at 100, 225) and its edge, an eighth of a cell (EDGE), inside the photo.
+    expect(t.regions.map((g) => g.rect)).toEqual([{ x: 91, y: 216, w: 118, h: 84 }]);
+  });
+
+  it('keeps the recorded demo as it was: cells 3, 7 and 8, then Tokyo', async () => {
+    const ledger = new Ledger();
+    const b = demoBackends('scene');
+    const kit = { local: new LocalModel(b.local, ledger), cloud: new CloudModel(b.cloud, ledger), ledger };
+    const threat = locationThreat({ ops: fakeOps, truth: secret(DEMO_TRUTH, 'real location'), tight: true });
+    const events = [];
+    for await (const e of redTeam(threat, secret(PHOTO, 'photo'), kit)) events.push(e);
+    expect(threat.masked).toEqual([3, 7, 8]);
+    const attacked = events.filter((e) => e.type === 'attacked') as { verdict: { place: string } }[];
+    expect(attacked[attacked.length - 1].verdict.place).toBe('Tokyo, Japan');
+  }, 30_000);
+});
+
 describe('location threat on the demo scene', () => {
   it('is found as-is, lands in the wrong country after one masking round, and is scored on the device', async () => {
     const ledger = new Ledger();
-    const b = demoBackends();
+    const b = demoBackends('scene');
     const kit = { local: new LocalModel(b.local, ledger), cloud: new CloudModel(b.cloud, ledger), ledger };
     const threat = locationThreat({ ops: fakeOps, truth: secret(DEMO_TRUTH, 'real location') });
     const photo = secret(PHOTO, 'photo');
@@ -43,7 +119,7 @@ describe('location threat on the demo scene', () => {
 
   it('keeps the photo usable: facades and trees are left, identifiers always go (Paris street, live 16-nov)', async () => {
     const ledger = new Ledger();
-    const b = demoBackends();
+    const b = demoBackends('scene');
     const kit = { local: new LocalModel(b.local, ledger), cloud: new CloudModel(b.cloud, ledger), ledger };
     const t = locationThreat({ ops: fakeOps });
     // Gemini Nano flagged a facade in every cell, plus a street sign and a church tower.
@@ -58,10 +134,12 @@ describe('location threat on the demo scene', () => {
     await t.sanitize(secret(PHOTO, 'photo'), clues, feedback, kit);
     // The facades and the attacker's roofs say Paris, not the street: hiding them covered whole photos (21-nov review).
     expect(t.masked).toEqual([9, 14]);
-    expect(t.maskedShare).toBeCloseTo(2 / 16, 3);
+    // Two cells count against the budget; what is blurred takes in their edges too (EDGE).
+    expect(t.clueShare).toBeCloseTo(2 / 16, 3);
+    expect(t.maskedShare).toBeGreaterThan(t.clueShare);
     expect(t.regions.map((g) => [g.cell, g.style]).sort()).toEqual([[14, 'blur'], [9, 'blur']].sort());
     expect(t.leftVisible).toEqual([]);
-    expect(ledger.all.find((e) => e.op.startsWith('Hide '))?.note).toBe('13% of the photo');
+    expect(ledger.all.find((e) => e.op.startsWith('Hide '))?.note).toBe(`${Math.round(t.maskedShare * 100)}% of the photo`);
     expect(ledger.all.find((e) => e.op.startsWith('Find faces'))?.note).toBe('no face found');
 
     // A later round that only cites facades adds nothing; one that reads a house number hides it.
@@ -74,7 +152,7 @@ describe('location threat on the demo scene', () => {
   it('hides only what can be read or named, from Gemini Nano’s real scans on the photo bench (21-nov)', async () => {
     const hiddenCells = async (clues: { cell: number; kind: string; what: string }[]) => {
       const ledger = new Ledger();
-      const b = demoBackends();
+      const b = demoBackends('scene');
       const kit = { local: new LocalModel(b.local, ledger), cloud: new CloudModel(b.cloud, ledger), ledger };
       const t = locationThreat({ ops: fakeOps });
       await t.sanitize(secret(PHOTO, 'photo'), clues, null, kit).catch((e) => {
@@ -116,7 +194,7 @@ describe('location threat on the demo scene', () => {
 
   it('hides other clues within a quarter of the photo, identifiers past it', async () => {
     const ledger = new Ledger();
-    const b = demoBackends();
+    const b = demoBackends('scene');
     const kit = { local: new LocalModel(b.local, ledger), cloud: new CloudModel(b.cloud, ledger), ledger };
     const t = locationThreat({ ops: fakeOps });
     // Shop signs Gemini Nano read in their cells (findClues marks them so).
@@ -126,12 +204,12 @@ describe('location threat on the demo scene', () => {
     // The plates first, whatever the budget; then shop signs until a quarter of the photo is hidden.
     expect(t.masked).toEqual([1, 2, 15, 16]);
     expect(t.leftVisible.map((c) => c.cell)).toEqual([3, 4, 5, 6]);
-    expect(t.maskedShare).toBeCloseTo(0.25, 3);
+    expect(t.clueShare).toBeCloseTo(0.25, 3);
   }, 30_000);
 
   it('never hides a face: a clue’s cell is hidden around the faces in it, and a cell that is all face is left', async () => {
     const ledger = new Ledger();
-    const b = demoBackends();
+    const b = demoBackends('scene');
     const kit = { local: new LocalModel(b.local, ledger), cloud: new CloudModel(b.cloud, ledger), ledger };
     // The photo is 400 × 300: cell 3 is 100 × 75 at (200, 0), cell 6 is 100 × 75 at (100, 75).
     const heads = [
@@ -144,10 +222,11 @@ describe('location threat on the demo scene', () => {
       { cell: 6, kind: 'number', what: 'House number 23' },
     ];
     await t.sanitize(secret(PHOTO, 'photo'), clues, null, kit);
+    // Cell 3 and its edge (x 191–309, y 0–84):
     expect(t.regions.map((g) => g.rect)).toEqual([
-      { x: 200, y: 0, w: 100, h: 40 }, // above the head
-      { x: 200, y: 40, w: 10, h: 30 }, // left of it, down to the other head (it reaches x 205)
-      { x: 270, y: 40, w: 30, h: 35 }, // right of it
+      { x: 191, y: 0, w: 118, h: 40 }, // above the head
+      { x: 191, y: 40, w: 19, h: 30 }, // left of it, down to the other head (it reaches x 205)
+      { x: 270, y: 40, w: 39, h: 44 }, // right of it
     ]);
     const overlap = (a: { x: number; y: number; w: number; h: number }, c: typeof a) => a.x < c.x + c.w && c.x < a.x + a.w && a.y < c.y + c.h && c.y < a.y + a.h;
     expect(t.regions.some((g) => heads.some((h) => overlap(g.rect, h)))).toBe(false);
@@ -159,7 +238,7 @@ describe('location threat on the demo scene', () => {
 
   it('hides the cells a person picks by hand the same way, around the faces', async () => {
     const ledger = new Ledger();
-    const kit = { local: new LocalModel(demoBackends().local, ledger), cloud: new CloudModel(demoBackends().cloud, ledger), ledger };
+    const kit = { local: new LocalModel(demoBackends('scene').local, ledger), cloud: new CloudModel(demoBackends('scene').cloud, ledger), ledger };
     const t = locationThreat({ ops: { ...fakeOps, faces: async () => [{ x: 95, y: 70, w: 110, h: 85 }] } });
     await t.hideCells(secret(PHOTO, 'photo'), [6, 16], kit);
     expect(t.masked).toEqual([16]); // cell 6 is all face
@@ -168,13 +247,13 @@ describe('location threat on the demo scene', () => {
 
   it('shows a hidden cell again with a tap, and hides another, painted again from the original', async () => {
     const ledger = new Ledger();
-    const kit = { local: new LocalModel(demoBackends().local, ledger), cloud: new CloudModel(demoBackends().cloud, ledger), ledger };
+    const kit = { local: new LocalModel(demoBackends('scene').local, ledger), cloud: new CloudModel(demoBackends('scene').cloud, ledger), ledger };
     const t = locationThreat({ ops: fakeOps });
     await t.hideCells(secret(PHOTO, 'photo'), [3, 7], kit);
     expect(t.masked).toEqual([3, 7]);
     await t.toggleCells(secret(PHOTO, 'photo'), [7, 5], kit);
     expect(t.masked).toEqual([3, 5]);
-    expect(t.maskedShare).toBeCloseTo(2 / 16, 3);
+    expect(t.clueShare).toBeCloseTo(2 / 16, 3);
     expect(ledger.all[0].op).toBe('Hide cell 5 and show cell 7 again, around the faces');
     // Every cell shown again would release the original: refused, with what to do instead.
     await expect(t.toggleCells(secret(PHOTO, 'photo'), [3, 5], kit)).rejects.toThrow(/attack it as it is/);
@@ -183,7 +262,7 @@ describe('location threat on the demo scene', () => {
 
   it('still masks when the face detector cannot run, and says faces were not protected', async () => {
     const ledger = new Ledger();
-    const kit = { local: new LocalModel(demoBackends().local, ledger), cloud: new CloudModel(demoBackends().cloud, ledger), ledger };
+    const kit = { local: new LocalModel(demoBackends('scene').local, ledger), cloud: new CloudModel(demoBackends('scene').cloud, ledger), ledger };
     const t = locationThreat({ ops: { ...fakeOps, faces: async () => Promise.reject(new Error('WebAssembly blocked')) } });
     await t.sanitize(secret(PHOTO, 'photo'), [{ cell: 7, kind: 'number', what: 'House number 23' }], null, kit);
     expect(t.masked).toEqual([7]);
@@ -266,7 +345,7 @@ describe('location threat on the demo scene', () => {
 
   it('cannot send the original photo without the user confirming it', async () => {
     const ledger = new Ledger();
-    const b = demoBackends();
+    const b = demoBackends('scene');
     const kit = { local: new LocalModel(b.local, ledger), cloud: new CloudModel(b.cloud, ledger), ledger };
     secret(PHOTO, 'photo');
     expect(() => release(PHOTO, 'sneaky')).toThrow(PrivacyViolation);
@@ -276,7 +355,7 @@ describe('location threat on the demo scene', () => {
 
   it('with nothing flagged, says there is nothing to mask instead of a scary privacy block (the no-op re-encode is the original)', async () => {
     const ledger = new Ledger();
-    const b = demoBackends();
+    const b = demoBackends('scene');
     const kit = { local: new LocalModel(b.local, ledger), cloud: new CloudModel(b.cloud, ledger), ledger };
     const err = await locationThreat({ ops: { ...fakeOps, paint: async (p) => p } })
       .sanitize(secret(PHOTO), [], null, kit)
@@ -343,7 +422,7 @@ describe('reading each cell up close (bench, 21-nov)', () => {
     ]);
     await t.sanitize(secret(PHOTO, 'photo'), clues, null, kit);
     expect(t.masked).toEqual([2, 4, 14]);
-    expect(t.maskedShare).toBeCloseTo(3 / 16, 3);
+    expect(t.clueShare).toBeCloseTo(3 / 16, 3);
   });
 
   /** Gemini Nano as it answered on the photo bench: one scan, and what it read in each cell it was asked to read. */
@@ -599,11 +678,12 @@ describe('reading each cell up close (bench, 21-nov)', () => {
     await t.sanitize(photo, await t.findClues(photo, kit), null, kit);
     expect(painted[painted.length - 1]).not.toContain(0);
     const without = t.maskedShare;
+    const clues = t.clueShare;
     expect(await t.setBlurFaces(photo, true, kit)).not.toBeNull();
     expect(painted[painted.length - 1]).toContain(0); // the face layer (cell 0: no cell of its own)
     expect(t.masked).toEqual([7]);
     expect(t.maskedShare).toBeGreaterThan(without);
-    expect(t.clueShare).toBeCloseTo(without); // the budget never counts a face
+    expect(t.clueShare).toBeCloseTo(clues); // the budget never counts a face
     expect(ledger.all[0]?.note).toMatch(/1 face blurred, by your choice/); // newest first
     await t.setBlurFaces(photo, false, kit);
     expect(painted[painted.length - 1]).not.toContain(0);

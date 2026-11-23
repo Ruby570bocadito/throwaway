@@ -141,7 +141,7 @@ describe('Gemini Nano answering badly', () => {
       clearTaint();
       const { kit, prompts } = kitWith((p, n) => (p.startsWith('Rewrite') ? (n === 0 ? bad : JSON.stringify({ rewrite: REWRITE })) : meaning));
       const published = await threatFor().sanitize(secret(DRAFT, 'draft'), [], null, kit);
-      expect(published.value).toContain('An attachment to this organization');
+      expect(published.value).toContain('I really enjoyed working for this organization');
       expect(prompts.filter((p) => p.startsWith('Rewrite'))).toHaveLength(2);
       expect(kit.ledger.all.some((e) => e.op.startsWith('Rewrite on-device (again'))).toBe(true);
     }
@@ -156,7 +156,7 @@ describe('Gemini Nano answering badly', () => {
     const { kit } = kitWith((p) => (p.startsWith('Rewrite') ? JSON.stringify({ rewrite: REWRITE }) : 'The claims are all kept.'));
     const threat = threatFor();
     const published = await threat.sanitize(secret(DRAFT, 'draft'), [], null, kit);
-    expect(published.value).toContain('An attachment to this organization');
+    expect(published.value).toContain('I really enjoyed working for this organization');
     expect(threat.lastRewrite).toMatchObject({ claims: [], meaningCheck: 'failed' });
     expect(kit.ledger.all[0]).toMatchObject({ op: 'Meaning check', note: 'unreadable answer · read the final text yourself' });
   });

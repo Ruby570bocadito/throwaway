@@ -1,13 +1,14 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { markDeviceError, PrivacyViolation, release, secret, type Private, type Publishable } from '../framework';
-import { browserImageOps, normalizeToPng, svgToPng } from '../engine/image';
-import { DEMO_TRUTH, SCENE_H, SCENE_SVG, SCENE_W } from '../demo/photo';
+import { browserImageOps, normalizeToPng } from '../engine/image';
+import { DEMO_TRUTH } from '../demo/photo';
+import { SELFIE_H, SELFIE_SRC, SELFIE_W } from '../demo/selfie';
 import { GRID, isIdentifier, locationThreat, type LocationVerdict, type PhotoClue } from '../threats/location';
 import { WorldMap, type MapPoint } from '../ui/WorldMap';
 import { Why } from '../ui/Why';
 import { BeforeAfter, ErrorNote, formatKm, friendlyError, type LabProps } from '../ui/shared';
-import { allowAsIsTest } from '../kit';
+import { allowAsIsTest, blurTight } from '../kit';
 import { Stepper, type StepDef } from '../ui/Stepper';
 import { WorkLog, type PlanStep } from '../ui/WorkLog';
 import { useAnimatedNumber, useReducedMotion, withTransition } from '../ui/motion';
@@ -52,8 +53,8 @@ const CONFIDENCE_ES = new Map([
 const confidenceLabel = (c: string) => tr(c, CONFIDENCE_ES.get(c) ?? c);
 const placeLabel = (place: string) => (place === 'unknown' ? tr('unknown', 'desconocido') : place);
 const reducedMotion = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
-// The demo's "real location" is the scene's, not the visitor's: said so on screen (a tester took it for a leak, 16-nov).
-const SCENE_TRUTH = 'Palma (where the demo scene is set)';
+// The demo's "real location" is the demo photo's, not the visitor's: said so on screen (a tester took it for a leak, 16-nov).
+const SCENE_TRUTH = 'Palma (where the demo photo is set)';
 
 /**
  * A blob URL for the bytes. `url` may still be the previous one for a render (an <img> keeps showing it, so swapping photos
@@ -105,8 +106,10 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak, recorded, 
   const [source, setSource] = useState<'demo' | 'own'>('demo');
   const [truthLabel, setTruthLabel] = useState(SCENE_TRUTH);
   const [truthPoint, setTruthPoint] = useState<MapPoint | null>(DEMO_TRUTH);
-  const [threat, setThreat] = useState(() => locationThreat({ ops: browserImageOps, truth: secret(DEMO_TRUTH, 'your real location') }));
+  const [threat, setThreat] = useState(() => locationThreat({ tight: blurTight(), ops: browserImageOps, truth: secret(DEMO_TRUTH, 'your real location') }));
   const fileInput = useRef<HTMLInputElement>(null);
+  // A photo of yours, once chosen, is never replaced by the demo photo still loading (a slow network, or a quick pick).
+  const ownPhoto = useRef(false);
 
   // One step at a time, as for a post: the new step replaces the last one where the browser can (View Transitions), with
   // what it brings set in the same go, and its title comes into view.
@@ -140,20 +143,21 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak, recorded, 
     try {
       const { png } = await normalizeToPng(file);
       kit.ledger.add({ op: 'Load your photo (EXIF stripped, resized)', route: 'local-js', ms: 0, bytesOut: 0 });
+      ownPhoto.current = true;
       setOriginal(png);
       setSource('own');
       const hashTruth = truthFromHash();
       if (hashTruth) {
         setTruthLabel(tr('set in the page address (#truth), for testing or recording', 'indicada en la dirección de la página (#truth), para probar o grabar'));
         setTruthPoint(hashTruth);
-        setThreat(locationThreat({ ops: browserImageOps, truth: secret(hashTruth, 'your real location') }));
+        setThreat(locationThreat({ tight: blurTight(), ops: browserImageOps, truth: secret(hashTruth, 'your real location') }));
         kit.ledger.add({ op: 'Read your location from #truth (for local scoring only)', route: 'local-js', ms: 0, bytesOut: 0 });
         return;
       }
       // Without a location the attack is scored on the attacker's claimed precision, until the user shares one.
       setTruthLabel(tr('not set — tap “Use my location” for a real score', 'sin indicar (toca «Usar mi ubicación» para medir la distancia real)'));
       setTruthPoint(null);
-      setThreat(locationThreat({ ops: browserImageOps }));
+      setThreat(locationThreat({ tight: blurTight(), ops: browserImageOps }));
     } catch (e) {
       // The engine's own messages are already plain sentences for the user ("That file is not an image…").
       setError(
@@ -172,7 +176,7 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak, recorded, 
         const metres = num(Math.round(pos.coords.accuracy));
         setTruthLabel(tr(`from this browser, ±${metres} m`, `según este navegador, ±${metres} m`));
         setTruthPoint(here);
-        setThreat(locationThreat({ ops: browserImageOps, truth: secret(here, 'your real location') }));
+        setThreat(locationThreat({ tight: blurTight(), ops: browserImageOps, truth: secret(here, 'your real location') }));
         kit.ledger.add({ op: 'Read your location (for local scoring only)', route: 'local-js', ms: 0, bytesOut: 0 });
       },
       (err) => setError(tr(`Location not available: ${err.message}`, `Ubicación no disponible: ${err.message}`)),
@@ -180,11 +184,25 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak, recorded, 
     );
   }
 
+  // The demo photo: the Palma selfie whose answers the recorded run replays (src/demo/selfie.ts), loaded like a photo of
+  // yours (EXIF stripped, PNG at 1280 px), as the photo bench loaded it when Gemini Nano was measured on it.
   useEffect(() => {
-    svgToPng(SCENE_SVG, SCENE_W, SCENE_H).then((png) => {
-      setOriginal(png);
-      setStage('photo');
-    });
+    let gone = false;
+    fetch(SELFIE_SRC)
+      .then((r) => (r.ok ? r.blob() : Promise.reject(new Error(`HTTP ${r.status}`))))
+      .then((blob) => normalizeToPng(blob))
+      .then(({ png }) => {
+        if (gone || ownPhoto.current) return;
+        setOriginal(png);
+        setStage('photo');
+      })
+      .catch(() => {
+        if (gone || ownPhoto.current) return;
+        setError(tr('Could not load the demo photo. Reload the page, or use a photo of yours.', 'No se ha podido cargar la foto de la demo. Recarga la página o usa una foto tuya.'));
+      });
+    return () => {
+      gone = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -743,8 +761,8 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak, recorded, 
         {baseUrl ? (
           <img
             src={baseUrl}
-            width={SCENE_W}
-            height={SCENE_H}
+            width={SELFIE_W}
+            height={SELFIE_H}
             alt={
               source === 'demo'
                 ? tr('Selfie at home with the street visible through the window', 'Una selfi en casa, con la calle a la vista por la ventana')
@@ -754,7 +772,7 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak, recorded, 
           />
         ) : (
           <div className="photo-loading">
-            <span className="spinner" aria-hidden="true" /> {tr('Drawing the demo photo on this device…', 'Dibujando la foto de la demo en este dispositivo…')}
+            <span className="spinner" aria-hidden="true" /> {tr('Loading the demo photo…', 'Cargando la foto de la demo…')}
           </div>
         )}
         {/* Before and after: the original shows from the left up to the line, the blurred photo after it. */}
@@ -873,8 +891,8 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak, recorded, 
       <p className="hint truth-note">
         {truthLabel === SCENE_TRUTH
           ? tr(
-              'Where the scene really is (Palma) stays on this device, to score each guess.',
-              'El lugar real de la escena (Palma) se queda en este dispositivo, para medir cada intento de la IA.',
+              'Where the demo photo is set (Palma) stays on this device, to score each guess.',
+              'El lugar de la foto de la demo (Palma) se queda en este dispositivo, para medir cada intento de la IA.',
             )
           : tr(`Your real location, known only to this device: ${truthLabel}.`, `Tu ubicación real, que solo conoce este dispositivo: ${truthLabel}.`)}
       </p>
@@ -1006,7 +1024,7 @@ export function PhotoLab({ kit, localBackend, degraded, registerLeak, recorded, 
         </div>
         <WorldMap
           you={truthPoint}
-          youLabel={source === 'demo' ? tr('The scene', 'La escena') : tr('You', 'Tú')}
+          youLabel={source === 'demo' ? tr('The photo', 'La foto') : tr('You', 'Tú')}
           guess={attacking ? null : guess}
           guessLabel={verdict?.place ?? ''}
           distance={!attacking && verdict && verdict.errorKm !== null ? formatKm(verdict.errorKm) : undefined}

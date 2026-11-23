@@ -5,7 +5,7 @@
 import { useEffect, useReducer, useRef, useState } from 'react';
 import './diagnostics.css';
 import { errorCode, Ledger, LocalModel, PrivacyViolation, secret, type LedgerEntry, type ModelBackend } from '../framework';
-import { buildAuthorship, buildKit, isLive } from '../kit';
+import { blurTight, buildAuthorship, buildKit, isLive } from '../kit';
 import { DRAFT } from '../demo/scenario';
 import { DEMO_TRUTH, SCENE_H, SCENE_SVG, SCENE_W } from '../demo/photo';
 import { BENCH, type BenchPhoto, type Box } from '../demo/bench';
@@ -35,6 +35,8 @@ interface BenchResult {
   scans: string[];
   /** What Gemini Nano read in each cell it was asked to read up close, as it came. */
   reads: string[];
+  /** Every Gemini Nano answer for this photo, in full (only when photos are named with ?photo=): what a recording needs. */
+  raw?: string[];
   ms: number;
   error?: string;
 }
@@ -411,7 +413,10 @@ export default function Diagnostics() {
         problem('Photo bench: prepare Gemini Nano (only the faces are checked)', e);
         withNano = false;
       }
-      const photos = [...BENCH, DEMO_SCENE];
+      // ?diag=photos&photo=window-palma runs only the photos named (comma-separated): a whole bench took about 20 minutes on an
+      // integrated GPU (22-nov), and their answers then come in full, for recording a demo.
+      const named = (new URLSearchParams(location.search).get('photo') ?? '').split(',').map((x) => x.trim()).filter(Boolean);
+      const photos = named.length ? [...BENCH, DEMO_SCENE].filter((p) => named.includes(p.name)) : [...BENCH, DEMO_SCENE];
       for (const [i, photo] of photos.entries()) {
         setCurrent(`Photo ${i + 1} of ${photos.length}: ${photo.name}`);
         const t0 = performance.now();
@@ -438,7 +443,8 @@ export default function Diagnostics() {
           }
           if (withNano) {
             const secretPhoto = secret(png, `bench photo ${photo.name}`);
-            const threat = locationThreat({ ops: browserImageOps });
+            // ?diag=photos&blur=tight measures the tighter blur (22-nov) on the same photos.
+            const threat = locationThreat({ ops: browserImageOps, tight: blurTight() });
             const clues = await threat.findClues(secretPhoto, kit);
             result.clues = clues.map((c) => `${c.cell} ${c.kind} (${clip(c.what, 30)})`);
             try {
@@ -467,6 +473,7 @@ export default function Diagnostics() {
             result.reads = said
               .filter((x) => x.op.startsWith('Read the text in cell'))
               .map((x) => `${x.op.replace('Read the text in ', '')}: ${clip(x.text.replace(/\s+/g, ' '), 90)}`);
+            if (named.length) result.raw = said.map((x) => `${x.op}: ${x.text.replace(/\s+/g, ' ').slice(0, 2000)}`);
             said.length = 0;
           }
         } catch (e) {
@@ -717,7 +724,7 @@ export default function Diagnostics() {
       for (const a of answers.current) lines.push(`  ${a.op} · ${fmtMs(a.ms)} · ${a.chars.toLocaleString('en-US')} characters, ${a.blank.toLocaleString('en-US')} of them blank`);
     }
     if (bench.current.length) {
-      lines.push('', 'PHOTOS WITH PEOPLE');
+      lines.push('', `PHOTOS WITH PEOPLE${blurTight() ? ' · blur: tight (only the part of a cell that reads an identifier)' : ''}`);
       for (const b of bench.current) {
         if (b.error) {
           lines.push(`  ✗ ${b.photo.name}: ${b.error} (${fmtMs(b.ms)})`);
@@ -738,6 +745,10 @@ export default function Diagnostics() {
         lines.push(`      clues: ${b.clues.join('; ') || 'none'}${b.left.length ? ` · left visible: ${b.left.join('; ')}` : ''}`);
         b.scans.forEach((x, i) => lines.push(`      scan ${i + 1}: ${x || 'nothing'}`));
         if (b.reads.length) lines.push(`      read up close: ${b.reads.join(' · ')}`);
+        if (b.raw?.length) {
+          lines.push('      Gemini Nano, in full:');
+          for (const r of b.raw) lines.push(`        ${r}`);
+        }
         lines.push(
           `      face detector: ${b.facesError ?? `${b.detected.length} found in ${fmtMs(b.facesMs ?? 0)}, ${b.found.filter(Boolean).length} of ${b.found.length} marked faces`}`,
         );

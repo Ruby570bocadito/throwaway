@@ -59,7 +59,31 @@ export function cellRect(cell: number, n: number, width: number, height: number)
 
 /** The colour of the boxes that hide what can be read in a photo: a dark slate, the same on every photo. */
 export const MASK_COLOUR = '#3b4150';
-const MASK_VEIL = 'rgba(59, 65, 80, 0.22)';
+/**
+ * Frosted glass over what is blurred: a light cream veil (the brand's paper) and a fine grain, so a hidden part reads as hidden
+ * on purpose and looks finished, not like the grey smudge of a slate veil (Rafa, 22-nov: "more detail and polish").
+ */
+const FROST_VEIL = 'rgba(246, 236, 221, 0.18)';
+const FROST_GRAIN = 0.16;
+
+/** A fixed grain tile (xorshift from a constant seed): the same photo always gives the same bytes. */
+function grainTile(size = 96): HTMLCanvasElement {
+  const c = document.createElement('canvas');
+  c.width = c.height = size;
+  const g = c.getContext('2d')!;
+  const data = g.createImageData(size, size);
+  let s = 0x9e3779b9;
+  for (let i = 0; i < data.data.length; i += 4) {
+    s ^= s << 13;
+    s ^= s >>> 17;
+    s ^= s << 5;
+    const v = 96 + ((s >>> 0) % 64); // mid greys: an overlay of these only nudges the light
+    data.data[i] = data.data[i + 1] = data.data[i + 2] = v;
+    data.data[i + 3] = 255;
+  }
+  g.putImageData(data, 0, 0);
+  return c;
+}
 
 async function decode(png: Uint8Array): Promise<ImageBitmap> {
   return createImageBitmap(new Blob([png.slice()], { type: 'image/png' }));
@@ -179,18 +203,25 @@ export const browserImageOps: ImageOps = {
       // Blurs first, from the untouched photo (a blur reads the pixels around it); then the boxes, which hide all. One blur of
       // the whole photo, with its edges extended, serves every region (and no region shows the original at the border).
       const blurs = regions.filter((r) => r.style === 'blur');
-      const pad = radius * 2;
-      const blurred = blurs.length ? blurredWithEdges(img, radius, pad) : null;
-      for (const g of blurs) {
-        const { x, y, w, h } = g.rect;
+      if (blurs.length) {
+        const pad = radius * 2;
+        const blurred = blurredWithEdges(img, radius, pad);
+        // Every region in one clip: neighbouring cells, and the pieces left around a face, join without a seam or a gap.
+        const area = new Path2D();
+        for (const g of blurs) area.rect(g.rect.x, g.rect.y, g.rect.w, g.rect.h);
         ctx.save();
-        ctx.beginPath();
-        ctx.rect(x, y, w, h);
-        ctx.clip();
-        ctx.drawImage(blurred!, -pad, -pad);
-        // A light veil of the box colour, so a hidden part reads as hidden on purpose, not as a smudge.
-        ctx.fillStyle = MASK_VEIL;
-        ctx.fillRect(x, y, w, h);
+        ctx.clip(area);
+        ctx.drawImage(blurred, -pad, -pad);
+        // Frosted glass: a cream veil, then a fine grain laid over it.
+        ctx.fillStyle = FROST_VEIL;
+        ctx.fill(area);
+        const grain = ctx.createPattern(grainTile(), 'repeat');
+        if (grain) {
+          ctx.globalCompositeOperation = 'overlay';
+          ctx.globalAlpha = FROST_GRAIN;
+          ctx.fillStyle = grain;
+          ctx.fill(area);
+        }
         ctx.restore();
       }
       // One flat colour, whatever was under it: pixelating kept a blue plate blue and a sign's shape (21-nov review).

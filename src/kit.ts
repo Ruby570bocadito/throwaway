@@ -57,12 +57,15 @@ export function buildKit(ledger: Ledger) {
  * `decoys` are the nine public writers who stand next to the user: by default the recorded run's (design), or a pack of
  * the post's own field from `loadDecoyPacks()`. With off-topic decoys the attacker finds the author by subject, not style.
  */
+/** `?blur=tight` blurs only the part of a cell that reads an identifier (22-nov): measured on the photo bench before it is the default. */
+export const blurTight = (): boolean => typeof location !== 'undefined' && new URLSearchParams(location.search).get('blur') === 'tight';
+
 /**
- * `?tone=yours` asks Gemini Nano to keep the draft's tone (22-nov plan, block 3): measured live in Chrome before it becomes
- * a choice in the app. Testers would not post the plain, neutral rewrite.
+ * The rewrite keeps the draft's tone (the default since 22-nov: 0 of 10 live in Rafa's Chrome, see AuthorshipOptions.tone).
+ * `?tone=plain` asks for the neutral register of the first runs, which testers would not post.
  */
 export const rewriteTone = (): 'plain' | 'yours' =>
-  typeof location !== 'undefined' && new URLSearchParams(location.search).get('tone') === 'yours' ? 'yours' : 'plain';
+  typeof location !== 'undefined' && new URLSearchParams(location.search).get('tone') === 'plain' ? 'plain' : 'yours';
 
 export function buildAuthorship(onAttempt: (pickId: string, i: number) => void, ownPublic = '', decoys: readonly Candidate[] = DECOYS) {
   const own = ownPublic.trim();

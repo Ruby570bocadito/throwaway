@@ -19,7 +19,7 @@ import {
   sentenceAround,
   shuffled,
 } from './authorship';
-import { ATTACK_AFTER, ATTACK_BEFORE, CONTENT_DETAILS, DECOYS, DRAFT, MARTA_PUBLIC, NANO_REWRITE_RECORDED, NANO_REWRITE_V3_RECORDED, REWRITE, SELF_ID } from '../demo/scenario';
+import { ATTACK_AFTER, ATTACK_BEFORE, CONTENT_DETAILS, DECOYS, DRAFT, MARTA_PUBLIC, NANO_REWRITE_RECORDED, NANO_REWRITE_V3_RECORDED, REWRITE, REWRITE_V5_PLAIN, SELF_ID } from '../demo/scenario';
 import { FIELD_WORDS } from '../demo/decoys';
 
 beforeEach(() => clearTaint());
@@ -70,8 +70,9 @@ const V3_LEFT = ['three years', 'March', 'Lisbon office', 'six individuals to tw
 const V3_RULED =
   "The tenure with the organization spanned several years. Recent organizational changes, implemented recently, significantly altered the structure of the design team located in the office. The team's size reduced from several individuals to a few. A key directive arose to implement a migration within this diminished team structure, maintaining the original project timeline. Management communicated the direction, yet feedback mechanisms appeared ineffective. The situation presents challenges for those in design roles.";
 
-// Five of eight testers would not post the neutral rewrite ("an HR memo", 22-nov): the tone is an option, measured live first.
-describe('the rewrite keeps your tone when asked (22-nov)', () => {
+// Five of eight testers would not post the neutral rewrite ("an HR memo", 22-nov). Keeping the draft's tone still left the
+// attacker at 0 of 10 in Rafa's Chrome (22-nov), so it is the default; the neutral register stays as an option.
+describe('the rewrite keeps your tone (22-nov)', () => {
   const rewritePrompt = async (tone?: 'plain' | 'yours') => {
     const prompts: string[] = [];
     const nano = nanoScript((prompt) => {
@@ -92,14 +93,17 @@ describe('the rewrite keeps your tone when asked (22-nov)', () => {
     return prompts.find((p) => p.startsWith('Rewrite the DRAFT')) ?? '';
   };
 
-  it('asks for a neutral register by default, and for the draft’s own tone with tone: yours', async () => {
-    const plain = await rewritePrompt();
-    expect(plain).toContain('Use a neutral, plain register');
-    const yours = await rewritePrompt('yours');
+  it('asks for the draft’s own tone by default, and for a neutral register with tone: plain', async () => {
+    const yours = await rewritePrompt();
     expect(yours).toContain('Keep the tone of the DRAFT');
     expect(yours).not.toContain('neutral, plain register');
+    expect(await rewritePrompt('yours')).toBe(yours);
+    const plain = await rewritePrompt('plain');
+    expect(plain).toContain('Use a neutral, plain register');
+    expect(plain).not.toContain('Keep the tone');
     // The recorded demo finds its answer by this start (src/demo/recorded.ts).
     expect(yours.startsWith('Rewrite the DRAFT')).toBe(true);
+    expect(plain.startsWith('Rewrite the DRAFT')).toBe(true);
   });
 });
 
@@ -543,8 +547,11 @@ describe("the attacker's reasons", () => {
   it('flag quotes that are not in the attacked text, and leave the grounded ones alone (recorded run)', () => {
     // Before: every quoted habit is in the draft.
     for (const r of ATTACK_BEFORE.reasons) expect(quotesNotIn(r, DRAFT), r).toEqual([]);
-    // After: the rewrite says "organization" and never "review"; the attacker quoted another writer's words.
-    expect(quotesNotIn(ATTACK_AFTER.reasons[2], REWRITE)).toEqual(['organisation', 'review']);
+    // After the rewrite in your tone (23-nov): the words it quotes are the rewrite's own.
+    for (const r of ATTACK_AFTER.reasons) expect(quotesNotIn(r, REWRITE), r).toEqual([]);
+    // After the neutral v5 rewrite (16-nov), the reasons it gave: the rewrite says "organization" and never "review"; the
+    // attacker quoted another writer's words.
+    expect(quotesNotIn("Lexical choices such as 'organisation', 'review', and 'staffing'", REWRITE_V5_PLAIN)).toEqual(['organisation', 'review']);
   });
 
   it('read straight, curly and double quotes, but not apostrophes inside words', () => {

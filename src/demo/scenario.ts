@@ -72,11 +72,18 @@ export const LINEUP: Candidate[] = [{ id: SELF_ID, label: 'You', corpus: MARTA_P
 export const DRAFT = `So, honestly, I loved this company for three years — but the last six months have been kind of a mess. Anyway, after the March reorg our design team in the Lisbon office went from 6 people to 2 (and nobody told us why). Basically we were asked to ship the Figma migration with half the people and the same deadline. Honestly, management means well, but they do not listen — they announce. So, if you are a designer, think twice (sorry not sorry).`;
 
 /**
- * The REAL final text of the full on-device pipeline (v5), in the author's Chrome on 16-nov-2026: fixed rules generalised
- * the five details in the draft, then Gemini Nano rewrote the style. Transcribed from a screenshot of that run.
- * The demo replays this run.
+ * The REAL final text of the on-device pipeline that keeps your tone (the default since 22-nov), on the sample post in Rafa's
+ * Chrome on 22-nov-2026: fixed rules generalised the details, then Gemini Nano rewrote the style, keeping the draft's
+ * first person. Copied from that run's page. His live test of it: the author picked 0 times of 10 (writer d1 9 times), 6
+ * claims of 6 kept. The demo replays this text, and the cloud test recorded on it (ATTACK_AFTER).
  */
-export const REWRITE = `An attachment to this organization existed for a period of several years; however, the preceding six months have presented challenges. Following a restructuring, the design team's personnel transitioned from numerous individuals to a smaller number, without explanation. The expectation became to deliver the transition with reduced staffing levels while maintaining the same timeline. Management intends positively, yet responsiveness appears lacking. Consequently, individuals in design roles should carefully consider this proposition.`;
+export const REWRITE = `I really enjoyed working for this organization for quite a while. However, things have deteriorated significantly recently. Following the restructuring, the number of designers in the office significantly decreased. There was a complete lack of explanation for this reduction in staff. Consequently, we received the instruction to complete a significant undertaking with a reduced team and the same timeline. While leadership intends to improve things, communication remains a significant problem. They deliver announcements rather than actively listen to feedback. Therefore, if you're a designer, please consider this carefully.`;
+
+/**
+ * The REAL final text of the first full pipeline (v5), in the author's Chrome on 16-nov-2026, in a neutral, plain register
+ * (`tone: 'plain'`): the attacker scored it 0/10 too, but five of eight testers would not post it ("an HR memo", 22-nov).
+ */
+export const REWRITE_V5_PLAIN = `An attachment to this organization existed for a period of several years; however, the preceding six months have presented challenges. Following a restructuring, the design team's personnel transitioned from numerous individuals to a smaller number, without explanation. The expectation became to deliver the transition with reduced staffing levels while maintaining the same timeline. Management intends positively, yet responsiveness appears lacking. Consequently, individuals in design roles should carefully consider this proposition.`;
 
 /** The REAL Gemini Nano rewrite, on-device in the author's Chrome (16-nov). The attacker scored it 0/10, but the details stayed. */
 export const NANO_REWRITE_RECORDED = `The prior employment experience lasted for three years. The period commencing in March involved a structural reorganization. The design team was based in the Lisbon office. The team's size decreased from six individuals to two. The Figma migration was assigned alongside the reduced headcount and unchanged deadlines. Management's communication style prioritized announcements over feedback solicitation. This situation presents a significant challenge for designers.`;
@@ -112,6 +119,8 @@ export const CLAIMS = [
 export interface AttackRun {
   picks: string[]; // candidate id picked in each attempt
   reasons: string[];
+  /** The confidence the attacker gave (the recorded runs gave one for all ten attempts). */
+  confidence: 'low' | 'medium' | 'high';
 }
 
 /**
@@ -126,18 +135,21 @@ export const ATTACK_BEFORE: AttackRun = {
     "High frequency of discourse markers like 'basically' and 'anyway'.",
     "Strong conversational stylometry matching Writer C's specific syntactic rhythm.",
   ],
+  confidence: 'high',
 };
 
 /**
- * After the rewrite: 9 picks of d1 (shown as F) and 1 of d8 (shown as G), 0 of the author. Attempt order not recorded. The
- * reasons quote d1's text ("organisation", "review", "staffing"), so d1 goes last: the screen shows the last pick's reasons,
- * and with d8 last they read as made up (a judge, 17-nov).
+ * After the rewrite in your tone: REAL cloud answers recorded on 23-nov-2026 from gemini-3.5-flash-lite through Firebase AI
+ * Logic on REWRITE (the live preview, no Gemini Nano in that browser: the text was entered by hand, exactly as Nano wrote it in
+ * Rafa's Chrome). All ten attempts picked d1, the corporate writer, with high confidence; the author 0 times. The reasons are
+ * the last attempt's, the ones the screen shows. (Rafa's own run of the same text: d1 nine times, another writer once.)
  */
 export const ATTACK_AFTER: AttackRun = {
-  picks: ['d8', 'd1', 'd1', 'd1', 'd1', 'd1', 'd1', 'd1', 'd1', 'd1'],
+  picks: ['d1', 'd1', 'd1', 'd1', 'd1', 'd1', 'd1', 'd1', 'd1', 'd1'],
   reasons: [
-    'Formal, institutional vocabulary and objective tone',
-    'Complex syntactic structures and passive voice',
-    "Lexical choices such as 'organisation', 'review', and 'staffing'",
+    'Formal, professional register and vocabulary',
+    "Consistent use of connective adverbs such as 'Consequently' and 'Therefore'",
+    'Absence of colloquialisms or fragmented sentences',
   ],
+  confidence: 'high',
 };
