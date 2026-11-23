@@ -36,7 +36,7 @@ To fingerprint you rather than the demo writer, paste writing you have already p
 ### Real or recorded?
 
 - **Live** (`/app/`): every model call is real. Gemini Nano runs on your device and Gemini runs in the cloud, both through Firebase AI Logic, with App Check.
-- **Recorded run** (`/app/?demo`): the model answers of one real run in Chrome (16-nov-2026) are replayed through the same framework, so the demo video is reproducible. The fingerprint, the fixed rules, the privacy guard, the shuffled lineups and the receipt run live, and the Firebase SDK is not even loaded.
+- **Recorded run** (`/app/?demo`): the model answers of real runs (16 to 23-nov-2026) are replayed through the same framework, so the demo video is reproducible. The fingerprint, the fixed rules, the privacy guard, the shuffled lineups and the receipt run live, and the Firebase SDK is not even loaded.
 - To run live mode yourself you need a Firebase project: see [Run it](#run-it).
 
 ## How Firebase AI Logic hybrid inference is used
@@ -98,7 +98,7 @@ interface Threat<Input, Clue, Verdict> {
 - Every call lands in a ledger: where it ran, how long, how many bytes left the device.
 - No third-party requests besides Firebase and its App Check: fonts are bundled, so opening Throwaway tells no font CDN who you are. The recorded demo (`?demo`) does not even load the Firebase SDK.
 
-For a photo: Nano marks the grid cells that reveal where you are (street plaque, house number, shop sign) and reads each one up close, a face detector on the device (MediaPipe) finds the faces, the device blurs those cells around the faces, and a cloud geolocation attacker estimates where the **masked** photo was taken. If it still narrows you down, it says which cells helped, and the loop hides those too. In the recorded run: a readable address 215 m from the spot → "Tokyo, Japan", 10,559 km off.
+For a photo: Nano marks the grid cells that reveal where you are (street plaque, house number, shop sign) and reads each one up close, a face detector on the device (MediaPipe) finds the faces, the device blurs those cells around the faces (each with an edge of an eighth of a cell, so a sign or a number on a cell's line is hidden whole), and a cloud geolocation attacker estimates where the **masked** photo was taken. If it still narrows you down, it says which cells helped, and the loop hides those too. In the recorded run: a readable address 215 m from the spot → "Tokyo, Japan", 10,559 km off.
 
 Code: [`src/framework/`](src/framework) · threats: [`authorship.ts`](src/threats/authorship.ts), [`location.ts`](src/threats/location.ts) · tests: `npm test`
 
@@ -132,10 +132,12 @@ Live runs through Firebase AI Logic on 15 and 16-nov-2026 (cloud attacker: `gemi
 | Text, a rewrite we wrote by hand (15-nov) | **0/10** (chance is 1/10) |
 | Text, rewritten **by Gemini Nano on the device** (Chrome) | **0/10**: the attacker now picks the "formal, academic" writer |
 | Text, full on-device pipeline in Chrome (16-nov, v4: Nano rewrites, then generalises the details sentence by sentence) | **10/10 → 0/10**, no specific detail left, fingerprint #10 of 10, meaning check 5/5. But Nano wrote our prompt's examples into the text (see below), so the pipeline changed |
-| Text, full on-device pipeline in Chrome (16-nov, v5: fixed rules generalise the details first, then Nano rewrites the style) | **10/10 → 0/10** (9 picks of one decoy, 1 of another). Five details generalised in 3 ms (today's fixed rules also catch "six months", so the demo shows six), nothing added by the rewrite, meaning check 6/6, fingerprint #10 of 10. The rewrite stage took ~25 s on a laptop (v4: ~60 s). This is the run the demo replays |
-| Photo, as-is | "Carrer de la Llum, 23, Palma", 215 m from the spot (it claimed 0.5 km precision), high confidence: it read the plaque, the house number and the Catalan bakery sign |
-| Photo, clues found by Gemini Nano **on the device** | Cells 3 (street plaque), 7 (house number), 8 (bakery sign), 12 (orange tree) and 1 (a poster it read as a "Japanese flag") |
-| Photo, the street plaque, house number and bakery sign blurred on the device | "Tokyo, Japan", low confidence: 10,559 km off |
+| Text, full on-device pipeline in Chrome (16-nov, v5: fixed rules generalise the details first, then Nano rewrites the style) | **10/10 → 0/10** (9 picks of one decoy, 1 of another). Five details generalised in 3 ms (today's fixed rules also catch "six months", so the demo shows six), nothing added by the rewrite, meaning check 6/6, fingerprint #10 of 10. The rewrite stage took ~25 s on a laptop (v4: ~60 s). The demo replayed this run until 22-nov |
+| Text, the same pipeline keeping your tone (22-nov, the default since then: the rewrite stays in the first person and keeps the draft's claims) | Rafa's Chrome: **0/10** (one decoy 9 times, another once), meaning check 6/6. The same text tested again from the live preview (23-nov): **0/10**, the corporate decoy all ten times, "formal, professional register". This is the run the demo replays. It still reads more formal than the draft: a more casual prompt is next |
+| Photo (the demo selfie, a made-up photo of Palma), as-is (22-nov) | "Carrer de la Llum, Alcúdia, Mallorca", high confidence: it read the street plaque. The wrong town (51 km off), but a street name anyone can look up: red |
+| Photo, clues found by Gemini Nano **on the device** (Rafa's Chrome, 22-nov) | The street plaque (cell 3) and the bakery sign (cell 8), each read up close. It never flagged the house number, which sits on the line between cells 8 and 12 |
+| Photo, cells 3 and 8 blurred on the device, each with an edge of an eighth of a cell (23-nov) | "Valletta, Malta", medium confidence: 1,119 km off. The same photo three more times: Valletta again, then "Valldemossa, Mallorca" twice (16 km off). No run read a street name or a number. Without the edge, half the house number stayed sharp; that photo gave "Alcúdia, Mallorca" |
+| Photo, the drawn scene of the first demo (15/16-nov) | As-is: "Carrer de la Llum, 23, Palma" (it read the plaque, the number and the sign). Blurred: "Tokyo, Japan", low confidence |
 | Photo test set (16-nov): four AI-generated phone photos (Muse Image), real attacker, cells masked by hand | |
 | · Lisbon street with a readable plaque | As-is: "Rua de São Miguel, Alfama", 34 m off (it read the plaque). With 3 cells masked it read the house number. With 8 of 16 masked: still "Lisbon", ~0.9 km, high confidence (red) |
 | · Paris window with a blue street sign | As-is: 27 m off (it read "Rue Oberkampf"). Sign masked: "Paris", ~2 km (amber: it knows the city, not the street) |
@@ -168,7 +170,7 @@ What the live runs taught us (and changed):
 - **On-device structured output is set per model instance.** Gemini Nano ignored `generationConfig` and wrapped JSON in markdown; the framework now passes a JSON schema as Chrome's `responseConstraint`.
 - `gemini-3.8-flash` took 40–60 s per call on the free tier, too slow for a ten-attempt lineup, so the attacker defaults to Flash-Lite.
 
-The demo mode (`?demo`) replays the full v5 run recorded in Chrome on 16-nov: the details (five flagged by Nano, a sixth by the fixed rules), the attack before (10/10), Nano's rewrite, the meaning check and the attack after (0/10).
+The demo mode (`?demo`) replays real runs. Text: the details (five flagged by Nano on 16-nov, a sixth by the fixed rules), the attack before (10/10, 16-nov), Nano's rewrite in your tone (Rafa's Chrome, 22-nov), the meaning check and the attack after (0/10, 23-nov). Photo: the selfie, with Gemini Nano's scans and readings from the photo bench (22-nov) and the cloud's answers as-is and blurred (22 and 23-nov).
 
 ## Security and privacy hardening
 
