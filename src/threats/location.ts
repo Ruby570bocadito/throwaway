@@ -392,9 +392,15 @@ const capitals = (s: string) => (s.match(/(?<![\p{L}\p{N}])\p{Lu}(?![\p{L}\p{N}]
  */
 function readWhole(c: PhotoClue, all: PhotoClue[], shows = (v: PhotoClue) => v.read === true): boolean {
   const seen = all.filter((v) => shows(v) && similar(v, c)).flatMap((v) => (v.seen ?? []).flatMap((s) => [...tokensOf(s), ...capitals(s)]));
-  const words = [...new Set([...wordsIn(c.what), ...namesIn(c.what), ...capitals(c.what)])];
+  const words = signWords(c.what);
   return words.length > 0 && words.every((w) => seen.some((g) => alike(g, w)));
 }
+
+/** Every name a clue says can be read was read in that cell (not just one word the two share, like "Verdi"). */
+const namesReadIn = (c: PhotoClue, v: PhotoClue) => {
+  const seen = (v.seen ?? []).flatMap(tokensOf);
+  return namesIn(c.what).every((w) => seen.some((g) => alike(g, w)));
+};
 
 /** How many words of its clue were read in the cell: of two cells of one sign, the one that shows more is hidden first. */
 const wordsRead = (c: PhotoClue) => {
@@ -403,7 +409,15 @@ const wordsRead = (c: PhotoClue) => {
 };
 
 /** A sign of two words or more: it can be wider than a cell (a plate or a house number fits in one). */
-const wide = (c: PhotoClue) => (c.kind === 'text' || c.kind === 'landmark') && new Set([...wordsIn(c.what), ...namesIn(c.what)]).size >= 2;
+const wide = (c: PhotoClue) => (c.kind === 'text' || c.kind === 'landmark') && signWords(c.what).filter((w) => w.length > 1 || /\d/.test(w)).length >= 2;
+
+/**
+ * The words of a sign, as a person reads them: names, numbers, lone capitals, and short words too. "RUA DAS FLORES" read as
+ * "RUA FLORES" in one cell and "DAS R" in the cell beside it is not read whole: its "DAS" is in the other cell, which was
+ * dropped, and half the sign stayed sharp (photo bench, Lisbon, 23-nov).
+ */
+const signWords = (what: string) =>
+  [...new Set([...wordsIn(what), ...namesIn(what), ...capitals(what), ...tokensOf(what).filter((t) => t.length === 3 && !/\d/.test(t))])];
 
 /** At most this many cells are read up close in a photo (about 1–2 s each on a laptop's GPU). */
 const MAX_READS = 10;
@@ -722,9 +736,11 @@ export function locationThreat(o: LocationOptions): Threat<Uint8Array, PhotoClue
       // whole: identifiers first, then signs read in part, then other text that names something to read.
       const shows = (v: PhotoClue) => v.read === true || continues(v, found);
       const done = new Set<PhotoClue>();
+      // A clue read in another cell is found, unless only part of it was read there: "CAFE VERDI" and "Carrer de Verdi" share
+      // "Verdi", and the café's own cell was never read (photo bench, Barcelona, 23-nov).
       const lost = (c: PhotoClue) =>
         c.read === false && READABLE.has(c.kind) && rankOf(c) < 2 && namesIn(c.what).length > 0 && !done.has(c) &&
-        !found.some((v) => v.read === true && sameThing(v, c));
+        !found.some((v) => v.read === true && sameThing(v, c) && namesReadIn(c, v));
       const partial = (c: PhotoClue) => c.read === true && wide(c) && !readWhole(c, found, shows);
       const byVotes = (a: PhotoClue, b: PhotoClue) => (votes.get(b.cell) ?? 0) - (votes.get(a.cell) ?? 0) || a.cell - b.cell;
       const queue = [
@@ -737,7 +753,9 @@ export function locationThreat(o: LocationOptions): Threat<Uint8Array, PhotoClue
         const c = queue[q];
         for (const cell of neighbours(c.cell)) {
           if (extra >= MAX_EXTRA || !(lost(c) || partial(c))) break;
-          if (found.some((k) => k.cell === cell && k.read === true)) continue;
+          // A cell where this sign was read already is done; one where another sign was read may hold this one too.
+          // (Each clue is found in a cell once: two cells of one sign would otherwise send it back and forth.)
+          if (found.some((k) => k.cell === cell && k.read === true && (k.what === c.what || namesReadIn(c, k)))) continue;
           let r = reads.get(cell);
           if (!r) {
             extra++;
@@ -748,12 +766,15 @@ export function locationThreat(o: LocationOptions): Threat<Uint8Array, PhotoClue
             r = { read: readMatches(r.seen, c.what), seen: r.seen };
           }
           if (r.read !== true) continue;
-          const i = found.findIndex((k) => k.cell === cell);
+          // What was put in that cell and not read there goes; a sign read there stays (two signs can share a cell).
+          const i = found.findIndex((k) => k.cell === cell && k.read !== true);
           if (i >= 0) found.splice(i, 1);
           const hit = { ...c, cell, read: true, seen: r.seen };
           found.push(hit);
           queue.push(hit);
           done.add(c);
+          // The same sign, put in other cells by the scans, is found too: no more reads around them.
+          for (const k of found) if (k !== c && k.read === false && sameThing(k, hit) && namesReadIn(k, hit)) done.add(k);
         }
       }
       // What Gemini Nano could not read in its cell goes, unless it is the rest of a sign read in the cell next to it, or

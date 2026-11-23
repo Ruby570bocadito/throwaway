@@ -444,6 +444,53 @@ describe('reading each cell up close (bench, 21-nov)', () => {
     return t;
   };
 
+  // Gemini Nano's real answers on the photo bench in Rafa's Chrome (23-nov): both scans' clues in order, and its reads.
+  it('Lisbon (23-nov): "DAS R" read beside "RUA FLORES" is the rest of the sign, not a cell to drop', async () => {
+    const t = await maskWith(
+      benchNano(
+        [
+          { cell: 1, kind: 'text', what: 'Rua das Flores' },
+          { cell: 5, kind: 'architecture', what: 'Blue and white tiled panel with text' },
+          { cell: 6, kind: 'text', what: 'Rua das Flores' },
+          { cell: 7, kind: 'landmark', what: 'Street' },
+          { cell: 8, kind: 'landmark', what: 'Yellow tram' },
+          { cell: 12, kind: 'architecture', what: 'Buildings with multiple stories' },
+          { cell: 16, kind: 'architecture', what: 'Cobblestone street' },
+          { cell: 1, kind: 'text', what: 'RUA DAS FLORES' },
+          { cell: 2, kind: 'architecture', what: 'Blue and white tiled street sign' },
+          { cell: 5, kind: 'text', what: 'RUA DAS FLORES (repeated on tiled surface)' },
+          { cell: 6, kind: 'text', what: 'RUA DAS FLORES (repeated on tiled surface)' },
+          { cell: 9, kind: 'architecture', what: 'Building with arched doorway' },
+        ],
+        { 1: ['DAS R'], 6: [], 5: [], 2: ['RUA FLORES'] },
+      ),
+    );
+    // It hid cell 2 only, and half the sign stayed sharp (53 %).
+    expect(t.masked).toEqual([1, 2]);
+  });
+
+  it('Barcelona (23-nov): "CAFE VERDI" is not found where only "Verdi" of the street sign was read; the cell beside is read', async () => {
+    const clues = [
+      { cell: 3, kind: 'text', what: 'Carre de Verdi' },
+      { cell: 10, kind: 'text', what: 'CAFE VERDI' },
+      { cell: 15, kind: 'text', what: 'cafe' },
+      { cell: 1, kind: 'landmark', what: 'cafe' },
+      { cell: 16, kind: 'reflection', what: 'reflection of people sitting at a table' },
+      { cell: 6, kind: 'text', what: 'CAFE VERDI' },
+      { cell: 7, kind: 'text', what: 'Carre de Verdi' },
+      { cell: 15, kind: 'number', what: 'Likely a table number' },
+    ];
+    const reads = { 3: ['La Petite Galerie'], 6: [], 7: [], 10: [], 2: ['VERDI', 'Carrer de Verdi'] };
+    const asked: string[] = [];
+    const recording = (b: ModelBackend): ModelBackend => ({ ...b, generate: (parts, opts) => (asked.push(opts.op), b.generate(parts, opts)) });
+    // As it was: the café's own cell, 1, beside the street sign's, was never read, and the café sign stayed 56 % visible.
+    const t = await maskWith(recording(benchNano(clues, reads)));
+    expect(asked).toContain('Read the text in cell 1');
+    expect(t.masked).toContain(2);
+    // Had Gemini Nano read the café there (an assumption: that read was never made), the cell is hidden too.
+    expect((await maskWith(benchNano(clues, { ...reads, 1: ['CAFE VERDI'] }))).masked).toEqual([1, 2]);
+  });
+
   it('Barcelona: the café and the street sign, read whole in their cells; not the table number or a "15"', async () => {
     const t = await maskWith(
       benchNano(
