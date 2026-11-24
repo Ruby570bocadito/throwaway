@@ -191,7 +191,7 @@ The demo mode (`?demo`) replays real runs. Text: the details (five flagged by Na
 - Blurring hides what a model can read today; it is not a guarantee against every future technique. Cropping is safer.
 - The image guard recognises the private photo's bytes, also as base64, a `data:` URL or a binary string; a decoded and re-encoded copy (different bytes) would get past it. Private text under about 32 letters (a name on its own) is not tracked, a draft split across several calls in pieces of under about 7 words is not caught, and coordinates are tracked from 3 decimals (about 100 m). The types still forbid passing a `Private` value.
 - Every cloud call has a time limit (30 s per try, 45 s in all) and the ledger records failed and retried calls too; an on-device call that hangs cannot be cancelled by the SDK, so it gets 5 minutes before the app gives up on it.
-- The demo photo is an illustrated, fictional street: a live attacker may place it in any Catalan-speaking city. Use your own photo and location for a real score.
+- The demo selfie is AI-made, with no real person, on a street in Palma. Blurred, a live attacker still placed it in Mallorca in 2 of 4 runs. Use your own photo and location for a real score.
 - The attacker is a general model, not a specialised geolocation system: a stronger attacker plugs into the same framework.
 - Like Tor or Signal, anonymity tools can be misused. Throwaway attacks no one; it only measures your own text.
 
