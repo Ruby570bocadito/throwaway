@@ -4,8 +4,7 @@
 
 [![Throwaway: before you post anonymously, let an AI try to unmask you. Firebase AI Logic and Gemini Nano.](public/og-image.jpg)](https://throwaway-hybrid.web.app)
 
-**[Open the app](https://throwaway-hybrid.web.app/app/)** (Chrome with Gemini Nano) · **[Watch a recorded run](https://throwaway-hybrid.web.app/app/?demo)** (any browser) · **[How it works](https://throwaway-hybrid.web.app)** · No sign-up
-<!-- Demo video: add the YouTube link here before submitting. -->
+**[Open the app](https://throwaway-hybrid.web.app/app/)** (Chrome with Gemini Nano) · **[Watch a recorded run](https://throwaway-hybrid.web.app/app/?demo)** (any browser) · **[How it works](https://throwaway-hybrid.web.app)** · **[Demo video](https://youtu.be/g9BGaIio3pU)** (2:34) · No sign-up
 
 In 2013, a stylometry analysis unmasked J. K. Rowling as "Robert Galbraith" from her writing alone. A cloud AI can now attempt the same in seconds: in our runs in Chrome (the recorded demo replays one), it picked the author of an anonymous employer review out of ten writers, 10 times out of 10. Asking a chatbot to "make it anonymous" hands it the very draft you want to protect, and nothing checks the result.
 
