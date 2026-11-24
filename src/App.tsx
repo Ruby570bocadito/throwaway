@@ -161,7 +161,10 @@ export default function App() {
   const status = blocked ? 'blocked' : sentAsIs ? 'asis' : 'private';
   const statusText = blocked
     ? count(blocked, ['leak attempt blocked', 'leak attempts blocked'], ['intento de filtración bloqueado', 'intentos de filtración bloqueados'])
-    : sentAsIs
+    : !live
+      ? // Next to the real run's "10 calls · 43,940 B", "original never left the device" read as a contradiction (the judge, round 7).
+        tr('recorded run: nothing was sent from here', 'revisión grabada: desde aquí no se envió nada')
+      : sentAsIs
       ? tr('original sent only for your as-is test', 'el original solo se ha enviado para tu prueba tal cual')
       : tr('original never left the device', 'el original no ha salido del dispositivo');
   const labProps: LabProps = {

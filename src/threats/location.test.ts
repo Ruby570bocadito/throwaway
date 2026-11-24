@@ -42,7 +42,7 @@ describe('the edge of a hidden cell (23-nov)', () => {
     // Two cells count against the budget; with their edges, about a sixth of the photo is blurred.
     expect(t.clueShare).toBeCloseTo(2 / 16, 2);
     expect(t.maskedShare).toBeLessThan(0.17);
-  });
+  }, 15_000); // the recorded answers come with their real pauses (900 ms each)
 });
 
 describe('tight blurring (22-nov)', () => {
