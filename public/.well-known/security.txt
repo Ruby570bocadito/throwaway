@@ -1,6 +1,6 @@
 # Throwaway: how to report a security problem. See also SECURITY.md in the repository.
-Contact: https://github.com/Ruby570bocadito/throwaway-Firebase-Hackaton/security
-Policy: https://github.com/Ruby570bocadito/throwaway-Firebase-Hackaton/blob/main/SECURITY.md
+Contact: https://github.com/Ruby570bocadito/throwaway/security
+Policy: https://github.com/Ruby570bocadito/throwaway/blob/main/SECURITY.md
 Preferred-Languages: en, es
 Canonical: https://throwaway-hybrid.web.app/.well-known/security.txt
 Expires: 2027-05-31T23:00:00.000Z
